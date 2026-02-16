@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Activity Manager</title>
+    <link rel="stylesheet" href="/style.css"> <style>
+        .rules-card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .upload-banner { background: #f1f5f9; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 2px dashed #cbd5e1; }
+        .sports-row { border-left: 5px solid #ef4444; }
+        .enrich-row { border-left: 5px solid #3b82f6; }
+    </style>
+</head>
+<body>
+    <a href="/">← Back to Dashboard</a>
+    <h1>Activity Rules & Constraints</h1>
+
+    <div class="upload-banner">
+        <h3>Bulk Upload Rules</h3>
+        <p><small>CSV Headers: <strong>Name, SideOfCamp, MaxCapacity</strong></small></p>
+        <form action="/upload-activity-rules" method="POST" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".csv" required>
+            <button type="submit" class="btn btn-primary">Import Rules CSV</button>
+        </form>
+    </div>
+
+    <div class="rules-card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Activity Name</th>
+                    <th>Camp Side</th>
+                    <th>Max Capacity</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% activities.forEach(act => { %>
+                <form action="/update-activity" method="POST">
+                    <input type="hidden" name="ActivityName" value="<%= act.Name %>">
+                    <tr class="<%= act.SideOfCamp === 'Sports' ? 'sports-row' : 'enrich-row' %>">
+                        <td><strong><%= act.Name %></strong></td>
+                        <td>
+                            <select name="SideOfCamp">
+                                <option value="Enrichment">Enrichment</option>
+                                <option value="Sports">Sports</option>
+                            </select>
+                        </td>
+                        <td><input type="number" name="MaxCapacity" value="<%= act.MaxCapacity %>"></td>
+                        <td><button type="submit">Save</button></td>
+                    </tr>
+                </form>
+                <% }) %>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Camper Search</title>
+    <style>
+        body { font-family: sans-serif; background: #f8fafc; padding: 30px; }
+        .search-box { margin-bottom: 30px; }
+        input { padding: 10px; width: 300px; border-radius: 5px; border: 1px solid #cbd5e1; }
+        button { padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        
+        .camper-card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        
+        /* Row 1: General Info */
+        .info-row { display: flex; justify-content: space-between; padding: 20px; background: #f1f5f9; border-bottom: 2px solid #e2e8f0; }
+        .info-group { display: flex; flex-direction: column; }
+        .label { font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: bold; }
+        .value { font-size: 18px; color: #1e293b; font-weight: 600; }
+
+        /* Row 2: Schedule */
+        .schedule-row { padding: 20px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; }
+        .period-box { border: 1px solid #e2e8f0; padding: 10px; border-radius: 8px; background: #ffffff; }
+        .p-num { font-weight: bold; color: #2563eb; margin-bottom: 5px; display: block; }
+        
+        .no-results { color: #64748b; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+    <a href="/" style="text-decoration: none; color: #2563eb;">← Back to Dashboard</a>
+    
+    <h1>Camper Lookup</h1>
+
+    <div class="search-box">
+        <form action="/search" method="GET">
+            <input type="text" name="name" placeholder="Enter camper name..." value="<%= query || '' %>">
+            <button type="submit">Search</button>
+        </form>
+    </div>
+
+    <% if (camper) { %>
+        <div class="camper-card">
+            <div class="info-row">
+                <div class="info-group">
+                    <span class="label">Name</span>
+                    <span class="value"><%= camper.FirstName %> <%= camper.LastName %></span>
+                </div>
+                <div class="info-group">
+                    <span class="label">Age / Group</span>
+                    <span class="value"><%= camper.Age %> / <%= camper.ColorGroup %></span>
+                </div>
+                <div class="info-group">
+                    <span class="label">Counselor</span>
+                    <span class="value"><%= camper.CounselorFirst %> <%= camper.CounselorLast %></span>
+                </div>
+                <div class="info-group">
+                    <span class="label">Logistics</span>
+                    <span class="value">Bus <%= camper.BusRoute || 'N/A' %> | Ext: <%= camper.ExtendedHours || 'None' %></span>
+                </div>
+                <div class="info-group">
+                    <span class="label">Lunch</span>
+                    <span class="value"><%= camper.CampLunch %></span>
+                </div>
+            </div>
+
+            <div class="schedule-row">
+                <% for(let i=1; i<=5; i++) { 
+                    let p = camperSchedule.find(s => s.PeriodNumber === i);
+                %>
+                    <div class="period-box">
+                        <span class="p-num">Period <%= i %></span>
+                        <span class="p-activity"><%= p ? p.ActivityName : '---' %></span>
+                        <br><small style="color: #94a3b8;"><%= p ? p.TimeOfDay : '' %></small>
+                    </div>
+                <% } %>
+            </div>
+        </div>
+    <% } else if (query) { %>
+        <p class="no-results">No camper found with the name "<%= query %>".</p>
+    <% } %>
+
+</body>
+</html>

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Master Schedule | Camp Admin</title>
+    <style>
+        :root {
+            --primary: #1e293b;
+            --accent: #2563eb;
+            --staff-yellow: #fef9c3;
+            --staff-text: #854d0e;
+            --counselor-blue: #e0e7ff;
+            --counselor-text: #3730a3;
+            --bg: #f1f5f9;
+        }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--primary); padding: 30px; margin: 0; }
+        .nav-link { text-decoration: none; color: var(--accent); font-weight: 600; margin-bottom: 20px; display: inline-block; }
+        
+        .period-section { margin-bottom: 40px; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); background: white; }
+        
+        .period-header { 
+            background: var(--primary); 
+            color: white; 
+            padding: 15px 20px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+        }
+        .period-header h2 { margin: 0; font-size: 1.25rem; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f8fafc; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; color: #64748b; }
+
+        /* Course Rows */
+        .course-row { cursor: pointer; transition: background 0.2s; }
+        .course-row:hover { background: #f8fafc; }
+        
+        .location-text { font-size: 0.85rem; color: #64748b; font-weight: normal; margin-top: 4px; display: block; }
+        .enroll-count { font-weight: bold; color: var(--accent); background: #eff6ff; padding: 4px 10px; border-radius: 20px; font-size: 0.85rem; }
+
+        /* Adult Type Pills */
+        .pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; margin: 2px; border: 1px solid rgba(0,0,0,0.05); font-weight: 500; }
+        .pill-staff { background: var(--staff-yellow); color: var(--staff-text); }
+        .pill-counselor { background: var(--counselor-blue); color: var(--counselor-text); }
+
+        /* Dropdown Detail Styles */
+        .details-row { display: none; background: #fcfcfc; }
+        .details-container { padding: 20px; border-left: 5px solid var(--accent); margin: 10px 20px; background: white; border-radius: 4px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); }
+        
+        .camper-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); 
+            gap: 10px; 
+            margin-top: 15px; 
+        }
+        .camper-card { font-size: 0.85rem; padding: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
+
+        /* Color Group Tags */
+        .tag { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase; }
+        .Carolina { background: #e0f2fe; color: #0369a1; }
+        .Red { background: #fee2e2; color: #991b1b; }
+        .Green { background: #dcfce7; color: #166534; }
+        .Navy { background: #e0e7ff; color: #3730a3; }
+    </style>
+</head>
+<body>
+
+    <a href="/" class="nav-link">← Return to Dashboard</a>
+    <h1>Master Course Schedule</h1>
+    <p style="color: #64748b; margin-bottom: 30px;">Daily overview organized by period and time of day. Click any row to expand the camper roster.</p>
+
+    <% 
+        // Logic for Period 3 splitting
+        const timeBlocks = [
+            { num: 1, time: 'AM', label: 'Morning 1' },
+            { num: 2, time: 'AM', label: 'Morning 2' },
+            { num: 3, time: 'AM', label: 'Morning 3 (Greens/Navys)' },
+            { num: 3, time: 'PM', label: 'Afternoon 1 (Reds/Carolinas)' },
+            { num: 4, time: 'PM', label: 'Afternoon 2' },
+            { num: 5, time: 'PM', label: 'Afternoon 3' },
+            { num: 6, time: 'PM', label: 'Extended Day/Sports' }
+        ];
+    %>
+
+    <% timeBlocks.forEach((block, blockIdx) => { %>
+        <% 
+            // Filter the masterSchedule data for this specific time block
+            const currentCourses = masterSchedule.filter(c => c.PeriodNumber === block.num && c.TimeOfDay === block.time); 
+        %>
+        
+        <% if (currentCourses.length > 0) { %>
+            <div class="period-section">
+                <div class="period-header">
+                    <h2>Period <%= block.num %> - <%= block.time %></h2>
+                    <span><%= block.label %></span>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 35%;">Activity & Location</th>
+                            <th style="width: 15%;">Campers</th>
+                            <th>Assigned Adults</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% currentCourses.forEach((course, courseIdx) => { %>
+                            <% const uniqueId = `details-${blockIdx}-${courseIdx}`; %>
+                            <tr class="course-row" onclick="toggleDetails('<%= uniqueId %>')">
+                                <td>
+                                    <strong><%= course.ActivityName %></strong>
+                                    <span class="location-text">📍 <%= course.Location || 'Location Pending' %></span>
+                                </td>
+                                <td><span class="enroll-count"><%= course.TotalEnrollment %></span></td>
+                                <td>
+                                    <% course.staff.forEach(s => { %>
+                                        <span class="pill pill-staff">
+                                            <%= s.FirstName %> <%= s.LastName[0] %>.
+                                        </span>
+                                    <% }) %>
+
+                                    <% course.counselors.forEach(c => { %>
+                                        <span class="pill pill-counselor">
+                                            <%= c.FirstName %> <%= c.LastName[0] %>.
+                                        </span>
+                                    <% }) %>
+
+                                    <% if (course.staff.length === 0 && course.counselors.length === 0) { %>
+                                        <em style="color: #cbd5e1; font-size: 0.8rem;">No staff assigned</em>
+                                    <% } %>
+                                </td>
+                            </tr>
+                            
+                            <tr id="<%= uniqueId %>" class="details-row">
+                                <td colspan="3">
+                                    <div class="details-container">
+                                        <div style="font-weight: bold; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between;">
+                                            <span>Roster: <%= course.ActivityName %></span>
+                                            <span style="color: #64748b; font-size: 0.8rem;"><%= course.TotalEnrollment %> Total</span>
+                                        </div>
+                                        <div class="camper-grid">
+                                            <% course.campers.forEach(cp => { %>
+                                                <div class="camper-card">
+                                                    <span><%= cp.FirstName %> <%= cp.LastName %></span>
+                                                    <span class="tag <%= cp.ColorGroup %>"><%= cp.ColorGroup %></span>
+                                                </div>
+                                            <% }) %>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            </div>
+        <% } %>
+    <% }) %>
+
+    <script>
+        function toggleDetails(id) {
+            const row = document.getElementById(id);
+            // Toggle visibility using table-row for proper table alignment
+            if (row.style.display === 'table-row') {
+                row.style.display = 'none';
+            } else {
+                row.style.display = 'table-row';
+            }
+        }
+    </script>
+</body>
+</html>

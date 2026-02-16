@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Schedule Swap Tool</title>
+    <style>
+        .swap-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .period-selector { margin: 15px 0; padding: 10px; border: 1px solid #ddd; cursor: pointer; }
+        .period-selector.active { border-color: #2563eb; background: #eff6ff; }
+        .valid-option { display: block; padding: 10px; margin: 5px 0; background: #f1f5f9; border-radius: 4px; text-decoration: none; color: black; }
+        .valid-option:hover { background: #dcfce7; }
+    </style>
+</head>
+<body>
+    <h1>Camper Schedule Swapper</h1>
+    
+    <form action="/swap-tool" method="GET">
+        <input type="text" name="name" placeholder="Search Camper..." value="<%= query || '' %>">
+        <button type="submit">Find Camper</button>
+    </form>
+
+    <% if (camper) { %>
+        <div class="swap-card">
+            <h3>Swapping for: <%= camper.FirstName %> <%= camper.LastName %></h3>
+            <p>Select a period to see valid open courses:</p>
+            
+            <% currentSchedule.forEach(p => { %>
+                <div class="period-selector" onclick="loadOptions('<%= camper.CamperID %>', '<%= p.PeriodNumber %>', this)">
+                    <strong>Period <%= p.PeriodNumber %>:</strong> <%= p.ActivityName %> 
+                    <small>(Currently at <%= p.SideOfCamp %>)</small>
+                </div>
+            <% }) %>
+
+            <div id="options-container" style="margin-top:20px;">
+                </div>
+        </div>
+    <% } %>
+
+    <script>
+        async function loadOptions(camperId, period, element) {
+            // UI highlight
+            document.querySelectorAll('.period-selector').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+
+            const res = await fetch(`/get-options/${camperId}/${period}`);
+            const options = await res.json();
+            
+            let html = `<h4>Available on that side of camp:</h4>`;
+            options.forEach(opt => {
+                html += `
+                <a href="/process-swap?camperId=${camperId}&period=${period}&newActivity=${opt.Name}" 
+                   class="valid-option" onclick="return confirm('Swap to ${opt.Name}?')">
+                    ${opt.Name} (${opt.CurrentEnrollment} / ${opt.MaxCapacity} full)
+                </a>`;
+            });
+            document.getElementById('options-container').innerHTML = html;
+        }
+    </script>
+</body>
+</html>
