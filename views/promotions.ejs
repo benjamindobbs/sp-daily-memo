@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Promotion Clearinghouse</title>
+    <link rel="stylesheet" href="/style.css"> <style>
+        .promo-card { border-left: 5px solid #059669; margin-bottom: 15px; padding: 20px; background: white; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .timestamp { color: #64748b; font-size: 0.8rem; }
+        .empty-state { text-align: center; padding: 50px; color: #64748b; }
+    </style>
+</head>
+<body>
+    <div style="max-width: 900px; margin: auto; padding: 40px;">
+        <a href="/" style="text-decoration: none; color: #2563eb;">← Back to Dashboard</a>
+        <h1>Ready for Promotion</h1>
+        <p>The following campers are on a waitlist for an activity that currently has an open spot.</p>
+
+        <% if (potentialPromotions.length === 0) { %>
+            <div class="card empty-state">
+                <h3>All quiet!</h3>
+                <p>No waitlisted campers currently have an open spot available.</p>
+            </div>
+        <% } else { %>
+            <% potentialPromotions.forEach(promo => { %>
+                <div class="promo-card">
+                    <div>
+                        <span class="tag <%= promo.ColorGroup %>"><%= promo.ColorGroup %></span>
+                        <strong style="font-size: 1.2rem; margin-left: 10px;">
+                            <%= promo.FirstName %> <%= promo.LastName %>
+                        </strong>
+                        <div style="margin-top: 5px;">
+                            Wants <strong><%= promo.RequestedActivity %></strong> 
+                            (Period <%= promo.PeriodNumber %> - <%= promo.TimeOfDay %>)
+                        </div>
+                        <div class="timestamp">Requested on: <%= new Date(promo.Timestamp).toLocaleString() %></div>
+                    </div>
+                    
+                    <div style="text-align: right;">
+                        <div style="margin-bottom: 10px; color: #059669; font-weight: bold;">
+                            <%= promo.CurrentEnrollment %> / <%= promo.MaxCapacity %> Filled
+                        </div>
+                        <form action="/promote-waitlist" method="POST">
+                            <input type="hidden" name="WaitlistID" value="<%= promo.WaitlistID %>">
+                            <button type="submit" class="btn btn-success">Approve Promotion</button>
+                        </form>
+                    </div>
+                </div>
+            <% }) %>
+        <% } %>
+    </div>
+</body>
+</html>

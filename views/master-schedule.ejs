@@ -1,172 +1,314 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Master Schedule | Camp Admin</title>
+    <title>Master Schedule | Camp Management</title>
     <style>
         :root {
             --primary: #1e293b;
-            --accent: #2563eb;
-            --staff-yellow: #fef9c3;
-            --staff-text: #854d0e;
-            --counselor-blue: #e0e7ff;
-            --counselor-text: #3730a3;
-            --bg: #f1f5f9;
+            --accent: #6366f1;
+            --bg: #f8fafc;
+            --border: #e2e8f0;
+
+            /* New Activity Side Colors (Non-Red/Green) */
+            --enrichment-bg: #f5f3ff;
+            /* Soft Lavender */
+            --enrichment-border: #8b5cf6;
+            /* Purple */
+            --enrichment-text: #5b21b6;
+
+            --sports-bg: #fffbeb;
+            /* Soft Amber */
+            --sports-border: #f59e0b;
+            /* Gold/Orange */
+            --sports-text: #92400e;
         }
-        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--primary); padding: 30px; margin: 0; }
-        .nav-link { text-decoration: none; color: var(--accent); font-weight: 600; margin-bottom: 20px; display: inline-block; }
-        
-        .period-section { margin-bottom: 40px; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); background: white; }
-        
-        .period-header { 
-            background: var(--primary); 
-            color: white; 
-            padding: 15px 20px; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
+
+        body {
+            font-family: -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--primary);
+            margin: 0;
+            padding: 20px;
+            line-height: 1.5;
         }
-        .period-header h2 { margin: 0; font-size: 1.25rem; }
 
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #e2e8f0; }
-        th { background: #f8fafc; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; color: #64748b; }
-
-        /* Course Rows */
-        .course-row { cursor: pointer; transition: background 0.2s; }
-        .course-row:hover { background: #f8fafc; }
-        
-        .location-text { font-size: 0.85rem; color: #64748b; font-weight: normal; margin-top: 4px; display: block; }
-        .enroll-count { font-weight: bold; color: var(--accent); background: #eff6ff; padding: 4px 10px; border-radius: 20px; font-size: 0.85rem; }
-
-        /* Adult Type Pills */
-        .pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; margin: 2px; border: 1px solid rgba(0,0,0,0.05); font-weight: 500; }
-        .pill-staff { background: var(--staff-yellow); color: var(--staff-text); }
-        .pill-counselor { background: var(--counselor-blue); color: var(--counselor-text); }
-
-        /* Dropdown Detail Styles */
-        .details-row { display: none; background: #fcfcfc; }
-        .details-container { padding: 20px; border-left: 5px solid var(--accent); margin: 10px 20px; background: white; border-radius: 4px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); }
-        
-        .camper-grid { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); 
-            gap: 10px; 
-            margin-top: 15px; 
+        .container {
+            max-width: 1400px;
+            margin: auto;
         }
-        .camper-card { font-size: 0.85rem; padding: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .btn-back {
+            text-decoration: none;
+            color: var(--accent);
+            font-weight: 600;
+            padding: 8px 16px;
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+        }
+
+        /* Search & Filter Bar */
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .search-input {
+            flex-grow: 2;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+
+        .filter-select {
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: white;
+            min-width: 150px;
+        }
+
+        /* Table Styling */
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th {
+            background: #f8fafc;
+            padding: 15px;
+            border-bottom: 2px solid var(--border);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: #64748b;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+            vertical-align: top;
+        }
+
+        /* Dynamic Side Coloring - Classes replace inline styles */
+        .enrichment-cell {
+            border-left: 4px solid var(--enrichment-border);
+            background-color: var(--enrichment-bg);
+        }
+
+        .sports-cell {
+            border-left: 4px solid var(--sports-border);
+            background-color: var(--sports-bg);
+        }
+
+        .label-enrichment {
+            color: var(--enrichment-text);
+        }
+
+        .label-sports {
+            color: var(--sports-text);
+        }
+
+        .side-label {
+            font-size: 0.65rem;
+            font-weight: 800;
+            display: block;
+            margin-top: 6px;
+            text-transform: uppercase;
+        }
+
+
+
+        .split-note {
+            font-style: italic;
+            opacity: 0.7;
+            font-size: 0.6rem;
+            color: #475569;
+        }
 
         /* Color Group Tags */
-        .tag { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase; }
-        .Carolina { background: #e0f2fe; color: #0369a1; }
-        .Red { background: #fee2e2; color: #991b1b; }
-        .Green { background: #dcfce7; color: #166534; }
-        .Navy { background: #e0e7ff; color: #3730a3; }
+        .tag {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 800;
+            color: white;
+            text-transform: uppercase;
+        }
+
+        .Red {
+            background-color: #dc2626;
+            border: 1px solid #991b1b;
+        }
+
+        .Carolina {
+            background-color: #60a5fa;
+            border: 1px solid #2563eb;
+        }
+
+        /* Sky/Carolina Blue */
+        .Green {
+            background-color: #16a34a;
+            border: 1px solid #14532d;
+        }
+
+        .Navy {
+            background-color: #1e3a8a;
+            border: 1px solid #172554;
+        }
+
+        @media print {
+
+            .controls,
+            .btn-back {
+                display: none;
+            }
+
+            body {
+                padding: 0;
+                background: white;
+            }
+
+            .enrichment-cell,
+            .sports-cell {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
     </style>
 </head>
+
 <body>
 
-    <a href="/" class="nav-link">← Return to Dashboard</a>
-    <h1>Master Course Schedule</h1>
-    <p style="color: #64748b; margin-bottom: 30px;">Daily overview organized by period and time of day. Click any row to expand the camper roster.</p>
+    <div class="container">
+        <div class="header">
+            <h1>📅 Master Schedule</h1>
+            <a href="/" class="btn-back">← Dashboard</a>
+        </div>
 
-    <% 
-        // Logic for Period 3 splitting
-        const timeBlocks = [
-            { num: 1, time: 'AM', label: 'Morning 1' },
-            { num: 2, time: 'AM', label: 'Morning 2' },
-            { num: 3, time: 'AM', label: 'Morning 3 (Greens/Navys)' },
-            { num: 3, time: 'PM', label: 'Afternoon 1 (Reds/Carolinas)' },
-            { num: 4, time: 'PM', label: 'Afternoon 2' },
-            { num: 5, time: 'PM', label: 'Afternoon 3' },
-            { num: 6, time: 'PM', label: 'Extended Day/Sports' }
-        ];
-    %>
+        <div class="controls">
+            <input type="text" id="nameSearch" class="search-input" placeholder="🔍 Search by camper name..."
+                onkeyup="runFilters()">
+            <select id="groupFilter" class="filter-select" onchange="runFilters()">
+                <option value="all">All Groups</option>
+                <option value="Red">Red</option>
+                <option value="Carolina">Carolina</option>
+                <option value="Green">Green</option>
+                <option value="Navy">Navy</option>
+            </select>
+            <button onclick="window.print()"
+                style="padding: 12px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer;">🖨️
+                Print</button>
+        </div>
 
-    <% timeBlocks.forEach((block, blockIdx) => { %>
-        <% 
-            // Filter the masterSchedule data for this specific time block
-            const currentCourses = masterSchedule.filter(c => c.PeriodNumber === block.num && c.TimeOfDay === block.time); 
-        %>
-        
-        <% if (currentCourses.length > 0) { %>
-            <div class="period-section">
-                <div class="period-header">
-                    <h2>Period <%= block.num %> - <%= block.time %></h2>
-                    <span><%= block.label %></span>
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 35%;">Activity & Location</th>
-                            <th style="width: 15%;">Campers</th>
-                            <th>Assigned Adults</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <% currentCourses.forEach((course, courseIdx) => { %>
-                            <% const uniqueId = `details-${blockIdx}-${courseIdx}`; %>
-                            <tr class="course-row" onclick="toggleDetails('<%= uniqueId %>')">
+
+
+        <div class="table-container">
+            <table id="masterTable">
+                <thead>
+                    <tr>
+                        <th style="width: 200px;">Camper</th>
+                        <th style="width: 100px;">Group</th>
+                        <th>P1 (AM)</th>
+                        <th>P2 (AM)</th>
+                        <th>P3 (Split)</th>
+                        <th>P4 (PM)</th>
+                        <th>P5 (PM)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (data && data.length> 0) { %>
+                        <% data.forEach(function(row) { %>
+                            <tr class="schedule-row" data-group="<%= row.ColorGroup || '' %>"
+                                data-name="<%= (row.FirstName || '').toLowerCase() %> <%= (row.LastName || '').toLowerCase() %>">
+
                                 <td>
-                                    <strong><%= course.ActivityName %></strong>
-                                    <span class="location-text">📍 <%= course.Location || 'Location Pending' %></span>
+                                    <a href="/search?name=<%= encodeURIComponent(row.FirstName + ' ' + row.LastName) %>" 
+                                    style="text-decoration: none; color: var(--primary); font-weight: bold; border-bottom: 1px dashed #cbd5e1;">
+                                        <%= row.LastName %>, <%= row.FirstName %>
+                                    </a>
                                 </td>
-                                <td><span class="enroll-count"><%= course.TotalEnrollment %></span></td>
-                                <td>
-                                    <% course.staff.forEach(s => { %>
-                                        <span class="pill pill-staff">
-                                            <%= s.FirstName %> <%= s.LastName[0] %>.
-                                        </span>
-                                    <% }) %>
+                                <td><span class="tag <%= row.ColorGroup %>">
+                                        <%= row.ColorGroup || 'N/A' %>
+                                    </span></td>
 
-                                    <% course.counselors.forEach(c => { %>
-                                        <span class="pill pill-counselor">
-                                            <%= c.FirstName %> <%= c.LastName[0] %>.
-                                        </span>
-                                    <% }) %>
-
-                                    <% if (course.staff.length === 0 && course.counselors.length === 0) { %>
-                                        <em style="color: #cbd5e1; font-size: 0.8rem;">No staff assigned</em>
+                                <% for(var i=1; i <=5; i++) { var activity=row['P' + i]; var side=row['S' + i]; var
+                                    cellClass="" ; var sideClass="" ; if (side==='Sports' ) { cellClass="sports-cell" ;
+                                    sideClass="label-sports" ; } else if (side==='Enrichment' ) {
+                                    cellClass="enrichment-cell" ; sideClass="label-enrichment" ; } %>
+                                    <td class="<%= cellClass %>">
+                                        <strong>
+                                            <%= activity || '---' %>
+                                        </strong>
+                                        <% if (side) { %>
+                                            <span class="side-label <%= sideClass %>">
+                                                <%= side %>
+                                                    <% if (i===3) { %>
+                                                        <span class="split-note">
+                                                            <% /* Updated Labels: Reds get AFT 1, Greens get MORN 3 */
+                                                                %>
+                                                                <%= (row.ColorGroup==='Red' ||
+                                                                    row.ColorGroup==='Carolina' ) ? '(Aft 1)'
+                                                                    : '(Morn 3)' %>
+                                                        </span>
+                                                        <% } %>
+                                            </span>
+                                            <% } %>
+                                    </td>
                                     <% } %>
-                                </td>
                             </tr>
-                            
-                            <tr id="<%= uniqueId %>" class="details-row">
-                                <td colspan="3">
-                                    <div class="details-container">
-                                        <div style="font-weight: bold; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between;">
-                                            <span>Roster: <%= course.ActivityName %></span>
-                                            <span style="color: #64748b; font-size: 0.8rem;"><%= course.TotalEnrollment %> Total</span>
-                                        </div>
-                                        <div class="camper-grid">
-                                            <% course.campers.forEach(cp => { %>
-                                                <div class="camper-card">
-                                                    <span><%= cp.FirstName %> <%= cp.LastName %></span>
-                                                    <span class="tag <%= cp.ColorGroup %>"><%= cp.ColorGroup %></span>
-                                                </div>
-                                            <% }) %>
-                                        </div>
-                                    </div>
-                                </td>
-                            </tr>
-                        <% }) %>
-                    </tbody>
-                </table>
-            </div>
-        <% } %>
-    <% }) %>
+                            <% }) %>
+                                <% } else { %>
+                                    <tr>
+                                        <td colspan="7" style="text-align: center; padding: 40px;">No records found.
+                                        </td>
+                                    </tr>
+                                    <% } %>
+                </tbody>
+            </table>
+        </div>
+    </div>
 
     <script>
-        function toggleDetails(id) {
-            const row = document.getElementById(id);
-            // Toggle visibility using table-row for proper table alignment
-            if (row.style.display === 'table-row') {
-                row.style.display = 'none';
-            } else {
-                row.style.display = 'table-row';
+        function runFilters() {
+            var nameVal = document.getElementById('nameSearch').value.toLowerCase();
+            var groupVal = document.getElementById('groupFilter').value;
+            var rows = document.querySelectorAll('.schedule-row');
+
+            for (var i = 0; i < rows.length; i++) {
+                var row = rows[i];
+                var nameMatch = row.getAttribute('data-name').indexOf(nameVal) > -1;
+                var groupMatch = (groupVal === 'all' || row.getAttribute('data-group') === groupVal);
+                row.style.display = (nameMatch && groupMatch) ? '' : 'none';
             }
         }
     </script>
+
 </body>
+
 </html>

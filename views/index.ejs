@@ -50,17 +50,22 @@
 
     <div class="header-flex">
         <h1>Camp Dashboard</h1>
-    <div>
-        <a href="/activities" class="btn btn-outline">⚙️ Manage Activity Rules</a>
-        <a href="/swap-tool" class="btn btn-primary">🔄 Swap Schedules</a>
+        <div>
+        <a href="/search" class="btn btn-primary">Camper Lookup Tool</a>
+        <a href="/swap-tool" class="btn btn-primary">🔄 Swap Tool</a>
+        <a href="/promotions" class="btn btn-outline" style="border-color: #059669; color: #059669;">
+            🔔 Open Spots
+        </a>
         <a href="/master-schedule" class="btn btn-dark">📅 Master Schedule</a>
-    </div>
+        <a href="/activities" class="btn btn-outline">⚙️ Rules</a>
     </div>
 
+    </div>
+    
     <% if (alertMessage) { %>
         <div class="alert"><%= alertMessage %></div>
     <% } %>
-
+    
     <div class="card">
         <h3>Import Data (CSV)</h3>
         <div class="upload-grid">

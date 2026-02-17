@@ -1,82 +1,298 @@
 <!DOCTYPE html>
-<html>
-<head>
-    <title>Camper Search</title>
-    <style>
-        body { font-family: sans-serif; background: #f8fafc; padding: 30px; }
-        .search-box { margin-bottom: 30px; }
-        input { padding: 10px; width: 300px; border-radius: 5px; border: 1px solid #cbd5e1; }
-        button { padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        
-        .camper-card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        
-        /* Row 1: General Info */
-        .info-row { display: flex; justify-content: space-between; padding: 20px; background: #f1f5f9; border-bottom: 2px solid #e2e8f0; }
-        .info-group { display: flex; flex-direction: column; }
-        .label { font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: bold; }
-        .value { font-size: 18px; color: #1e293b; font-weight: 600; }
+<html lang="en">
 
-        /* Row 2: Schedule */
-        .schedule-row { padding: 20px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; }
-        .period-box { border: 1px solid #e2e8f0; padding: 10px; border-radius: 8px; background: #ffffff; }
-        .p-num { font-weight: bold; color: #2563eb; margin-bottom: 5px; display: block; }
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camper Search | Camp Management</title>
+    <style>
+        :root {
+            --primary: #1e293b;
+            --accent: #6366f1;
+            --bg: #f8fafc;
+            --border: #e2e8f0;
+        }
+
+        body {
+            font-family: -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--primary);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .btn-back {
+            text-decoration: none;
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .search-box {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .search-input {
+            flex-grow: 1;
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 1.1rem;
+        }
+
+        .search-input:focus {
+            border-color: var(--accent);
+            outline: none;
+        }
+
+        .clear-btn {
+            padding: 12px;
+            background: #f1f5f9;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        th {
+            background: #f8fafc;
+            padding: 15px;
+            text-align: left;
+            border-bottom: 2px solid var(--border);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            color: #64748b;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th, td {
+            padding: 10px 8px; /* Slightly tighter padding for more columns */
+            font-size: 0.85rem;
+        }
+
+        .camper-row:hover {
+            background-color: #f1f5f9;
+        }
+
+        .info-row td {
+            white-space: nowrap; /* Prevents text from wrapping and making rows too tall */
+        }
+
+        .tag {
+            padding: 2px 6px;
+            font-size: 0.65rem;
+        }
         
-        .no-results { color: #64748b; margin-top: 20px; }
+        .info-row td:nth-child(7), 
+        .info-row td:nth-child(8) {
+            text-align: center;
+            font-size: 1rem;
+        }
+
+        .Red {
+            background: #dc2626;
+        }
+
+        .Carolina {
+            background: #60a5fa;
+        }
+
+        .Green {
+            background: #16a34a;
+        }
+
+        .Navy {
+            background: #1e3a8a;
+        }
+
+        .action-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .schedule-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            background: #f1f5f9;
+            /* Light slate background */
+            padding: 12px;
+            border-radius: 8px;
+        }
+
+        .p-slot {
+            font-size: 0.75rem;
+            color: #475569;
+        }
+
+        .p-slot strong {
+            display: block;
+            color: var(--primary);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
+        .camper-group {
+            border-bottom: 2px solid var(--border);
+        }
+
+        .info-row td {
+            padding-bottom: 5px;
+            /* Bring the schedule row closer */
+            border-bottom: none;
+        }
+
+        .schedule-row td {
+            padding-top: 5px;
+            padding-bottom: 20px;
+        }
     </style>
 </head>
+
 <body>
 
-    <a href="/" style="text-decoration: none; color: #2563eb;">← Back to Dashboard</a>
-    
-    <h1>Camper Lookup</h1>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Camper Search</h1>
+            <a href="/master-schedule" class="btn-back">← Master Schedule</a>
+        </div>
 
-    <div class="search-box">
-        <form action="/search" method="GET">
-            <input type="text" name="name" placeholder="Enter camper name..." value="<%= query || '' %>">
-            <button type="submit">Search</button>
-        </form>
+        <div class="search-box">
+            <input type="text" id="camperSearch" class="search-input" placeholder="Search by first or last name..."
+                value="<%= typeof query !== 'undefined' ? query : '' %>" onkeyup="runCamperSearch()">
+
+            <button class="clear-btn" onclick="clearSearch()">Clear</button>
+        </div>
+
+
+        <table>
+            <thead>
+                <tr>
+                    <th>First Name</th>
+                    <th>Last Name</th>
+                    <th>Age</th>
+                    <th>Group</th>
+                    <th>Counselor</th>
+                    <th>Bus</th>
+                    <th>Ext. Hrs</th>
+                    <th>Lunch</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <% if (typeof camper !=='undefined' && camper.length> 0) { %>
+                <% camper.forEach(function(c) { %>
+                    <tbody class="camper-group" data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>">
+                        <tr class="info-row">
+                            <td>
+                                <%= c.FirstName %>
+                            </td>
+                            <td><strong>
+                                    <%= c.LastName %>
+                                </strong></td>
+                            <td>
+                                <%= c.Age %>
+                            </td>
+                            <td><span class="tag <%= c.ColorGroup %>">
+                                    <%= c.ColorGroup %>
+                                </span></td>
+                            <td>
+                                <%= c.HomeCounselor || '---' %>
+                            </td>
+                            <td><small>
+                                    <%= c.BusRoute || 'None' %>
+                                </small></td>
+                            <td>
+                                <%= c.ExtendedHours==='Yes' ? '✅' : '❌' %>
+                            </td>
+                            <td>
+                                <%= c.CampLunch==='Yes' ? '🍴' : '🍱' %>
+                            </td>
+                            <td><a href="/camper/<%= c.CamperID %>" class="action-link">Profile</a></td>
+                        </tr>
+                        <tr class="schedule-row">
+                            <td colspan="9">
+                                <div class="schedule-grid">
+                                    <div class="p-slot"><strong>P1</strong>
+                                        <%= c.P1 || '---' %>
+                                    </div>
+                                    <div class="p-slot"><strong>P2</strong>
+                                        <%= c.P2 || '---' %>
+                                    </div>
+                                    <div class="p-slot"><strong>P3</strong>
+                                        <%= c.P3 || '---' %>
+                                    </div>
+                                    <div class="p-slot"><strong>P4</strong>
+                                        <%= c.P4 || '---' %>
+                                    </div>
+                                    <div class="p-slot"><strong>P5</strong>
+                                        <%= c.P5 || '---' %>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                    <% }) %>
+                        <% } %>
+        </table>
     </div>
 
-    <% if (camper) { %>
-        <div class="camper-card">
-            <div class="info-row">
-                <div class="info-group">
-                    <span class="label">Name</span>
-                    <span class="value"><%= camper.FirstName %> <%= camper.LastName %></span>
-                </div>
-                <div class="info-group">
-                    <span class="label">Age / Group</span>
-                    <span class="value"><%= camper.Age %> / <%= camper.ColorGroup %></span>
-                </div>
-                <div class="info-group">
-                    <span class="label">Counselor</span>
-                    <span class="value"><%= camper.CounselorFirst %> <%= camper.CounselorLast %></span>
-                </div>
-                <div class="info-group">
-                    <span class="label">Logistics</span>
-                    <span class="value">Bus <%= camper.BusRoute || 'N/A' %> | Ext: <%= camper.ExtendedHours || 'None' %></span>
-                </div>
-                <div class="info-group">
-                    <span class="label">Lunch</span>
-                    <span class="value"><%= camper.CampLunch %></span>
-                </div>
-            </div>
+    <script>
+        function runCamperSearch() {
+            var input = document.getElementById('camperSearch');
+            // Clean the filter: remove extra spaces and lowercase it
+            var filter = input.value.trim().toLowerCase();
 
-            <div class="schedule-row">
-                <% for(let i=1; i<=5; i++) { 
-                    let p = camperSchedule.find(s => s.PeriodNumber === i);
-                %>
-                    <div class="period-box">
-                        <span class="p-num">Period <%= i %></span>
-                        <span class="p-activity"><%= p ? p.ActivityName : '---' %></span>
-                        <br><small style="color: #94a3b8;"><%= p ? p.TimeOfDay : '' %></small>
-                    </div>
-                <% } %>
-            </div>
-        </div>
-    <% } else if (query) { %>
-        <p class="no-results">No camper found with the name "<%= query %>".</p>
-    <% } %>
+            // We target the tbody "groups" so both rows hide/show together
+            var groups = document.querySelectorAll('.camper-group');
 
+            groups.forEach(function (group) {
+                var camperName = group.getAttribute('data-name');
+
+                // If the search is empty, show everyone. Otherwise, check for match.
+                if (filter === "" || camperName.indexOf(filter) > -1) {
+                    group.style.display = "";
+                } else {
+                    group.style.display = "none";
+                }
+            });
+        }
+
+        // Trigger on load
+        window.addEventListener('load', function () {
+            if (document.getElementById('camperSearch').value !== "") {
+                runCamperSearch();
+            }
+        });
+    </script>
 </body>
+
 </html>
