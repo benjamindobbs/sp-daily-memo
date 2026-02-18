@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Counselor Directory</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Counselor Directory</h1>
+            <a href="/" class="back-link">← Back to Dashboard</a>
+        </header>
+
+        <div class="directory-grid"
+            style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; margin-top: 20px;">
+            <% counselors.forEach(c=> { %>
+                <div class="card"
+                    style="border-top: 5px solid var(--primary); padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); background: white;">
+                    <h3 style="margin: 0;">
+                        <%= c.FirstName %>
+                            <%= c.LastName %>
+                    </h3>
+
+                    <p style="margin: 5px 0;">
+                        <span class="tag <%= c.HomeGroupColor %>">
+                            <%= c.HomeGroupColor %> Group
+                        </span>
+                    </p>
+
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
+
+                    <p style="font-size: 0.85rem; color: #666; line-height: 1.6;">
+                        🚌 <strong>Bus:</strong>
+                        <%= c.BusRoute || 'None' %><br>
+                            ⏰ <strong>Extended:</strong>
+                            <%= c.ExtendedHours || 'None' %>
+                    </p>
+
+                    <a href="/counselor-profile/<%= c.CounselorID %>" class="action-btn"
+                        style="display: block; text-align: center; margin-top: 10px; background: #6366f1; color: white; text-decoration: none; padding: 10px; border-radius: 6px; font-weight: bold;">
+                        View Roster & Schedule
+                    </a>
+                </div>
+                <% }) %>
+        </div>
+    </div>
+</body>
+
+</html>

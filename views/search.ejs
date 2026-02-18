@@ -92,8 +92,10 @@
             border-bottom: 1px solid var(--border);
         }
 
-        th, td {
-            padding: 10px 8px; /* Slightly tighter padding for more columns */
+        th,
+        td {
+            padding: 10px 8px;
+            /* Slightly tighter padding for more columns */
             font-size: 0.85rem;
         }
 
@@ -102,15 +104,16 @@
         }
 
         .info-row td {
-            white-space: nowrap; /* Prevents text from wrapping and making rows too tall */
+            white-space: nowrap;
+            /* Prevents text from wrapping and making rows too tall */
         }
 
         .tag {
             padding: 2px 6px;
             font-size: 0.65rem;
         }
-        
-        .info-row td:nth-child(7), 
+
+        .info-row td:nth-child(7),
         .info-row td:nth-child(8) {
             text-align: center;
             font-size: 1rem;
@@ -175,6 +178,22 @@
             padding-top: 5px;
             padding-bottom: 20px;
         }
+
+        .counselor-link {
+            color: #4f46e5;
+            /* Indigo */
+            text-decoration: none;
+            font-weight: 500;
+            border-bottom: 1px dashed #c7d2fe;
+            transition: all 0.2s ease;
+        }
+
+        .counselor-link:hover {
+            color: #3730a3;
+            border-bottom: 1px solid #3730a3;
+            background-color: #f5f3ff;
+            border-radius: 2px;
+        }
     </style>
 </head>
 
@@ -185,6 +204,7 @@
             <h1>🔍 Camper Search</h1>
             <a href="/master-schedule" class="btn-back">← Master Schedule</a>
         </div>
+
 
         <div class="search-box">
             <input type="text" id="camperSearch" class="search-input" placeholder="Search by first or last name..."
@@ -215,9 +235,9 @@
                             <td>
                                 <%= c.FirstName %>
                             </td>
-                            <td><strong>
-                                    <%= c.LastName %>
-                                </strong></td>
+                            <td>
+                                <%= c.LastName %>
+                            </td>
                             <td>
                                 <%= c.Age %>
                             </td>
@@ -225,16 +245,23 @@
                                     <%= c.ColorGroup %>
                                 </span></td>
                             <td>
-                                <%= c.HomeCounselor || '---' %>
+                                <% if (c.HomeCounselor) { %>
+                                    <a href="/counselor-profile/<%= c.HomeGroupCounselorID %>" class="counselor-link"
+                                        title="View Counselor Profile">
+                                        <%= c.HomeCounselor %>
+                                    </a>
+                                    <% } else { %>
+                                        <span style="color: #94a3b8; font-style: italic;">Unassigned</span>
+                                        <% } %>
                             </td>
                             <td><small>
                                     <%= c.BusRoute || 'None' %>
                                 </small></td>
                             <td>
-                                <%= c.ExtendedHours==='Yes' ? '✅' : '❌' %>
+                                <%= c.ExtendedHours %>
                             </td>
                             <td>
-                                <%= c.CampLunch==='Yes' ? '🍴' : '🍱' %>
+                                <%= c.CampLunch %>
                             </td>
                             <td><a href="/camper/<%= c.CamperID %>" class="action-link">Profile</a></td>
                         </tr>
@@ -264,7 +291,19 @@
                         <% } %>
         </table>
     </div>
+    <div style="margin-top: 20px; padding: 15px; border: 1px solid #fee2e2; background: #fef2f2; border-radius: 8px;">
+        <h3 style="color: #991b1b; margin-top: 0;">⚠️ Danger Zone</h3>
+        <p style="font-size: 0.85rem; color: #b91c1c;">This will permanently delete all campers and their associated
+            schedules.</p>
 
+        <form action="/clear-campers" method="POST"
+            onsubmit="return confirm('Are you ABSOLUTELY sure? This cannot be undone and all camper schedules will be wiped.');">
+            <button type="submit"
+                style="background: #dc2626; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                Clear All Camper Data
+            </button>
+        </form>
+    </div>
     <script>
         function runCamperSearch() {
             var input = document.getElementById('camperSearch');
@@ -285,7 +324,23 @@
                 }
             });
         }
+        function clearSearch() {
+            // 1. Reset the input field value
+            const searchInput = document.getElementById('camperSearch');
+            searchInput.value = "";
 
+            // 2. Clear the URL parameters so the name doesn't come back on refresh
+            if (window.history.pushState) {
+                const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+                window.history.pushState({ path: newurl }, '', newurl);
+            }
+
+            // 3. Re-run the search with the now-empty string to show all rows
+            runCamperSearch();
+
+            // 4. Focus back on the input for convenience
+            searchInput.focus();
+        }
         // Trigger on load
         window.addEventListener('load', function () {
             if (document.getElementById('camperSearch').value !== "") {

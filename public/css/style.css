@@ -1,0 +1,117 @@
+/* --- Design Tokens --- */
+:root {
+    /* Primary Branding */
+    --primary: #4f46e5;
+    --primary-hover: #4338ca;
+    --bg-app: #f1f5f9;
+    --card-bg: #ffffff;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --border-color: #e2e8f0;
+
+    /* Camp Group Colors */
+    --red-group: #ef4444;
+    --carolina-group: #7bafd4;
+    --green-group: #22c55e;
+    --navy-group: #1e3a8a;
+    --bus-group: #f59e0b;
+}
+
+/* --- Base Styles --- */
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-app);
+    color: var(--text-main);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* --- Navigation Layout --- */
+.nav-bar {
+    background: white;
+    padding: 1rem 2rem;
+    display: flex;
+    gap: 15px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 30px;
+    border-radius: 0 0 12px 12px;
+}
+
+.nav-btn {
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    background: #e2e8f0;
+    color: var(--text-main);
+    transition: all 0.2s ease;
+}
+
+.nav-btn:hover {
+    background: #cbd5e1;
+}
+
+.nav-btn.primary {
+    background: var(--primary);
+    color: white;
+}
+
+/* --- Components: Cards & Tables --- */
+.card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    border: 1px solid var(--border-color);
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.data-table th {
+    background: #f8fafc;
+    padding: 12px;
+    text-align: left;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 2px solid var(--border-color);
+}
+
+.data-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* --- Camp Group Badges --- */
+.tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: white;
+    text-transform: uppercase;
+}
+
+.Red { background-color: var(--red-group); }
+.Carolina { background-color: var(--carolina-group); }
+.Green { background-color: var(--green-group); }
+.Navy { background-color: var(--navy-group); }
+.Bus { background-color: var(--bus-group); }
+
+/* --- Utility --- */
+.text-right { text-align: right; }
+.mt-20 { margin-top: 20px; }

@@ -21,9 +21,10 @@ db.exec(`
     CounselorID INTEGER PRIMARY KEY AUTOINCREMENT,
     FirstName TEXT NOT NULL,
     LastName TEXT NOT NULL,
-    -- Fixed typo constraint
-    HomeGroupColor TEXT CHECK(HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')),
-    ScheduleType TEXT
+    HomeGroupColor TEXT CHECK(HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy','Bus','Extended','Swim')),
+    ScheduleType TEXT,
+    BusRoute TEXT,
+    ExtendedHours TEXT CHECK(ExtendedHours IN ('AM', 'PM', 'Both', NULL))
   );
 
   -- 2. Staff (Unit Leaders & Instructors)

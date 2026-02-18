@@ -19,7 +19,7 @@ app.get('/', (req, res) => {
         SELECT c.*, n.FirstName AS CounselorFirst FROM Campers c
         LEFT JOIN Counselors n ON c.HomeGroupCounselorID = n.CounselorID
     `).all();
-    
+
     const counselors = db.prepare('SELECT * FROM Counselors').all();
     const staffMembers = db.prepare('SELECT * FROM Staff').all();
     const schedules = db.prepare('SELECT * FROM Schedules').all();
@@ -53,11 +53,11 @@ app.get('/', (req, res) => {
         ) < a.MaxCapacity
     `).get().count;
 
-    res.render('index', { 
-        campers, counselors, staffMembers, schedules, 
+    res.render('index', {
+        campers, counselors, staffMembers, schedules,
         allActivities, waitlistEntries,
         potentialPromotionsCount: promoCount,
-        alertMessage: req.query.message || null 
+        alertMessage: req.query.message || null
     });
 });
 
@@ -108,7 +108,7 @@ app.get('/swap-tool', (req, res) => {
 
 app.get('/get-options/:camperId/:period', (req, res) => {
     const { camperId, period } = req.params;
-    
+
     const camperData = db.prepare(`
         SELECT c.FirstName, c.ColorGroup, s.TimeOfDay 
         FROM Campers c
@@ -130,7 +130,7 @@ app.get('/get-options/:camperId/:period', (req, res) => {
         // This is the inverse of the Red logic
         sideNeeded = (TimeOfDay === 'AM') ? 'Enrichment' : 'Sports';
     }
-    
+
     // Note: Since you've explicitly labeled P3-PM as Reds and P3-AM as Greens, 
     // the TimeOfDay itself effectively tells us the side if the Activities 
     // are set up correctly.
@@ -145,7 +145,7 @@ app.get('/get-options/:camperId/:period', (req, res) => {
         WHERE a.SideOfCamp = ?
         ORDER BY isFull ASC, a.Name ASC
     `).all(period, TimeOfDay, period, TimeOfDay, period, TimeOfDay, sideNeeded);
-    
+
     res.json({ side: sideNeeded, options: options });
 });
 
@@ -258,40 +258,135 @@ app.post('/upload-staff', upload.single('file'), (req, res) => {
 
 app.post('/upload-campers', upload.single('file'), (req, res) => {
     const results = [];
-    fs.createReadStream(req.file.path).pipe(csv()).on('data', (data) => results.push(data)).on('end', () => {
-        const insCamper = db.prepare(`INSERT INTO Campers (FirstName, LastName, Age, ColorGroup, BusRoute, ExtendedHours, CampLunch) VALUES (@FirstName, @LastName, @Age, @ColorGroup, @BusRoute, @ExtendedHours, @CampLunch)`);
-        const insSched = db.prepare(`INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName, Location, TimeOfDay) VALUES (?, 'Camper', ?, ?, ?, ?)`);
-        db.transaction((dataArray) => {
-            for (const row of dataArray) {
-                const cid = insCamper.run(row).lastInsertRowid;
-                const amCut = (row.ColorGroup === 'Red' || row.ColorGroup === 'Carolina') ? 2 : 3;
-                for (let i = 1; i <= 5; i++) {
-                    if (row[`P${i}`]) insSched.run(cid, i, row[`P${i}`], null, i <= amCut ? 'AM' : 'PM');
+
+    fs.createReadStream(req.file.path)
+        .pipe(csv())
+        .on('data', (data) => results.push(data))
+        .on('end', () => {
+            
+            // 1. Prepare statements
+            const findStaff = db.prepare(`
+                SELECT CounselorID FROM Counselors 
+                WHERE (FirstName || ' ' || LastName) = ? 
+                LIMIT 1
+            `);
+
+            const insertCamper = db.prepare(`
+                INSERT INTO Campers (
+                    FirstName, LastName, Age, ColorGroup, 
+                    HomeGroupCounselorID, BusRoute, ExtendedHours, CampLunch
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+
+            const insertSched = db.prepare(`
+                INSERT INTO Schedules (
+                    PersonID, PersonType, PeriodNumber, ActivityName, TimeOfDay
+                ) VALUES (?, 'Camper', ?, ?, ?)
+            `);
+
+            // 2. Execute everything in one transaction
+            db.transaction((dataArray) => {
+                for (const row of dataArray) {
+                    // A. Resolve Counselor
+                    let counselorID = null;
+                    if (row.HomeCounselor) {
+                        const counselors = findStaff.get(row.HomeCounselor.trim());
+                        if (counselors) counselorID = counselors.CounselorID;
+                    }
+
+                    // B. Insert Camper and get their new ID
+                    const info = insertCamper.run(
+                        row.FirstName,
+                        row.LastName,
+                        row.Age,
+                        row.ColorGroup,
+                        counselorID,
+                        row.BusRoute,
+                        row.ExtendedHours,
+                        row.CampLunch
+                    );
+                    const cid = info.lastInsertRowid;
+
+                    // C. Insert Schedule (Periods 1-5)
+                    for (let i = 1; i <= 5; i++) {
+                        const activityName = row[`P${i}`]; // Looks for CSV headers P1, P2, etc.
+                        if (activityName && activityName.trim() !== "") {
+                            // Periods 1-3 are AM, 4-5 are PM
+                            const tod = (i <= 3) ? 'AM' : 'PM';
+                            insertSched.run(cid, i, activityName, tod);
+                        }
+                    }
                 }
-            }
-        })(results);
-        fs.unlinkSync(req.file.path);
-        res.redirect('/?message=Campers+Imported');
-    });
+            })(results);
+
+            // 3. Cleanup
+            fs.unlinkSync(req.file.path);
+            res.redirect('/search?message=Campers+and+Schedules+Imported');
+        });
+});
+
+app.post('/clear-campers', (req, res) => {
+    try {
+        const deleteSchedules = db.prepare("DELETE FROM Schedules WHERE PersonType = 'Camper'");
+        const deleteCampers = db.prepare("DELETE FROM Campers");
+
+        const clearAll = db.transaction(() => {
+            deleteSchedules.run();
+            deleteCampers.run();
+        });
+
+        clearAll();
+        res.redirect('/search?message=All+camper+data+cleared');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Error clearing data");
+    }
 });
 
 app.post('/upload-counselors', upload.single('file'), (req, res) => {
     const results = [];
-    fs.createReadStream(req.file.path).pipe(csv()).on('data', (data) => results.push(data)).on('end', () => {
-        const insCouns = db.prepare(`INSERT INTO Counselors (FirstName, LastName, HomeGroupColor, ScheduleType) VALUES (@FirstName, @LastName, @HomeGroupColor, @ScheduleType)`);
-        const insSched = db.prepare(`INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName, Location, TimeOfDay) VALUES (?, 'Counselor', ?, ?, ?, ?)`);
-        db.transaction((dataArray) => {
-            for (const row of dataArray) {
-                const sid = insCouns.run(row).lastInsertRowid;
-                let amLimit = row.ScheduleType.includes('Sports AM') ? 3 : 2;
-                for (let i = 1; i <= 6; i++) {
-                    if (row[`P${i}`]) insSched.run(sid, i, row[`P${i}`], null, i <= amLimit ? 'AM' : 'PM');
+    fs.createReadStream(req.file.path)
+        .pipe(csv())
+        .on('data', (data) => results.push(data))
+        .on('end', () => {
+            const insertCounselor = db.prepare(`
+                INSERT INTO Counselors (
+                    FirstName, LastName, HomeGroupColor, ScheduleType, 
+                    BusRoute, ExtendedHours
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            `);
+
+            const insertSched = db.prepare(`
+                INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName) 
+                VALUES (?, 'Counselor', ?, ?)
+            `);
+
+            db.transaction((dataArray) => {
+                for (const row of dataArray) {
+                    // 1. Insert Counselor Info using new naming schema
+                    const info = insertCounselor.run(
+                        row.FirstName,
+                        row.LastName,
+                        row.HomeGroupColor,
+                        row.ScheduleType,
+                        row.BusRoute,      // Matches your new CSV header
+                        row.ExtendedHours  // Matches your new CSV header
+                    );
+                    const cid = info.lastInsertRowid;
+
+                    // 2. Insert Schedule (P1-P6)
+                    for (let i = 1; i <= 6; i++) {
+                        const activity = row[`P${i}`];
+                        if (activity && activity.trim() !== "") {
+                            insertSched.run(cid, i, activity);
+                        }
+                    }
                 }
-            }
-        })(results);
-        fs.unlinkSync(req.file.path);
-        res.redirect('/?message=Counselors+Imported');
-    });
+            })(results);
+
+            fs.unlinkSync(req.file.path);
+            res.redirect('/search?message=Counselors+Imported');
+        });
 });
 app.post('/upload-activity-rules', upload.single('file'), (req, res) => {
     const results = [];
@@ -350,15 +445,15 @@ app.get('/search', (req, res) => {
         const camperList = db.prepare(`
             SELECT 
                 c.CamperID, c.FirstName, c.LastName, c.Age, c.ColorGroup, 
-                st.FirstName || ' ' || st.LastName AS HomeCounselor, -- Joins Staff names
-                c.BusRoute, c.ExtendedHours, c.CampLunch,
+                n.FirstName || ' ' || n.LastName AS HomeCounselor, -- Counselor names
+                c.BusRoute, c.ExtendedHours, c.CampLunch, c.HomeGroupCounselorID,
                 s1.ActivityName AS P1,
                 s2.ActivityName AS P2,
                 s3.ActivityName AS P3,
                 s4.ActivityName AS P4,
                 s5.ActivityName AS P5
             FROM Campers c
-            LEFT JOIN Staff st ON c.HomeGroupCounselorID = st.StaffID -- Match the ID to Staff table
+            LEFT JOIN Counselors n ON c.HomeGroupCounselorID = n.CounselorID -- Match the ID to Counselor table
             LEFT JOIN Schedules s1 ON c.CamperID = s1.PersonID AND s1.PeriodNumber = 1 AND s1.PersonType = 'Camper'
             LEFT JOIN Schedules s2 ON c.CamperID = s2.PersonID AND s2.PeriodNumber = 2 AND s2.PersonType = 'Camper'
             LEFT JOIN Schedules s3 ON c.CamperID = s3.PersonID AND s3.PeriodNumber = 3 AND s3.PersonType = 'Camper'
@@ -367,14 +462,68 @@ app.get('/search', (req, res) => {
             ORDER BY c.LastName ASC
         `).all();
 
-        res.render('search', { 
-            camper: camperList, 
-            query: searchQuery 
+        res.render('search', {
+            camper: camperList,
+            query: searchQuery
         });
     } catch (err) {
         console.error(err);
         res.status(500).send("Error loading search page");
     }
 });
+
+app.get('/counselor-profile/:id', (req, res) => {
+    const counselorId = req.params.id;
+
+    // 1. Fetch Counselor Details
+    const counselor = db.prepare('SELECT * FROM Counselors WHERE CounselorID = ?').get(counselorId);
+    
+    if (!counselor) return res.status(404).send("Counselor not found");
+
+    // 2. Fetch Counselor Schedule
+    const schedule = db.prepare(`
+        SELECT PeriodNumber, ActivityName 
+        FROM Schedules 
+        WHERE PersonID = ? AND PersonType = 'Counselor' 
+        ORDER BY PeriodNumber ASC
+    `).all(counselorId);
+
+    // 3. Fetch Campers in this Counselor's Home Group
+    const campers = db.prepare(`
+        SELECT FirstName, LastName, Age, BusRoute, ExtendedHours 
+        FROM Campers 
+        WHERE HomeGroupCounselorID = ? 
+        ORDER BY LastName ASC
+    `).all(counselorId);
+
+    res.render('counselor-view', { counselor, schedule, campers });
+});
+
+app.get('/counselor-directory', (req, res) => {
+    const counselors = db.prepare(`
+        SELECT 
+            CounselorID, 
+            FirstName, 
+            LastName, 
+            HomeGroupColor, 
+            BusRoute, 
+            ExtendedHours 
+        FROM Counselors 
+        ORDER BY 
+            CASE HomeGroupColor
+                WHEN 'Red' THEN 1
+                WHEN 'Carolina' THEN 2
+                WHEN 'Green' THEN 3
+                WHEN 'Navy' THEN 4
+                WHEN 'Bus' THEN 5
+                ELSE 6
+            END, 
+            LastName ASC
+    `).all();
+
+    res.render('counselor-directory', { counselors });
+});
+
+
 
 app.listen(3000, () => console.log('Server running on http://localhost:3000'));

@@ -1,0 +1,45 @@
+FirstName,LastName,HomeGroupColor,ScheduleType,Bus,Extended,P1,P2,P3,P4,P5,P6
+Ryan,Belval,Navy,Sports Only,,NULL,Tennis,Basketball,Archery,Street Hockey,Rec Swim,Game of the Day
+Brett,Belval,Navy,Sports Only,,NULL,Tennis,Yoga,Archery,Soccer,Rec Swim,Game of the Day
+Matt,Benedetti,Green,Sports Only,,BOTH,Flag Football,Soccer,Tennis,Soccer,Basketball,Tee Ball/Kickball
+Ryan,Benedetti,Green,Sports Only,,BOTH,Flag Football,Basketball,Indoor Soccer/Broomball,Sports Pals (triple period),Sports Pals (triple period),Tee Ball/Kickball
+Shai,Bernstein,Navy,Enrichment Only,,NULL,Minecraft Mission,Water Rockets,,,Rocketry,T-Shirt Designers
+Bella,Bois,Navy,Enrichment Only,,NULL,Soccer,Go Girl,Lacrosse,,Paint Party,Summer Slumber Party
+Annie,Bruder,Red,Enrichment Only,,NULL,Fancy Fast Food,Grossology,,,Candy Crush,Making a Scene
+Mary,Grace,Red,Enrichment Only,,NULL,Candy Land Adventure,Crazy Chemistry,,,Tie It Dye It Dry It,Summer Slumber Party
+Moses,Calderon,Bus,Enrichment Only,1,NULL,Crazy Chemistry,Freeze Frame,,,Clash of Clans,What Do You Meme?
+Jasmine,Charlery,Bus,Sports Only,2,NULL,Fitness Training,Go Girl,Dance,Soccer,Flag Football,Indoor Soccer
+Ana,Colares,Carolina,Enrichment AM Sports PM,,NULL,Spa Days,Freeze Frame,,Dance,Soccer,Board Games
+Jack,Cuyler,Navy,Sports AM Enrichment PM,,NULL,Street Hockey,Tennis,Lacrosse,,Rocketry,Cooking from the Movies
+Shannon,Daly,Bus,Enrichment Only,,NULL,Crazy Chemistry,Loco for LEGO™,,,Clash of Clans,BREAKOUT!
+Celine,Diaz,Navy,Sports Only,,NULL,Soccer,Archery,Swim Lessons,Yoga,Basketball,Dance
+Naomi,Durant,Red,Enrichment AM Sports PM,,NULL,Wilderness Explorers,Cooking from the Movies,,Tennis,Yoga,Cheerleading
+Julian,Edison,Green,Enrichment Only,,NULL,Fancy Fast Food,Tie It Dye It Dry It,,,Basketball,Yard Games
+Cleon,Edwards,Carolina,Sports AM Enrichment PM,,NULL,Basketball,Game of the Day,Tennis,,Minecraft Mission,T-Shirt Designers
+Mebret,Farquhar,Red,Enrichment AM Sports PM,,NULL,Loco for LEGO™,Water Rockets,,Sports Pals (triple period),Sports Pals (triple period),Sports Pals (triple period)
+Talia,Grosberg,Carolina,Sports Only,,NULL,Basketball,Swim Lessons,Baseball/Softball,Swim Lessons,Yoga,
+Hussein,Hashim,Bus,Sports AM Enrichment PM,,NULL,Archery,Dance,Baseball/Softball,,Woodburning,BREAKOUT!
+Najma,Ibrahim,Carolina,Enrichment AM Sports PM,,NULL,Loco for LEGO™,Watercolor Wonder,,Yoga,Yard Games,Board Games
+Nira,Kesler,Red,Sports Only,,NULL,Flag Football,Game of the Day,Baseball/Softball,Basketball,Flag Football,Tee Ball/Kickball
+Max,Kleykamp,Bus,Enrichment Only,3,NULL,Wonderful Wizarding World,Grossology,,,Paint Party,Extreme Engineering
+Matthew,Lawton,Bus,Sports Only,4,NULL,Swim Lessons,Dance,Indoor Soccer/Broomball,Street Hockey,Soccer,Indoor Soccer
+Faith,Light,Bus,Sports Only,5,NULL,Board Games,Go Girl,Tennis,Tennis,Dance,
+Grace,Mancini,Green,Enrichment Only,,NULL,Wonderful Wizarding World,Candy Land Adventure,,,Challenge Accepted,Cooking from the Movies
+Sean,Mearman,Carolina,Enrichment Only,,NULL,Wilderness Explorers,Candy Land Adventure,,,Challenge Accepted,Ceramics
+Logan,Murray,Red,Enrichment AM Sports PM,,NULL,Candy Land Adventure,Food Art,,,App Arcade,Checkmate
+Leah,Nevins,Carolina,Sports Only,,NULL,Archery,Soccer,Baseball/Softball,Dance,Swim Lessons,Indoor Soccer
+Tyler,Pudlik,Green,Sports Only,,NULL,Street Hockey,Archery,Rec Swim,Archery,Archery,Game of the Day
+Diana,Ramirez,Green,Enrichment Only,,NULL,Watercolor Wonder,Food Art,,,Tie It Dye It Dry It,Ceramics
+Sophie,Shebat,Red,Enrichment Only,,NULL,Minecraft Mission,Minecraft Mission,,,Candy Crush,Dungeons & Dragons
+Elizabeth,Sinclair,Bus,Enrichment Only,6,NULL,Watercolor Wonder,Fiesta Fun,,,Karaoke Games,Extreme Engineering
+Neyo,Soler,Navy,Sports AM Enrichment PM,,NULL,Board Games,Game of the Day,Dance,,Fancy Fast Food,What Do You Meme?
+Raphael,Soto,Green,Enrichment Only,,NULL,Fancy Fast Food,Crazy Chemistry,,Basketball,Soccer,Board Games
+Kerby,Utelmy,Carolina,Enrichment Only,,NULL,Water Rockets,Cooking from the Movies,,Yoga,Basketball,Rec Swim
+Mia,Weber,Green,Sports Only,,NULL,Board Games,Basketball,Indoor Soccer/Broomball,Swim Lessons,Yoga,Game of the Day
+Iris,Wen,Red,Enrichment AM Sports PM,,NULL,Spa Days,Tie It Dye It Dry It,,Archery,Yard Games,
+Avant,Williams,Navy,Sports Only,,NULL,Basketball,Rec Swim,Yoga,Tennis,Archery,Dance
+JJ,Wood,Carolina,Sports Only,,NULL,Flag Football,Soccer,Lacrosse,Sports Pals (triple period),Sports Pals (triple period),Sports Pals (triple period)
+Will,Woods,Green,Sports Only,,NULL,Soccer,Yoga,Indoor Soccer/Broomball,Rec Swim,Dance,Game of the Day
+Daniel,Wrinkle,Navy,Enrichment Only,,NULL,Grossology,Minecraft Mission,,,App Arcade,Dungeons & Dragons
+Amira,Yusuf,Red,Enrichment AM Sports PM,,NULL,Water Rockets,Loco for LEGO™,,Rec Swim,Yard Games,Tennis
+Cameron,Isherwood,Swim,Sports Only,,NULL,Rec Swim,Tennis,Yoga,,,

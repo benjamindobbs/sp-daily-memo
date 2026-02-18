@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Counselor: <%= counselor.FirstName %>
+    </title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-tag {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .bus {
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+
+        .ext {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .schedule-item {
+            border-left: 4px solid var(--primary);
+            padding-left: 10px;
+            margin-bottom: 10px;
+        }
+
+        .header-banner {
+            padding: 30px;
+            color: white;
+            border-radius: 12px;
+            margin: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header-banner" style="background-color: var(--primary);">
+        <h1>
+            <%= counselor.FirstName %>
+                <%= counselor.LastName %>
+        </h1>
+        <p>Home Group: <strong>
+                <%= counselor.ColorGroup %>
+            </strong></p>
+    </div>
+    <nav style="margin-bottom: 20px;">
+        <a href="/counselor-directory" style="text-decoration: none; color: #4f46e5; font-weight: 500;">
+            ← Back to Directory
+        </a>
+    </nav>
+    <div class="dashboard-grid">
+        <div class="card">
+            <h2>Your Daily Schedule</h2>
+            <% if (schedule.length> 0) { %>
+                <% schedule.forEach(s=> { %>
+                    <div class="schedule-item">
+                        <strong>Period <%= s.PeriodNumber %>:</strong>
+                        <%= s.ActivityName %>
+                            <br><small>
+                                <%= s.Location || 'No Location Set' %>
+                            </small>
+                    </div>
+                    <% }) %>
+                        <% } else { %>
+                            <p>No schedule assigned.</p>
+                            <% } %>
+        </div>
+
+        <div class="card"
+            style="margin-bottom: 20px; grid-column: span 2; display: flex; justify-content: space-around; background: #f8fafc;">
+            <div class="duty-item">
+                <span style="display:block; font-size: 0.7rem; color: #64748b; text-transform: uppercase;">Bus
+                    Route</span>
+                <strong>
+                    <%= counselor.BusRoute || 'None' %>
+                </strong>
+            </div>
+
+            <div class="duty-item">
+                <span style="display:block; font-size: 0.7rem; color: #64748b; text-transform: uppercase;">Extended
+                    Hours</span>
+                <strong>
+                    <% counselor.ExtendedHours %>
+                </strong>
+            </div>
+
+            <div class="duty-item">
+                <span style="display:block; font-size: 0.7rem; color: #64748b; text-transform: uppercase;">Schedule
+                    Type</span>
+                <strong>
+                    <%= counselor.ScheduleType %>
+                </strong>
+            </div>
+        </div>
+    </div>
+    <div class="roster-section" style="margin-top: 30px;">
+        <h2 style="border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">
+            Home Group Roster
+            <span style="font-size: 1rem; color: #64748b; font-weight: normal;">
+                (<%= campers.length %> Campers)
+            </span>
+        </h2>
+
+        <table
+            style="width: 100%; border-collapse: collapse; margin-top: 15px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <thead>
+                <tr style="background: #f8fafc; text-align: left;">
+                    <th style="padding: 12px; border-bottom: 2px solid #edf2f7;">Camper Name</th>
+                    <th style="padding: 12px; border-bottom: 2px solid #edf2f7;">Age</th>
+                    <th style="padding: 12px; border-bottom: 2px solid #edf2f7;">Bus Route</th>
+                    <th style="padding: 12px; border-bottom: 2px solid #edf2f7;">Extended Care</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% if (campers.length> 0) { %>
+                    <% campers.forEach(camper=> { %>
+                        <tr style="border-bottom: 1px solid #f1f5f9;">
+                            <td style="padding: 12px;">
+                                <strong>
+                                    <%= camper.LastName %>, <%= camper.FirstName %>
+                                </strong>
+                            </td>
+                            <td style="padding: 12px;">
+                                <%= camper.Age %>
+                            </td>
+                            <td style="padding: 12px;">
+                                <%= camper.BusRoute ? '🚌 ' + camper.BusRoute : '—' %>
+                            </td>
+                            <td style="padding: 12px;">
+                                <% if (camper.ExtendedHours==='Both' ) { %>
+                                    <span class="tag" style="background: #dcfce7; color: #166534;">AM & PM</span>
+                                    <% } else if (camper.ExtendedHours) { %>
+                                        <span class="tag" style="background: #fef9c3; color: #854d0e;">
+                                            <%= camper.ExtendedHours %>
+                                        </span>
+                                        <% } else { %>
+                                            <span style="color: #cbd5e1;">None</span>
+                                            <% } %>
+                            </td>
+                        </tr>
+                        <% }) %>
+                            <% } else { %>
+                                <tr>
+                                    <td colspan="4"
+                                        style="padding: 30px; text-align: center; color: #94a3b8; font-style: italic;">
+                                        No campers currently assigned to this home group.
+                                    </td>
+                                </tr>
+                                <% } %>
+            </tbody>
+        </table>
+    </div>
+
+</body>
+
+</html>
