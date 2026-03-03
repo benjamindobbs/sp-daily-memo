@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
-const db = new Database('camp_manager.db');
+const db = new Database(process.env.DB_PATH || 'camp_manager.db');
 const upload = multer({ dest: 'uploads/' });
 
 // Maps a camper-facing period + activity side to the DB period used for staff/counselor lookups.
