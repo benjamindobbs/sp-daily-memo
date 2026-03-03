@@ -339,6 +339,29 @@ app.get('/counselor-directory', (req, res) => {
     res.render('counselor-directory', { counselors });
 });
 
+app.get('/staff-lookup', (req, res) => {
+    const query = req.query.name || '';
+    const staff = db.prepare(`
+        SELECT st.*,
+            s1.ActivityName AS P1, s1.Location AS L1,
+            s2.ActivityName AS P2, s2.Location AS L2,
+            s3.ActivityName AS P3, s3.Location AS L3,
+            s4.ActivityName AS P4, s4.Location AS L4,
+            s5.ActivityName AS P5, s5.Location AS L5,
+            s6.ActivityName AS P6, s6.Location AS L6
+        FROM Staff st
+        LEFT JOIN Schedules s1 ON st.StaffID = s1.PersonID AND s1.PersonType = 'Staff' AND s1.PeriodNumber = 1
+        LEFT JOIN Schedules s2 ON st.StaffID = s2.PersonID AND s2.PersonType = 'Staff' AND s2.PeriodNumber = 2
+        LEFT JOIN Schedules s3 ON st.StaffID = s3.PersonID AND s3.PersonType = 'Staff' AND s3.PeriodNumber = 3
+        LEFT JOIN Schedules s4 ON st.StaffID = s4.PersonID AND s4.PersonType = 'Staff' AND s4.PeriodNumber = 4
+        LEFT JOIN Schedules s5 ON st.StaffID = s5.PersonID AND s5.PersonType = 'Staff' AND s5.PeriodNumber = 5
+        LEFT JOIN Schedules s6 ON st.StaffID = s6.PersonID AND s6.PersonType = 'Staff' AND s6.PeriodNumber = 6
+        WHERE (st.FirstName || ' ' || st.LastName LIKE ?) OR (? = '')
+        ORDER BY st.StaffType, st.LastName, st.FirstName
+    `).all(`%${query}%`, query);
+    res.render('staff-lookup', { staff, query });
+});
+
 app.get('/counselor-profile/:id', (req, res) => {
     const counselor = db.prepare('SELECT * FROM Counselors WHERE CounselorID = ?').get(req.params.id);
     const schedule = db.prepare("SELECT * FROM Schedules WHERE PersonID = ? AND PersonType = 'Counselor' ORDER BY PeriodNumber ASC").all(req.params.id);
@@ -742,25 +765,32 @@ const SHOW_AM_INDICATOR = new Set(['class','homegroup_pm','bus_pm','extended_pm'
 app.get('/attendance', (req, res) => {
     const date = req.query.date || todayStr();
 
-    // Homegroup sessions
-    const homegroupColors = ['Red', 'Carolina', 'Green', 'Navy'];
+    // Homegroup sessions — grouped by counselor
+    const homegroupCounselors = db.prepare(`
+        SELECT co.CounselorID, co.FirstName, co.LastName, co.HomeGroupColor,
+               COUNT(ca.CamperID) as camperCount
+        FROM Counselors co
+        JOIN Campers ca ON ca.HomeGroupCounselorID = co.CounselorID
+        GROUP BY co.CounselorID
+        ORDER BY co.LastName, co.FirstName
+    `).all();
     const homegroupSessions = [];
-    for (const color of homegroupColors) {
+    for (const counselor of homegroupCounselors) {
         for (const session of ['am', 'pm']) {
             const sessionType = `homegroup_${session}`;
-            const count = db.prepare(
-                "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType=?"
-            ).get(date, sessionType)?.n || 0;
-            // check if this color group has any campers
-            const hasCampers = db.prepare("SELECT 1 FROM Campers WHERE HomeGroupColor=? LIMIT 1").get(color);
-            if (hasCampers) {
-                homegroupSessions.push({
-                    label: `${color} — ${session.toUpperCase()}`,
-                    color,
-                    link: `/attendance/homegroup/${encodeURIComponent(color)}/${session}?date=${date}`,
-                    submitted: count > 0
-                });
-            }
+            const markedCount = db.prepare(`
+                SELECT COUNT(*) as n FROM Attendance a
+                JOIN Campers c ON a.CamperID = c.CamperID
+                WHERE a.Date=? AND a.SessionType=? AND c.HomeGroupCounselorID=?
+            `).get(date, sessionType, counselor.CounselorID)?.n || 0;
+            homegroupSessions.push({
+                label: `${counselor.FirstName} ${counselor.LastName} — ${session.toUpperCase()}`,
+                counselorId: counselor.CounselorID,
+                color: counselor.HomeGroupColor,
+                session: session,
+                link: `/attendance/homegroup/counselor/${counselor.CounselorID}/${session}?date=${date}`,
+                submitted: markedCount > 0
+            });
         }
     }
 
@@ -771,22 +801,59 @@ app.get('/attendance', (req, res) => {
         WHERE s.PersonType = 'Camper' AND s.ActivityName NOT LIKE '#REF%'
         ORDER BY s.PeriodNumber, s.ActivityName
     `).all();
-    const classSessions = classRows.map(r => {
-        const count = db.prepare(
-            "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?"
-        ).get(date, r.PeriodNumber, r.ActivityName)?.n || 0;
-        const pLabel = r.PeriodNumber === 3 ? '3' : String(r.PeriodNumber);
-        return {
-            label: `P${pLabel} — ${r.ActivityName}`,
-            periodNumber: r.PeriodNumber,
-            activityName: r.ActivityName,
-            link: `/attendance/class/${r.PeriodNumber}/${encodeURIComponent(r.ActivityName)}?date=${date}`,
-            submitted: count > 0
-        };
-    });
+
+    const checkP3Half = db.prepare(`
+        SELECT 1 FROM Schedules s
+        JOIN Campers c ON s.PersonID = c.CamperID AND s.PersonType = 'Camper'
+        WHERE s.PeriodNumber = 3 AND s.ActivityName = ? AND c.HomeGroupColor IN (?, ?)
+        LIMIT 1
+    `);
+    const countP3Half = db.prepare(`
+        SELECT COUNT(*) as n FROM Attendance a
+        JOIN Campers c ON a.CamperID = c.CamperID
+        WHERE a.Date=? AND a.SessionType='class' AND a.PeriodNumber=3 AND a.ActivityName=?
+        AND c.HomeGroupColor IN (?, ?)
+    `);
+
+    const classSessions = [];
+    for (const r of classRows) {
+        if (r.PeriodNumber === 3) {
+            if (checkP3Half.get(r.ActivityName, 'Green', 'Navy')) {
+                const count = countP3Half.get(date, r.ActivityName, 'Green', 'Navy')?.n || 0;
+                classSessions.push({
+                    label: `P3 AM — ${r.ActivityName}`,
+                    periodNumber: 3, periodKey: '3am', periodLabel: '3 AM',
+                    activityName: r.ActivityName,
+                    link: `/attendance/class/3/${encodeURIComponent(r.ActivityName)}?date=${date}&half=am`,
+                    submitted: count > 0
+                });
+            }
+            if (checkP3Half.get(r.ActivityName, 'Red', 'Carolina')) {
+                const count = countP3Half.get(date, r.ActivityName, 'Red', 'Carolina')?.n || 0;
+                classSessions.push({
+                    label: `P3 PM — ${r.ActivityName}`,
+                    periodNumber: 3, periodKey: '3pm', periodLabel: '3 PM',
+                    activityName: r.ActivityName,
+                    link: `/attendance/class/3/${encodeURIComponent(r.ActivityName)}?date=${date}&half=pm`,
+                    submitted: count > 0
+                });
+            }
+        } else {
+            const count = db.prepare(
+                "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?"
+            ).get(date, r.PeriodNumber, r.ActivityName)?.n || 0;
+            classSessions.push({
+                label: `P${r.PeriodNumber} — ${r.ActivityName}`,
+                periodNumber: r.PeriodNumber, periodKey: String(r.PeriodNumber), periodLabel: String(r.PeriodNumber),
+                activityName: r.ActivityName,
+                link: `/attendance/class/${r.PeriodNumber}/${encodeURIComponent(r.ActivityName)}?date=${date}`,
+                submitted: count > 0
+            });
+        }
+    }
 
     // Bus sessions
-    const busRoutes = db.prepare("SELECT DISTINCT BusRoute FROM Campers WHERE BusRoute IS NOT NULL AND BusRoute != '' ORDER BY BusRoute").all().map(r => r.BusRoute);
+    const busRoutes = db.prepare("SELECT DISTINCT BusRoute FROM Campers WHERE BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null' ORDER BY BusRoute").all().map(r => r.BusRoute);
     const busSessions = [];
     for (const route of busRoutes) {
         for (const session of ['am', 'pm']) {
@@ -797,6 +864,7 @@ app.get('/attendance', (req, res) => {
             busSessions.push({
                 label: `Bus ${route} — ${session.toUpperCase()}`,
                 route,
+                session: session,
                 link: `/attendance/bus/${encodeURIComponent(route)}/${session}?date=${date}`,
                 submitted: count > 0
             });
@@ -815,6 +883,7 @@ app.get('/attendance', (req, res) => {
             ).get(date, sessionType)?.n || 0;
             extSessions.push({
                 label: `Extended ${session.toUpperCase()}`,
+                session: session,
                 link: `/attendance/extended/${session}?date=${date}`,
                 submitted: count > 0
             });
@@ -829,7 +898,53 @@ app.get('/attendance', (req, res) => {
     res.render('attendance-overview', { date, homegroupSessions, classSessions, busSessions, extSessions, lateCount });
 });
 
-// --- ATTENDANCE FORM: HOMEGROUP ---
+// --- ATTENDANCE FORM: HOMEGROUP BY COUNSELOR ---
+app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
+    const counselorId = parseInt(req.params.counselorId);
+    const { session } = req.params;
+    const date = req.query.date || todayStr();
+    const sessionType = `homegroup_${session}`;
+    const showAmIndicator = SHOW_AM_INDICATOR.has(sessionType);
+
+    const counselor = db.prepare("SELECT * FROM Counselors WHERE CounselorID=?").get(counselorId);
+    if (!counselor) return res.status(404).send('Counselor not found');
+
+    const campers = db.prepare("SELECT * FROM Campers WHERE HomeGroupCounselorID=? ORDER BY LastName, FirstName").all(counselorId);
+
+    const absentAMSet = new Set();
+    if (showAmIndicator) {
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='absent'")
+            .all(date).forEach(r => absentAMSet.add(r.CamperID));
+    }
+    const absentBusAMSet = new Set(
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='bus_am' AND Status='absent'")
+            .all(date).map(r => r.CamperID)
+    );
+    const dismissedSet = new Set(
+        db.prepare("SELECT CamperID FROM EarlyDismissals WHERE Date=?").all(date).map(r => r.CamperID)
+    );
+    const statusMap = {};
+    db.prepare("SELECT CamperID, Status FROM Attendance WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''")
+        .all(date, sessionType).forEach(r => { statusMap[r.CamperID] = r.Status; });
+
+    const roster = campers.map(c => ({
+        ...c,
+        currentStatus: statusMap[c.CamperID] || 'present',
+        absentAM: absentAMSet.has(c.CamperID),
+        absentBusAM: absentBusAMSet.has(c.CamperID),
+        dismissed: dismissedSet.has(c.CamperID)
+    }));
+
+    res.render('attendance-form', {
+        title: `${counselor.FirstName} ${counselor.LastName}'s Group — ${session.toUpperCase()}`,
+        sessionType, date,
+        periodNumber: 0, activityName: '',
+        backLink: `/attendance?date=${date}`,
+        roster
+    });
+});
+
+// --- ATTENDANCE FORM: HOMEGROUP BY COLOR (legacy) ---
 app.get('/attendance/homegroup/:color/:session', (req, res) => {
     const { color, session } = req.params;
     const date = req.query.date || todayStr();
@@ -871,14 +986,18 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
     const period = parseInt(req.params.period);
     const activityName = req.params.activity;
     const date = req.query.date || todayStr();
+    const half = req.query.half || '';
     const sessionType = 'class';
 
-    const campers = db.prepare(`
+    let campersSql = `
         SELECT c.* FROM Campers c
         JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper'
-        WHERE s.PeriodNumber = ? AND s.ActivityName = ?
-        ORDER BY c.HomeGroupColor, c.LastName, c.FirstName
-    `).all(period, activityName);
+        WHERE s.PeriodNumber = ? AND s.ActivityName = ?`;
+    if (half === 'am') campersSql += ` AND c.HomeGroupColor IN ('Green', 'Navy')`;
+    if (half === 'pm') campersSql += ` AND c.HomeGroupColor IN ('Red', 'Carolina')`;
+    campersSql += ` ORDER BY c.HomeGroupColor, c.LastName, c.FirstName`;
+
+    const campers = db.prepare(campersSql).all(period, activityName);
 
     const absentAMSet = new Set(
         db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='absent'")
@@ -898,9 +1017,10 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
         dismissed: dismissedSet.has(c.CamperID)
     }));
 
+    const pLabel = period === 3 && half ? `3 ${half.toUpperCase()}` : String(period);
     res.render('attendance-form', {
-        title: `P${period} — ${activityName}`,
-        sessionType, date,
+        title: `P${pLabel} — ${activityName}`,
+        sessionType, date, half,
         periodNumber: period, activityName,
         backLink: `/attendance?date=${date}`,
         roster

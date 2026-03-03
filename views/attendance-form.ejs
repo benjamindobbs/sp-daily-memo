@@ -21,6 +21,7 @@
         .camper-name { font-weight: 600; font-size: 0.92rem; flex: 1; }
         .camper-badges { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
         .badge-absent-am   { background: #fef9c3; color: #854d0e; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+        .badge-absent-bus  { background: #dbeafe; color: #1e40af; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
         .badge-dismissed   { background: #fee2e2; color: #991b1b; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
 
         .toggle-wrap { display: flex; gap: 6px; align-items: center; }
@@ -96,6 +97,7 @@
                         <span class="camper-name"><%= c.FirstName %> <%= c.LastName %></span>
                         <div class="camper-badges">
                             <% if (c.absentAM) { %><span class="badge-absent-am">&#9888; Absent AM</span><% } %>
+                            <% if (c.absentBusAM) { %><span class="badge-absent-bus">&#128652; Absent Bus AM</span><% } %>
                             <% if (c.dismissed) { %><span class="badge-dismissed">&#128663; Dismissed</span><% } %>
                         </div>
                         <div class="toggle-wrap">
@@ -122,7 +124,7 @@
             <form action="/attendance/early-dismissal" method="POST">
                 <input type="hidden" name="date" value="<%= date %>">
                 <input type="hidden" name="camperId" id="dismissCamperId">
-                <input type="hidden" name="returnTo" value="/attendance/<%= sessionType === 'class' ? 'class/' + periodNumber + '/' + encodeURIComponent(activityName) : sessionType.replace('_','/') %>?date=<%= date %>">
+                <input type="hidden" name="returnTo" value="/attendance/<%= sessionType === 'class' ? 'class/' + periodNumber + '/' + encodeURIComponent(activityName) : sessionType.replace('_','/') %>?date=<%= date %><%= (typeof half !== 'undefined' && half) ? '&half=' + half : '' %>">
                 <div style="margin-bottom:12px;">
                     <label style="font-size:0.82rem; font-weight:600; display:block; margin-bottom:4px;">Dismissal Time</label>
                     <input type="time" name="dismissalTime" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-family:inherit; font-size:0.875rem;">

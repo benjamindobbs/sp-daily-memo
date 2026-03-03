@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Lookup | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .search-header {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            margin-bottom: 30px;
+            border: 1px solid var(--border-color);
+        }
+
+        .search-bar-container {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 14px 20px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .search-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+            outline: none;
+        }
+
+        /* Table */
+        .staff-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+        }
+
+        .staff-table thead th {
+            text-align: left;
+            padding: 12px 16px;
+            border-bottom: 2px solid #e2e8f0;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            background: #f8fafc;
+        }
+
+        .staff-row td {
+            padding: 14px 16px;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: top;
+        }
+
+        .staff-row:last-child td {
+            border-bottom: none;
+        }
+
+        .staff-row:hover td {
+            background: #fafbff;
+        }
+
+        .staff-name {
+            font-weight: 700;
+            color: #1e293b;
+            font-size: 0.95rem;
+        }
+
+        .staff-type-badge {
+            display: inline-block;
+            font-size: 0.68rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 20px;
+            background: #e0e7ff;
+            color: #3730a3;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        /* Mini schedule */
+        .mini-sched {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .period-pill {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-left: 3px solid var(--primary);
+            border-radius: 0 6px 6px 0;
+            padding: 6px 10px;
+            min-width: 100px;
+        }
+
+        .period-pill-label {
+            font-size: 0.62rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+
+        .period-pill-activity {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #1e293b;
+        }
+
+        .period-pill-location {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-top: 1px;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 48px 20px;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .type-group-header td {
+            padding: 6px 16px;
+            background: #f1f5f9;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            border-bottom: 1px solid #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <nav class="nav-bar">
+        <a href="/" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
+        <a href="/staff-lookup" class="nav-btn primary">&#128101; Staff Lookup</a>
+        <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+    </nav>
+
+    <div class="container">
+        <div class="search-header">
+            <h1 style="margin: 0;">Staff Lookup</h1>
+            <p style="color: var(--text-muted); margin: 6px 0 0;">Find staff schedules, activities, and locations.</p>
+            <div class="search-bar-container">
+                <input type="text" id="staffSearch" class="search-input"
+                    placeholder="Type a name (e.g. 'Johnson' or 'Mike')…" oninput="runSearch()"
+                    value="<%= query %>">
+                <button class="btn" style="background: #f1f5f9; color: #475569;" onclick="clearSearch()">Clear</button>
+            </div>
+        </div>
+
+        <% if (staff.length === 0) { %>
+            <div style="background: white; border-radius: 12px; box-shadow: var(--shadow); border: 1px solid var(--border-color);">
+                <div class="no-results">No staff records found. Import staff data in Settings.</div>
+            </div>
+        <% } else { %>
+
+        <%
+            // Group by StaffType for section headers
+            const groups = [];
+            let lastType = null;
+            staff.forEach(function(s) {
+                if (s.StaffType !== lastType) {
+                    groups.push({ type: s.StaffType || 'Other', members: [] });
+                    lastType = s.StaffType;
+                }
+                groups[groups.length - 1].members.push(s);
+            });
+
+            // Periods that could have data
+            const PERIODS = [1, 2, 3, 4, 5, 6];
+        %>
+
+        <table class="staff-table" id="staffTable">
+            <thead>
+                <tr>
+                    <th style="width: 180px;">Name</th>
+                    <th style="width: 110px;">Type</th>
+                    <th>Schedule</th>
+                </tr>
+            </thead>
+            <tbody>
+            <% groups.forEach(function(group) { %>
+                <tr class="type-group-header" data-group-header>
+                    <td colspan="3"><%= group.type %></td>
+                </tr>
+                <% group.members.forEach(function(s) { %>
+                <tr class="staff-row" data-name="<%= (s.FirstName + ' ' + s.LastName).toLowerCase() %>">
+                    <td>
+                        <div class="staff-name"><%= s.FirstName %> <%= s.LastName %></div>
+                    </td>
+                    <td>
+                        <span class="staff-type-badge"><%= s.StaffType || '—' %></span>
+                    </td>
+                    <td>
+                        <div class="mini-sched">
+                        <% PERIODS.forEach(function(p) { %>
+                            <% if (s['P' + p]) { %>
+                            <div class="period-pill">
+                                <div class="period-pill-label">Period <%= p %></div>
+                                <div class="period-pill-activity"><%= s['P' + p] %></div>
+                                <% if (s['L' + p]) { %>
+                                <div class="period-pill-location">&#128205; <%= s['L' + p] %></div>
+                                <% } %>
+                            </div>
+                            <% } %>
+                        <% }); %>
+                        <% if (!PERIODS.some(function(p) { return s['P' + p]; })) { %>
+                            <span style="color: var(--text-muted); font-style: italic; font-size: 0.85rem;">No schedule assigned</span>
+                        <% } %>
+                        </div>
+                    </td>
+                </tr>
+                <% }); %>
+            <% }); %>
+            </tbody>
+        </table>
+
+        <div id="noResults" style="display:none; background: white; border-radius: 12px; box-shadow: var(--shadow); border: 1px solid var(--border-color);">
+            <div class="no-results">No staff members found matching your search.</div>
+        </div>
+
+        <% } %>
+    </div>
+
+    <script>
+        function runSearch() {
+            const term = document.getElementById('staffSearch').value.trim().toLowerCase();
+            const rows = document.querySelectorAll('.staff-row');
+            const headers = document.querySelectorAll('[data-group-header]');
+            let totalVisible = 0;
+
+            // Track which group headers have visible members
+            const visibleGroups = new Set();
+
+            rows.forEach(function(row) {
+                const name = row.getAttribute('data-name');
+                const show = term === '' || name.includes(term);
+                row.style.display = show ? '' : 'none';
+                if (show) {
+                    totalVisible++;
+                    // Find the preceding group header
+                    let prev = row.previousElementSibling;
+                    while (prev) {
+                        if (prev.hasAttribute('data-group-header')) {
+                            visibleGroups.add(prev);
+                            break;
+                        }
+                        prev = prev.previousElementSibling;
+                    }
+                }
+            });
+
+            // Show/hide group headers based on whether any member is visible
+            headers.forEach(function(h) {
+                h.style.display = visibleGroups.has(h) ? '' : 'none';
+            });
+
+            const noResults = document.getElementById('noResults');
+            if (noResults) noResults.style.display = totalVisible === 0 ? '' : 'none';
+        }
+
+        function clearSearch() {
+            document.getElementById('staffSearch').value = '';
+            runSearch();
+            document.getElementById('staffSearch').focus();
+        }
+    </script>
+</body>
+</html>

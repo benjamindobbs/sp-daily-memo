@@ -122,6 +122,15 @@
         }
 
         /* Staff name link */
+        .staff-link {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        .staff-link:hover .staff-name {
+            color: var(--primary);
+            text-decoration: underline;
+        }
         .staff-name {
             font-size: 0.82rem;
             color: var(--text-main);
@@ -307,10 +316,10 @@
                         <td>
                             <% if (cls.staff.length > 0) { %>
                                 <% cls.staff.forEach(function(s) { %>
-                                    <div>
+                                    <a href="/staff-lookup?name=<%= encodeURIComponent(s.FirstName + ' ' + s.LastName) %>" class="staff-link">
                                         <div class="staff-name"><%= s.FirstName %> <%= s.LastName %></div>
                                         <div class="staff-type-label"><%= s.StaffType %></div>
-                                    </div>
+                                    </a>
                                 <% }); %>
                             <% } else { %>
                                 <span style="color: var(--text-muted); font-size: 0.8rem;">—</span>
