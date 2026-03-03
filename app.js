@@ -35,7 +35,7 @@ db.exec(`
         HomeGroupColor TEXT,
         HomeGroupCounselorID INTEGER,
         BusRoute TEXT,
-        ExtendedHours TEXT CHECK(ExtendedHours IN ('AM', 'PM', 'Both')),
+        ExtendedHours TEXT,
         CampLunch TEXT DEFAULT 'No'
     );
     CREATE TABLE IF NOT EXISTS Counselors (
@@ -102,6 +102,30 @@ db.exec(`
         FOREIGN KEY (CamperID) REFERENCES Campers(CamperID)
     );
 `);
+
+// Migration: if Campers was created with a CHECK constraint on ExtendedHours, recreate it without one.
+// Safe to run on an empty table (upload couldn't have succeeded with the constraint in place).
+try {
+    db.prepare("INSERT INTO Campers (FirstName, LastName, ExtendedHours) VALUES ('__chk__','__chk__','No')").run();
+    db.prepare("DELETE FROM Campers WHERE FirstName='__chk__' AND LastName='__chk__'").run();
+} catch (e) {
+    if (e.message && e.message.includes('CHECK constraint failed')) {
+        db.exec(`
+            DROP TABLE Campers;
+            CREATE TABLE Campers (
+                CamperID INTEGER PRIMARY KEY AUTOINCREMENT,
+                FirstName TEXT NOT NULL,
+                LastName TEXT NOT NULL,
+                Age INTEGER,
+                HomeGroupColor TEXT,
+                HomeGroupCounselorID INTEGER,
+                BusRoute TEXT,
+                ExtendedHours TEXT,
+                CampLunch TEXT DEFAULT 'No'
+            );
+        `);
+    }
+}
 
 // --- DASHBOARD ---
 app.get('/', (req, res) => {
