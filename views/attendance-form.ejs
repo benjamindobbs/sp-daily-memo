@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> Attendance | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .att-header { margin-bottom: 24px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .att-title h1 { margin: 0; font-size: 1.5rem; }
+        .att-title p { margin: 2px 0 0; color: var(--text-muted); font-size: 0.875rem; }
+
+        .roster-card { background: white; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: var(--shadow); overflow: hidden; }
+        .roster-card-header { padding: 16px 20px; border-bottom: 2px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .count-bar { font-size: 0.82rem; color: var(--text-muted); }
+        .count-present { color: #166534; font-weight: 700; }
+        .count-absent  { color: #991b1b; font-weight: 700; }
+
+        .camper-row { display: flex; align-items: center; gap: 12px; padding: 13px 20px; border-bottom: 1px solid #f1f5f9; }
+        .camper-row:last-child { border-bottom: none; }
+        .camper-name { font-weight: 600; font-size: 0.92rem; flex: 1; }
+        .camper-badges { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+        .badge-absent-am   { background: #fef9c3; color: #854d0e; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+        .badge-dismissed   { background: #fee2e2; color: #991b1b; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+
+        .toggle-wrap { display: flex; gap: 6px; align-items: center; }
+        .btn-present, .btn-absent {
+            padding: 6px 14px; border-radius: 6px; font-size: 0.82rem; font-weight: 600;
+            border: 2px solid transparent; cursor: pointer; transition: background 0.12s, border-color 0.12s;
+            font-family: inherit;
+        }
+        .btn-present { background: #f1f5f9; color: var(--text-muted); }
+        .btn-present.active { background: #dcfce7; color: #166534; border-color: #86efac; }
+        .btn-absent  { background: #f1f5f9; color: var(--text-muted); }
+        .btn-absent.active  { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+
+        .btn-dismiss {
+            padding: 5px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600;
+            background: none; border: 1px solid #fca5a5; color: #991b1b; cursor: pointer;
+            font-family: inherit; white-space: nowrap;
+        }
+        .btn-dismiss:hover { background: #fee2e2; }
+
+        .dismiss-modal {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+            z-index: 1000; align-items: center; justify-content: center;
+        }
+        .dismiss-modal.open { display: flex; }
+        .dismiss-box { background: white; border-radius: 14px; padding: 28px; width: 340px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+        .dismiss-box h3 { margin: 0 0 16px; font-size: 1.1rem; }
+
+        .search-bar { padding: 8px 14px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.875rem; font-family: inherit; width: 220px; outline: none; }
+        .search-bar:focus { border-color: var(--primary); }
+
+        .saving-indicator { font-size: 0.75rem; color: var(--text-muted); margin-left: 6px; opacity: 0; transition: opacity 0.2s; }
+        .saving-indicator.show { opacity: 1; }
+    </style>
+</head>
+<body>
+    <nav class="nav-bar">
+        <a href="/" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
+        <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
+        <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
+    </nav>
+
+    <div class="container" style="max-width: 900px;">
+        <div class="att-header">
+            <a href="<%= backLink %>" style="color: var(--text-muted); text-decoration: none; font-size: 0.875rem; white-space: nowrap;">&#8592; Attendance</a>
+            <span style="color: var(--border-color);">|</span>
+            <div class="att-title">
+                <h1><%= title %></h1>
+                <p><%= date %></p>
+            </div>
+        </div>
+
+        <div class="roster-card">
+            <div class="roster-card-header">
+                <div>
+                    <strong id="presentCount">—</strong> present &nbsp;·&nbsp;
+                    <strong id="absentCount">—</strong> absent
+                    <span class="saving-indicator" id="savingIndicator">Saving…</span>
+                </div>
+                <input type="text" id="searchInput" class="search-bar" placeholder="Filter by name…" oninput="filterRows()">
+            </div>
+
+            <% if (roster.length === 0) { %>
+                <div style="text-align:center; padding: 48px 20px; color: var(--text-muted);">No campers in this session.</div>
+            <% } else { %>
+                <div id="rosterList">
+                <% roster.forEach(function(c) { %>
+                    <div class="camper-row" data-camperid="<%= c.CamperID %>" data-name="<%= (c.FirstName+' '+c.LastName).toLowerCase() %>" data-status="<%= c.currentStatus %>">
+                        <span class="tag <%= c.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px; flex-shrink:0;"><%= c.HomeGroupColor %></span>
+                        <span class="camper-name"><%= c.FirstName %> <%= c.LastName %></span>
+                        <div class="camper-badges">
+                            <% if (c.absentAM) { %><span class="badge-absent-am">&#9888; Absent AM</span><% } %>
+                            <% if (c.dismissed) { %><span class="badge-dismissed">&#128663; Dismissed</span><% } %>
+                        </div>
+                        <div class="toggle-wrap">
+                            <button class="btn-present <%= c.currentStatus === 'present' || c.currentStatus === 'late' ? 'active' : '' %>"
+                                    onclick="mark(<%= c.CamperID %>, this, 'present')">Present</button>
+                            <button class="btn-absent <%= c.currentStatus === 'absent' ? 'active' : '' %>"
+                                    onclick="mark(<%= c.CamperID %>, this, 'absent')">Absent</button>
+                            <% if (!c.dismissed) { %>
+                                <button class="btn-dismiss" onclick="openDismiss(<%= c.CamperID %>, '<%= c.FirstName %> <%= c.LastName %>')">Dismiss</button>
+                            <% } %>
+                        </div>
+                    </div>
+                <% }); %>
+                </div>
+            <% } %>
+        </div>
+    </div>
+
+    <!-- Early Dismissal Modal -->
+    <div class="dismiss-modal" id="dismissModal">
+        <div class="dismiss-box">
+            <h3>Early Dismissal</h3>
+            <p id="dismissName" style="margin:0 0 14px; font-weight:600; color:var(--text-main);"></p>
+            <form action="/attendance/early-dismissal" method="POST">
+                <input type="hidden" name="date" value="<%= date %>">
+                <input type="hidden" name="camperId" id="dismissCamperId">
+                <input type="hidden" name="returnTo" value="/attendance/<%= sessionType === 'class' ? 'class/' + periodNumber + '/' + encodeURIComponent(activityName) : sessionType.replace('_','/') %>?date=<%= date %>">
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:0.82rem; font-weight:600; display:block; margin-bottom:4px;">Dismissal Time</label>
+                    <input type="time" name="dismissalTime" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-family:inherit; font-size:0.875rem;">
+                </div>
+                <div style="margin-bottom:18px;">
+                    <label style="font-size:0.82rem; font-weight:600; display:block; margin-bottom:4px;">Notes (optional)</label>
+                    <input type="text" name="notes" placeholder="e.g. parent picked up" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-family:inherit; font-size:0.875rem;">
+                </div>
+                <div style="display:flex; gap:10px; justify-content:flex-end;">
+                    <button type="button" onclick="closeDismiss()" style="padding:8px 16px; border-radius:6px; border:1px solid #cbd5e1; background:white; cursor:pointer; font-family:inherit;">Cancel</button>
+                    <button type="submit" style="padding:8px 16px; border-radius:6px; border:none; background:#ef4444; color:white; font-weight:700; cursor:pointer; font-family:inherit;">Confirm Dismissal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const SESSION_TYPE  = '<%= sessionType %>';
+        const PERIOD_NUMBER = <%= periodNumber %>;
+        const ACTIVITY_NAME = '<%= activityName.replace(/'/g, "\\'") %>';
+        const DATE = '<%= date %>';
+
+        function updateCounts() {
+            const rows = document.querySelectorAll('.camper-row');
+            let present = 0, absent = 0;
+            rows.forEach(r => {
+                if (r.style.display === 'none') return;
+                const s = r.dataset.status;
+                if (s === 'absent') absent++; else present++;
+            });
+            document.getElementById('presentCount').textContent = present;
+            document.getElementById('absentCount').textContent  = absent;
+        }
+
+        function mark(camperId, btn, newStatus) {
+            const row = btn.closest('.camper-row');
+            const indicator = document.getElementById('savingIndicator');
+
+            // Optimistic UI update
+            row.dataset.status = newStatus;
+            row.querySelectorAll('.btn-present').forEach(b => b.classList.toggle('active', newStatus === 'present'));
+            row.querySelectorAll('.btn-absent').forEach(b  => b.classList.toggle('active', newStatus === 'absent'));
+            updateCounts();
+
+            // Show saving indicator
+            indicator.textContent = 'Saving…';
+            indicator.classList.add('show');
+
+            fetch('/attendance/mark', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date: DATE, camperId, sessionType: SESSION_TYPE,
+                    periodNumber: PERIOD_NUMBER, activityName: ACTIVITY_NAME,
+                    status: newStatus
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                indicator.textContent = data.ok ? 'Saved' : 'Error';
+                setTimeout(() => indicator.classList.remove('show'), 1200);
+            })
+            .catch(() => {
+                indicator.textContent = 'Error — check connection';
+            });
+        }
+
+        function filterRows() {
+            const term = document.getElementById('searchInput').value.toLowerCase();
+            document.querySelectorAll('.camper-row').forEach(row => {
+                row.style.display = row.dataset.name.includes(term) ? '' : 'none';
+            });
+            updateCounts();
+        }
+
+        function openDismiss(camperId, name) {
+            document.getElementById('dismissCamperId').value = camperId;
+            document.getElementById('dismissName').textContent = name;
+            document.getElementById('dismissModal').classList.add('open');
+        }
+        function closeDismiss() {
+            document.getElementById('dismissModal').classList.remove('open');
+        }
+        document.getElementById('dismissModal').addEventListener('click', function(e) {
+            if (e.target === this) closeDismiss();
+        });
+
+        updateCounts();
+    </script>
+</body>
+</html>

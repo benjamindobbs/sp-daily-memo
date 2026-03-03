@@ -2,7 +2,7 @@
 <html>
 <head>
     <title>Activity Manager</title>
-    <link rel="stylesheet" href="/style.css"> <style>
+    <link rel="stylesheet" href="/css/style.css"> <style>
         .rules-card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         .upload-banner { background: #f1f5f9; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 2px dashed #cbd5e1; }
         .sports-row { border-left: 5px solid #ef4444; }
@@ -34,7 +34,7 @@
             </thead>
             <tbody>
                 <% activities.forEach(act => { %>
-                <form action="/update-activity" method="POST">
+                <form action="/update-activity-capacity" method="POST">
                     <input type="hidden" name="ActivityName" value="<%= act.Name %>">
                     <tr class="<%= act.SideOfCamp === 'Sports' ? 'sports-row' : 'enrich-row' %>">
                         <td><strong><%= act.Name %></strong></td>

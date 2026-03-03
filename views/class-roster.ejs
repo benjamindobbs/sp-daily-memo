@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= activityName %> - Period <%= periodNumber %> | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .roster-layout { display: grid; grid-template-columns: 320px 1fr; gap: 28px; align-items: start; }
+        @media (max-width: 900px) { .roster-layout { grid-template-columns: 1fr; } }
+        .info-card { background: white; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: var(--shadow); overflow: hidden; }
+        .info-card-header { background: var(--primary); color: white; padding: 24px; }
+        .info-card-header h2 { margin: 0 0 4px 0; font-size: 1.4rem; }
+        .info-card-body { padding: 20px; }
+        .info-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f1f5f9; font-size: 0.875rem; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { color: var(--text-muted); font-weight: 500; }
+        .info-value { font-weight: 600; }
+        .section-block { margin-top: 18px; padding-top: 18px; border-top: 2px solid #f1f5f9; }
+        .section-block h4 { margin: 0 0 12px 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+        .staff-item-card { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px; }
+        .staff-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; flex-shrink: 0; }
+        .staff-info-name { font-weight: 600; font-size: 0.875rem; }
+        .staff-info-type { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; }
+        .counselor-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: #f8fafc; border-radius: 8px; margin-bottom: 7px; text-decoration: none; color: var(--text-main); transition: background 0.15s; }
+        .counselor-item:hover { background: #eff6ff; }
+        .counselor-name-text { font-weight: 600; font-size: 0.875rem; }
+        .counselor-group-label { font-size: 0.72rem; color: var(--text-muted); }
+        .roster-card { background: white; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: var(--shadow); overflow: hidden; }
+        .roster-card-header { padding: 18px 22px; border-bottom: 2px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
+        .roster-card-header h3 { margin: 0; font-size: 1.05rem; }
+        .roster-table { width: 100%; border-collapse: collapse; }
+        .roster-table th { background: #f8fafc; padding: 11px 16px; text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); border-bottom: 1px solid var(--border-color); }
+        .roster-table td { padding: 13px 16px; border-bottom: 1px solid #f8fafc; font-size: 0.875rem; vertical-align: middle; }
+        .roster-table tr:last-child td { border-bottom: none; }
+        .roster-table tr:hover td { background: #fafbff; }
+        .camper-name-link { font-weight: 600; color: var(--primary); text-decoration: none; }
+        .camper-name-link:hover { color: var(--primary-hover); text-decoration: underline; }
+        .roster-search { padding: 8px 14px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.875rem; font-family: inherit; width: 200px; outline: none; }
+        .roster-search:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+    <nav class="nav-bar">
+        <a href="/" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
+        <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+    </nav>
+
+    <div class="container" style="max-width: 1300px;">
+        <header style="margin-bottom: 26px; display: flex; align-items: center; gap: 14px;">
+            <a href="/master-schedule" style="color: var(--text-muted); text-decoration: none; font-size: 0.875rem; white-space: nowrap;">&#8592; Master Schedule</a>
+            <span style="color: var(--border-color);">|</span>
+            <div>
+                <h1 style="margin: 0; font-size: 1.6rem;"><%= activityName %></h1>
+                <p style="margin: 2px 0 0 0; color: var(--text-muted); font-size: 0.875rem;">Period <%= periodNumber %> &#8212; Class Roster</p>
+            </div>
+        </header>
+
+        <div class="roster-layout">
+            <aside>
+                <div class="info-card">
+                    <div class="info-card-header">
+                        <div style="font-size: 0.78rem; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Period <%= periodNumber %></div>
+                        <h2><%= activityName %></h2>
+                        <% if (sideOfCamp) { %>
+                            <span style="margin-top: 8px; display: inline-block; background: rgba(255,255,255,0.2); color: white; padding: 3px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;"><%= sideOfCamp %></span>
+                        <% } %>
+                    </div>
+                    <div class="info-card-body">
+                        <div class="info-row">
+                            <span class="info-label">&#128205; Location</span>
+                            <form action="/update-class-location" method="POST" style="display:flex; gap:5px; align-items:center; margin:0;">
+                                <input type="hidden" name="activityName" value="<%= activityName %>">
+                                <input type="hidden" name="periodNumber" value="<%= periodNumber %>">
+                                <input type="hidden" name="dbPeriod" value="<%= dbPeriod %>">
+                                <input type="text" name="location" value="<%= location || '' %>" placeholder="Add location…"
+                                    style="width:130px; padding:3px 7px; border:1px solid #cbd5e1; border-radius:5px; font-size:0.82rem; font-family:inherit;">
+                                <button type="submit" title="Save location"
+                                    style="background:none; border:none; cursor:pointer; font-size:0.95rem; padding:0; color:var(--primary);">&#10003;</button>
+                            </form>
+                        </div>
+                        <div class="info-row"><span class="info-label">&#128101; Enrolled</span><span class="info-value"><%= campers.length %><% if (maxCapacity) { %> / <%= maxCapacity %><% } %></span></div>
+                        <div class="info-row">
+                            <span class="info-label">&#127912; Groups</span>
+                            <span class="info-value" style="display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end;">
+                                <% colorGroups.forEach(function(color) { %><span class="tag <%= color %>"><%= color %></span><% }); %>
+                                <% if (colorGroups.length === 0) { %><span>&#8212;</span><% } %>
+                            </span>
+                        </div>
+                        <% if (staff.length > 0) { %>
+                        <div class="section-block"><h4>Assigned Staff</h4>
+                            <% staff.forEach(function(s) { %>
+                                <div class="staff-item-card">
+                                    <div class="staff-avatar"><%= s.FirstName.charAt(0) %><%= s.LastName.charAt(0) %></div>
+                                    <div><div class="staff-info-name"><%= s.FirstName %> <%= s.LastName %></div><div class="staff-info-type"><%= s.StaffType %></div></div>
+                                </div>
+                            <% }); %>
+                        </div>
+                        <% } %>
+                        <% if (counselors.length > 0) { %>
+                        <div class="section-block"><h4>Counselors Present</h4>
+                            <% counselors.forEach(function(c) { %>
+                                <a href="/counselor-profile/<%= c.CounselorID %>" class="counselor-item">
+                                    <span class="tag <%= c.HomeGroupColor %>" style="font-size: 0.65rem; padding: 2px 7px;"><%= c.HomeGroupColor %></span>
+                                    <div><div class="counselor-name-text"><%= c.FirstName %> <%= c.LastName %></div><div class="counselor-group-label"><%= c.HomeGroupColor %> Group</div></div>
+                                </a>
+                            <% }); %>
+                        </div>
+                        <% } %>
+                    </div>
+                </div>
+            </aside>
+
+            <main>
+                <div class="roster-card">
+                    <div class="roster-card-header">
+                        <h3>Class Roster <span style="font-weight: 400; color: var(--text-muted); font-size: 0.9rem;">(<%= campers.length %> campers)</span></h3>
+                        <input type="text" id="rosterSearch" class="roster-search" placeholder="Filter by name..." onkeyup="filterRoster()">
+                    </div>
+                    <% if (campers.length > 0) { %>
+                    <table class="roster-table">
+                        <thead><tr><th>Camper</th><th>Age</th><th>Group</th><th>Home Counselor</th></tr></thead>
+                        <tbody id="rosterBody">
+                            <% campers.forEach(function(c) { %>
+                            <tr class="roster-row" data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>">
+                                <td><a class="camper-name-link" href="/search?name=<%= encodeURIComponent(c.FirstName + ' ' + c.LastName) %>"><%= c.FirstName %> <%= c.LastName %></a></td>
+                                <td style="color: var(--text-muted);"><%= c.Age || '—' %></td>
+                                <td><span class="tag <%= c.HomeGroupColor %>"><%= c.HomeGroupColor %></span></td>
+                                <td>
+                                    <% if (c.CounselorID) { %>
+                                        <a href="/counselor-profile/<%= c.CounselorID %>" style="color: var(--primary); text-decoration: none; font-weight: 500; font-size: 0.82rem;">
+                                            &#128100; <%= c.CounselorFirstName %> <%= c.CounselorLastName %>
+                                        </a>
+                                    <% } else { %>
+                                        <span style="color: var(--text-muted); font-size: 0.82rem; font-style: italic;">Unassigned</span>
+                                    <% } %>
+                                </td>
+                            </tr>
+                            <% }); %>
+                        </tbody>
+                    </table>
+                    <% } else { %>
+                        <div class="empty-state"><span style="font-size: 2.5rem;">&#128203;</span><p>No campers enrolled in this class.</p></div>
+                    <% } %>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        function filterRoster() {
+            const term = document.getElementById('rosterSearch').value.toLowerCase();
+            document.querySelectorAll('.roster-row').forEach(function(row) {
+                row.style.display = row.dataset.name.includes(term) ? '' : 'none';
+            });
+        }
+    </script>
+</body>
+</html>

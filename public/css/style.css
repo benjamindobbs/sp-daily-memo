@@ -15,6 +15,8 @@
     --green-group: #22c55e;
     --navy-group: #1e3a8a;
     --bus-group: #f59e0b;
+    --shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    --success: #22c55e;
 }
 
 /* --- Base Styles --- */
@@ -115,3 +117,26 @@ body {
 /* --- Utility --- */
 .text-right { text-align: right; }
 .mt-20 { margin-top: 20px; }
+
+/* Navigation Links */
+.counselor-link, 
+.camper-item a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s ease;
+}
+
+.counselor-link:hover, 
+.camper-item a:hover {
+    color: #1d4ed8;
+    text-decoration: underline;
+}
+
+/* Specific styling for the counselor view list */
+.camper-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+}

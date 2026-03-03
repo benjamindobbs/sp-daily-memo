@@ -1,210 +1,157 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
-    <a href="/">← Back to Dashboard</a>
-    <title>Schedule Swap Tool</title>
+    <meta charset="UTF-8">
+    <title>Schedule Swap | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
     <style>
-        .swap-card {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .period-selector {
-            margin: 15px 0;
-            padding: 10px;
-            border: 1px solid #ddd;
+        .swap-grid { display: grid; grid-template-columns: 400px 1fr; gap: 30px; align-items: start; }
+        
+        .period-card {
+            padding: 15px;
+            margin-bottom: 12px;
+            border: 2px solid transparent;
             cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+        }
+        .period-card:hover { border-color: var(--border-color); background: #f8fafc; }
+        .period-card.active { 
+            border-color: var(--primary); 
+            background: #eff6ff; 
+            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.1);
         }
 
-        .period-selector.active {
-            border-color: #2563eb;
-            background: #eff6ff;
-        }
-
-        .valid-option {
+        .option-link {
             display: block;
-            padding: 10px;
-            margin: 5px 0;
-            background: #f1f5f9;
-            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 10px;
+            background: white;
+            border-radius: 8px;
             text-decoration: none;
-            color: black;
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            transition: all 0.2s;
         }
-
-        .valid-option:hover {
-            background: #dcfce7;
-        }
-
-        /* Styling for the options */
-        .valid-option {
-            display: block;
-            padding: 12px;
-            margin: 8px 0;
-            background: #f1f5f9;
-            border-radius: 6px;
-            text-decoration: none;
-            color: #1e293b;
-            border: 1px solid #e2e8f0;
-            transition: transform 0.1s;
-        }
-
-        .valid-option:hover {
-            transform: translateX(5px);
-            background: #e2e8f0;
-        }
-
-        /* Red highlight for overenrolled */
-        .option-full {
-            background: #fee2e2;
-            border-color: #fca5a5;
-            color: #991b1b;
-        }
-
-        .option-full:hover {
-            background: #fecaca;
-        }
-
-        .enrollment-tag {
-            float: right;
-            font-weight: bold;
-            font-size: 0.85rem;
-        }
+        .option-link:hover { transform: translateX(5px); border-color: var(--primary); }
+        .option-full { border-left: 5px solid var(--red-group); background: #fff1f2; }
+        .option-open { border-left: 5px solid var(--green-group); }
+        
+        .capacity-pill { font-weight: bold; font-size: 0.85rem; padding: 4px 8px; border-radius: 4px; background: #f1f5f9; }
     </style>
 </head>
-
 <body>
-    <h1>Camper Schedule Swapper</h1>
-    <div class="card">
-        <div id="side-indicator" style="margin-bottom: 10px; font-weight: bold;"></div>
 
-        <input type="text" id="activitySearch" placeholder="Search activities..."
-            style="width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #cbd5e1;"
-            onkeyup="filterActivities()">
+    <nav class="nav-bar">
+        <a href="/" class="nav-btn">🏠 Hub</a>
+        <a href="/master-schedule" class="nav-btn">📅 Master Schedule</a>
+        <a href="/search" class="nav-btn">🔍 Camper Lookup</a>
+        <a href="/swap-tool" class="nav-btn primary">🔄 Swap Tools</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+    </nav>
 
-        <div id="options-container"></div>
+    <div class="container">
+        <header style="margin-bottom: 30px;">
+            <h1>Camper Schedule Swapper</h1>
+            <form action="/swap-tool" method="GET" style="display: flex; gap: 10px; margin-top: 15px;">
+                <input type="text" name="name" placeholder="Search Camper Name..." 
+                       value="<%= query || '' %>" style="flex: 1; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <button type="submit" class="btn btn-primary">Find Camper</button>
+            </form>
+        </header>
+
+        <% if (camper) { %>
+            <div class="swap-grid">
+                <div class="sidebar">
+                    <div class="card" style="margin-bottom: 20px;">
+                        <span class="tag <%= camper.HomeGroupColor %>"><%= camper.HomeGroupColor %> Group</span>
+                        <h2 style="margin: 10px 0 5px 0;"><%= camper.FirstName %> <%= camper.LastName %></h2>
+                        <p style="color: var(--text-muted); font-size: 0.9rem;">Select a period to find a replacement activity.</p>
+                    </div>
+
+                    <% currentSchedule.forEach(p => { %>
+                        <div class="card period-card" id="period-<%= p.PeriodNumber %>"
+                             onclick="loadOptions('<%= camper.CamperID %>', '<%= p.PeriodNumber %>', this)">
+                            <div>
+                                <small style="text-transform: uppercase; color: var(--text-muted); font-weight: bold;">Period <%= p.PeriodNumber %></small>
+                                <div style="font-weight: 600;"><%= p.ActivityName %></div>
+                            </div>
+                            <span style="color: var(--primary);">→</span>
+                        </div>
+                    <% }) %>
+                </div>
+
+                <div class="main-content">
+                    <div id="controls-container" style="display: none;">
+                        <div class="card" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                            <div id="side-indicator" style="font-weight: bold; color: var(--primary);"></div>
+                            <input type="text" id="activitySearch" placeholder="Filter activities..." 
+                                   onkeyup="filterActivities()" style="padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); width: 250px;">
+                        </div>
+                        <div id="options-container"></div>
+                    </div>
+                    
+                    <div id="placeholder-msg" class="card" style="text-align: center; padding: 100px; color: var(--text-muted);">
+                        <span style="font-size: 3rem;">👈</span>
+                        <p>Select a period on the left to see available swaps.</p>
+                    </div>
+                </div>
+            </div>
+        <% } %>
     </div>
 
     <script>
-        // Global variable to hold current options for searching
         let currentOptions = [];
+        let activeCamperId = '<%= camper ? camper.CamperID : "" %>';
+        let activePeriod = null;
 
         async function loadOptions(camperId, period, element) {
-            document.querySelectorAll('.period-selector').forEach(el => el.classList.remove('active'));
+            // UI Updates
+            document.querySelectorAll('.period-card').forEach(el => el.classList.remove('active'));
             element.classList.add('active');
+            document.getElementById('controls-container').style.display = 'block';
+            document.getElementById('placeholder-msg').style.display = 'none';
+            
+            activePeriod = period;
 
+            // Fetch
             const res = await fetch(`/get-options/${camperId}/${period}`);
             const data = await res.json();
+            currentOptions = data.options;
 
-            currentOptions = data.options; // Store for search
-            document.getElementById('side-indicator').innerHTML = `Showing ${data.side} options:`;
-            renderList(camperId, period);
+            document.getElementById('side-indicator').innerText = `${data.side} Options for Period ${period}`;
+            renderList();
         }
 
-    function renderList(camperId, period) {
-        const searchTerm = document.getElementById('activitySearch').value.toLowerCase();
-        const container = document.getElementById('options-container');
-        
-        let html = "";
-        // Filter by name and sort so full classes are last
-        const filtered = currentOptions
-            .filter(opt => opt.Name.toLowerCase().includes(searchTerm));
+        function renderList() {
+            const term = document.getElementById('activitySearch').value.toLowerCase();
+            const container = document.getElementById('options-container');
+            
+            const filtered = currentOptions.filter(opt => opt.Name.toLowerCase().includes(term));
+            
+            container.innerHTML = filtered.map(opt => {
+                const isFull = opt.CurrentEnrollment >= opt.MaxCapacity;
+                const statusClass = isFull ? 'option-full' : 'option-open';
+                const warning = isFull ? "onclick=\"return confirm('This class is FULL. Promoting will move camper to WAITLIST. Proceed?')\"" : "";
 
-        if (filtered.length === 0) {
-            html = `<p style="padding: 10px; color: #64748b;">No activities found matching "${searchTerm}"</p>`;
-        } else {
-            filtered.forEach(opt => {
-                const statusClass = opt.isFull ? 'option-full' : 'option-open';
-                const capacityLabel = opt.isFull ? 'FULL' : 'OPEN';
-
-                html += `
-                <a href="/process-swap?camperId=${camperId}&period=${period}&newActivity=${encodeURIComponent(opt.Name)}" 
-                class="valid-option ${statusClass}">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong>${opt.Name}</strong><br>
-                            <small style="opacity: 0.8;">Status: ${capacityLabel}</small>
+                return `
+                    <a href="/process-swap?camperId=${activeCamperId}&period=${activePeriod}&newActivity=${encodeURIComponent(opt.Name)}" 
+                       class="option-link ${statusClass}" ${warning}>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong>${opt.Name}</strong>
+                                ${isFull ? '<br><small style="color:var(--red-group)">Will trigger waitlist</small>' : ''}
+                            </div>
+                            <div class="capacity-pill">${opt.CurrentEnrollment} / ${opt.MaxCapacity}</div>
                         </div>
-                        <div class="enrollment-tag">
-                            ${opt.CurrentEnrollment} / ${opt.MaxCapacity}
-                        </div>
-                    </div>
-                </a>`;
-            });
+                    </a>
+                `;
+            }).join('') || '<p>No activities found.</p>';
         }
-        container.innerHTML = html;
-    }
 
-        function filterActivities() {
-            // We need the camperId and period from the active selector to maintain the links
-            const active = document.querySelector('.period-selector.active');
-            if (active) {
-                // Re-render based on currentOptions and search term
-                const camperId = new URLSearchParams(window.location.search).get('camperId');
-                // Better to pull from the specific active element data if available
-                renderList('<%= camper ? camper.CamperID : "" %>', active.innerText.replace('P', ''));
-            }
-        }
+        function filterActivities() { renderList(); }
     </script>
-    <form action="/swap-tool" method="GET">
-        <input type="text" name="name" placeholder="Search Camper..." value="<%= query || '' %>">
-        <button type="submit">Find Camper</button>
-    </form>
-
-    <% if (camper) { %>
-        <div class="swap-card">
-            <h3>Swapping for: <%= camper.FirstName %>
-                    <%= camper.LastName %>
-            </h3>
-            <p>Select a period to see valid open courses:</p>
-
-            <% currentSchedule.forEach(p=> { %>
-                <div class="period-selector"
-                    onclick="loadOptions('<%= camper.CamperID %>', '<%= p.PeriodNumber %>', this)">
-                    <strong>Period <%= p.PeriodNumber %>:</strong>
-                    <%= p.ActivityName %>
-                </div>
-                <% }) %>
-
-                    <div id="options-container" style="margin-top:20px;">
-                    </div>
-        </div>
-        <% } %>
-            <div id="side-indicator" style="margin-top: 20px; font-weight: bold; color: var(--accent);"></div>
-            <div id="options-container"></div>
-            <script>
-                async function loadOptions(camperId, period, element) {
-                    document.querySelectorAll('.period-selector').forEach(el => el.classList.remove('active'));
-                    element.classList.add('active');
-
-                    const res = await fetch(`/get-options/${camperId}/${period}`);
-                    const data = await res.json();
-
-                    document.getElementById('side-indicator').innerHTML = `Showing ${data.side} options:`;
-
-                    let html = "";
-                    if (data.options.length === 0) {
-                        html = `<p style="color: #64748b; font-style: italic; padding: 10px;">No ${data.side} classes running this period.</p>`;
-                    } else {
-                        data.options.forEach(opt => {
-                            // Apply the 'option-full' class if isFull is true (1)
-                            const fullClass = opt.isFull ? 'option-full' : '';
-                            const fullText = opt.isFull ? ' (FULL - Will Waitlist)' : '';
-
-                            html += `
-                <a href="/process-swap?camperId=${camperId}&period=${period}&newActivity=${encodeURIComponent(opt.Name)}" 
-                   class="valid-option ${fullClass}" 
-                   onclick="return confirm('Swap to ${opt.Name}${fullText}?')">
-                    <strong>${opt.Name}</strong>
-                    <span class="enrollment-tag">${opt.CurrentEnrollment} / ${opt.MaxCapacity}</span>
-                </a>`;
-                        });
-                    }
-                    document.getElementById('options-container').innerHTML = html;
-                }
-            </script>
 </body>
-
 </html>

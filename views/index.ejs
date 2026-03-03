@@ -1,367 +1,111 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Camp Management Dashboard</title>
+    <title>Camp Hub | Dashboard</title>
+    <link rel="stylesheet" href="/css/style.css">
     <style>
-        :root {
-            --primary: #1e293b;
-            --accent: #2563eb;
-            --success: #059669;
-            --warning: #d97706;
-            --bg: #f8fafc;
-            --white: #ffffff;
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
         }
-
-        body {
-            font-family: -apple-system, system-ui, sans-serif;
-            background: var(--bg);
+        .stat-card {
+            text-align: center;
+            padding: 30px;
+        }
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            display: block;
             color: var(--primary);
-            padding: 20px;
-            margin: 0;
         }
-
-        .header-flex {
+        .stat-label {
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+        }
+        .promo-alert {
+            background: #ecfdf5;
+            border: 1px solid #10b981;
+            color: #065f46;
+            padding: 15px;
+            border-radius: 8px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
-        }
-
-        .card {
-            background: var(--white);
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
             margin-bottom: 25px;
-        }
-
-        /* Navigation & Buttons */
-        .btn {
-            padding: 8px 16px;
-            border-radius: 6px;
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 14px;
-            border: none;
-            cursor: pointer;
-            display: inline-block;
-        }
-
-        .btn-primary {
-            background: var(--accent);
-            color: white;
-        }
-
-        .btn-success {
-            background: var(--success);
-            color: white;
-        }
-
-        .btn-outline {
-            border: 1px solid #cbd5e1;
-            background: transparent;
-            color: var(--primary);
-        }
-
-        /* Tables */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-
-        th,
-        td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #f1f5f9;
-            font-size: 14px;
-        }
-
-        th {
-            background: #f8fafc;
-            color: #64748b;
-            text-transform: uppercase;
-            font-size: 11px;
-            letter-spacing: 0.05em;
-        }
-
-        /* Tags & Pills */
-        .tag {
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-            font-size: 11px;
-            text-transform: uppercase;
-        }
-
-        .Carolina {
-            background: #e0f2fe;
-            color: #0369a1;
-        }
-
-        .Red {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .Green {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .Navy {
-            background: #e0e7ff;
-            color: #3730a3;
-        }
-
-        .pill {
-            background: #f1f5f9;
-            border: 1px solid #e2e8f0;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 11px;
-            margin-right: 4px;
-        }
-
-        .alert {
-            padding: 12px;
-            background: #dcfce7;
-            color: #166534;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid #bbf7d0;
-        }
-
-        .upload-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 15px;
-        }
-
-        .upload-box {
-            border: 1px dashed #cbd5e1;
-            padding: 15px;
-            border-radius: 8px;
-        }
-
-        select,
-        input[type="number"] {
-            padding: 5px;
-            border-radius: 4px;
-            border: 1px solid #cbd5e1;
-        }
-
-        .nav-btn.counselor-nav {
-            background-color: #10b981;
-            /* A nice Emerald Green to distinguish it from blue/indigo */
-        }
-
-        .nav-btn.counselor-nav:hover {
-            background-color: #059669;
         }
     </style>
 </head>
-
 <body>
 
-    <div class="header-flex">
-        <h1>Camp Dashboard</h1>
-        <div>
-            <a href="/search" class="btn btn-primary">Camper Lookup Tool</a>
-            <a href="/swap-tool" class="btn btn-primary">🔄 Swap Tool</a>
-            <a href="/promotions" class="btn btn-outline" style="border-color: #059669; color: #059669;">
-                🔔 Open Spots
-            </a>
-            <a href="/master-schedule" class="btn btn-dark">📅 Master Schedule</a>
-            <a href="/activities" class="btn btn-outline">⚙️ Rules</a>
-            <a href="/counselor-directory" class="nav-btn" style="background-color: #10b981; color: white;">Counselor Management</a>
-            </p>
-        </div>
+    <nav class="nav-bar">
+        <a href="/" class="nav-btn primary">🏠 Hub</a>
+        <a href="/master-schedule" class="nav-btn">📅 Master Schedule</a>
+        <a href="/search" class="nav-btn">🔍 Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">👤 Counselor Lookup</a>
+        <a href="/swap-tool" class="nav-btn">🔄 Swap Tools</a>
+        <a href="/promotions" class="nav-btn">🔔 Promotions</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/settings" class="nav-btn" style="margin-left: auto;">⚙️ Data Management</a>
+    </nav>
 
-    </div>
+    <div class="container">
+        <header class="header-flex">
+            <div>
+                <h1>Welcome back, Director</h1>
+                <p style="color: var(--text-muted);">Here is what's happening at camp today.</p>
+            </div>
+        </header>
 
-    <% if (alertMessage) { %>
-        <div class="alert">
-            <%= alertMessage %>
-        </div>
+        <% if (waitlistCount > 0) { %>
+            <div class="promo-alert">
+                <span><strong>Promotion Available:</strong> There are <%= waitlistCount %> campers eligible for open spots!</span>
+                <a href="/promotions" class="btn btn-success">View Promotions</a>
+            </div>
         <% } %>
 
-            <div class="card">
-                <h3>Import Data (CSV)</h3>
-                <div class="upload-grid">
-                    <div class="upload-box">
-                        <strong>Campers</strong>
-                        <form action="/upload-campers" method="POST" enctype="multipart/form-data">
-                            <input type="file" name="file" accept=".csv" required
-                                style="display:block; margin: 10px 0;">
-                            <button type="submit" class="btn btn-primary">Upload</button>
-                        </form>
-                    </div>
-                    <div class="upload-box">
-                        <strong>Counselors</strong>
-                        <form action="/upload-counselors" method="POST" enctype="multipart/form-data">
-                            <input type="file" name="file" accept=".csv" required
-                                style="display:block; margin: 10px 0;">
-                            <button type="submit" class="btn btn-primary">Upload</button>
-                        </form>
-                    </div>
-                    <div class="upload-box">
-                        <strong>Unit Leaders / Instructors</strong>
-                        <form action="/upload-staff" method="POST" enctype="multipart/form-data">
-                            <input type="file" name="file" accept=".csv" required
-                                style="display:block; margin: 10px 0;">
-                            <button type="submit" class="btn btn-success">Upload</button>
-                        </form>
-                    </div>
-                </div>
+        <div class="stats-grid">
+            <div class="card stat-card">
+                <span class="stat-number"><%= camperTotal %></span>
+                <span class="stat-label">Active Campers</span>
             </div>
+            <div class="card stat-card">
+                <span class="stat-number"><%= staffTotal %></span>
+                <span class="stat-label">Total Staff</span>
+            </div>
+            <div class="card stat-card">
+                <span class="stat-number"><%= activityCount %></span>
+                <span class="stat-label">Activities Running</span>
+            </div>
+        </div>
 
-            <% if (waitlistEntries.length> 0) { %>
-                <div class="card" style="border-left: 5px solid var(--warning);">
-                    <h3>⚠️ Active Waitlists</h3>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Camper</th>
-                                <th>Request</th>
-                                <th>Status</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <% waitlistEntries.forEach(w=> { %>
-                                <tr>
-                                    <td>
-                                        <%= w.FirstName %>
-                                            <%= w.LastName %>
-                                    </td>
-                                    <td>P<%= w.PeriodNumber %>: <%= w.RequestedActivity %>
-                                    </td>
-                                    <td>
-                                        <% if (w.CurrentEnrollment < w.MaxCapacity) { %>
-                                            <span style="color: var(--success); font-weight: bold;">Spot Open!</span>
-                                            <% } else { %>
-                                                Full (<%= w.CurrentEnrollment %>/<%= w.MaxCapacity %>)
-                                                        <% } %>
-                                    </td>
-                                    <td>
-                                        <form action="/promote-waitlist" method="POST">
-                                            <input type="hidden" name="WaitlistID" value="<%= w.WaitlistID %>">
-                                            <button type="submit" class="btn btn-success"
-                                                style="font-size: 11px;">Promote</button>
-                                        </form>
-                                    </td>
-                                </tr>
-                                <% }) %>
-                        </tbody>
-                    </table>
-                </div>
-                <% } %>
+        <div class="mt-20" style="display: flex; gap: 15px;">
+            <div class="card" style="flex: 1;">
+                <h3>Quick Tasks</h3>
+                <ul style="list-style: none; padding: 0;">
+                    <li style="padding: 10px 0; border-bottom: 1px solid #eee;">
+                        <a href="/settings" style="text-decoration: none; color: var(--primary);">Adjust Activity Capacities →</a>
+                    </li>
+                    <li style="padding: 10px 0;">
+                        <a href="/settings" style="text-decoration: none; color: var(--primary);">Upload New CSV Data →</a>
+                    </li>
+                </ul>
+            </div>
+            <div class="card" style="flex: 1;">
+                <h3>System Status</h3>
+                <p style="font-size: 0.9rem; color: var(--text-muted);">
+                    Database: <span style="color: var(--success);">● Operational</span><br>
+                    Current Season: Summer 2026<br>
+                    Last Backup: Today, 8:00 AM
+                </p>
+            </div>
+        </div>
+    </div>
 
-                    <div class="card">
-                        <h3>Activity Rules (Capacity & Side)</h3>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Activity</th>
-                                    <th>Side of Camp</th>
-                                    <th>Max Cap</th>
-                                    <th>Save</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <% allActivities.forEach(act=> { %>
-                                    <form action="/update-activity" method="POST">
-                                        <input type="hidden" name="ActivityName" value="<%= act.Name %>">
-                                        <tr>
-                                            <td><strong>
-                                                    <%= act.Name %>
-                                                </strong></td>
-                                            <td>
-                                                <select name="SideOfCamp">
-                                                    <option value="Enrichment" <%=act.SideOfCamp==='Enrichment'
-                                                        ? 'selected' : '' %>>Enrichment</option>
-                                                    <option value="Sports" <%=act.SideOfCamp==='Sports' ? 'selected'
-                                                        : '' %>>Sports</option>
-                                                </select>
-                                            </td>
-                                            <td><input type="number" name="MaxCapacity"
-                                                    value="<%= act.MaxCapacity || 20 %>" style="width: 50px;"></td>
-                                            <td><button type="submit" class="btn btn-outline"
-                                                    style="font-size: 11px;">Update</button></td>
-                                        </tr>
-                                    </form>
-                                    <% }) %>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div class="card">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <h3>Camper Roster</h3>
-                            <div>
-                                <button onclick="filterGroup('all')" class="btn btn-outline"
-                                    style="font-size: 11px;">All</button>
-                                <button onclick="filterGroup('Red')" class="btn btn-outline"
-                                    style="font-size: 11px;">Red</button>
-                                <button onclick="filterGroup('Carolina')" class="btn btn-outline"
-                                    style="font-size: 11px;">Carolina</button>
-                                <button onclick="filterGroup('Green')" class="btn btn-outline"
-                                    style="font-size: 11px;">Green</button>
-                                <button onclick="filterGroup('Navy')" class="btn btn-outline"
-                                    style="font-size: 11px;">Navy</button>
-                            </div>
-                        </div>
-                        <table id="camperTable">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Group</th>
-                                    <th>Home Counselor</th>
-                                    <th>Schedule Overview</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <% campers.forEach(c=> { %>
-                                    <tr class="camper-row" data-group="<%= c.ColorGroup %>">
-                                        <td><strong>
-                                                <%= c.FirstName %>
-                                                    <%= c.LastName %>
-                                            </strong></td>
-                                        <td><span class="tag <%= c.ColorGroup %>">
-                                                <%= c.ColorGroup %>
-                                            </span></td>
-                                        <td>
-                                            <%= c.CounselorFirst || '---' %>
-                                        </td>
-                                        <td>
-                                            <% schedules.filter(s=> s.PersonID === c.CamperID && s.PersonType ===
-                                                'Camper').forEach(p => { %>
-                                                <span class="pill">P<%= p.PeriodNumber %>: <%= p.ActivityName %></span>
-                                                <% }) %>
-                                        </td>
-                                    </tr>
-                                    <% }) %>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <script>
-                        function filterGroup(group) {
-                            const rows = document.querySelectorAll('.camper-row');
-                            rows.forEach(row => {
-                                if (group === 'all' || row.dataset.group === group) {
-                                    row.style.display = 'table-row';
-                                } else {
-                                    row.style.display = 'none';
-                                }
-                            });
-                        }
-                    </script>
 </body>
-
 </html>

@@ -4,349 +4,242 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Camper Search | Camp Management</title>
+    <title>Camper Search | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
     <style>
-        :root {
-            --primary: #1e293b;
-            --accent: #6366f1;
-            --bg: #f8fafc;
-            --border: #e2e8f0;
-        }
-
-        body {
-            font-family: -apple-system, sans-serif;
-            background: var(--bg);
-            color: var(--primary);
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1000px;
-            margin: auto;
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .btn-back {
-            text-decoration: none;
-            color: var(--accent);
-            font-weight: 600;
-        }
-
-        .search-box {
+        .search-header {
             background: white;
-            padding: 25px;
+            padding: 30px;
             border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+            margin-bottom: 30px;
+            border: 1px solid var(--border-color);
+        }
+
+        .search-bar-container {
             display: flex;
-            gap: 10px;
+            gap: 12px;
+            margin-top: 20px;
         }
 
         .search-input {
-            flex-grow: 1;
-            padding: 12px;
-            border: 2px solid var(--border);
-            border-radius: 8px;
+            flex: 1;
+            padding: 14px 20px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
             font-size: 1.1rem;
+            transition: all 0.2s;
         }
 
         .search-input:focus {
-            border-color: var(--accent);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
             outline: none;
         }
 
-        .clear-btn {
-            padding: 12px;
-            background: #f1f5f9;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            cursor: pointer;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        th {
-            background: #f8fafc;
-            padding: 15px;
-            text-align: left;
-            border-bottom: 2px solid var(--border);
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            color: #64748b;
-        }
-
-        td {
-            padding: 15px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        th,
-        td {
-            padding: 10px 8px;
-            /* Slightly tighter padding for more columns */
-            font-size: 0.85rem;
-        }
-
-        .camper-row:hover {
-            background-color: #f1f5f9;
-        }
-
-        .info-row td {
-            white-space: nowrap;
-            /* Prevents text from wrapping and making rows too tall */
-        }
-
-        .tag {
-            padding: 2px 6px;
-            font-size: 0.65rem;
-        }
-
-        .info-row td:nth-child(7),
-        .info-row td:nth-child(8) {
-            text-align: center;
-            font-size: 1rem;
-        }
-
-        .Red {
-            background: #dc2626;
-        }
-
-        .Carolina {
-            background: #60a5fa;
-        }
-
-        .Green {
-            background: #16a34a;
-        }
-
-        .Navy {
-            background: #1e3a8a;
-        }
-
-        .action-link {
-            color: var(--accent);
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        .schedule-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 8px;
-            background: #f1f5f9;
-            /* Light slate background */
-            padding: 12px;
-            border-radius: 8px;
-        }
-
-        .p-slot {
-            font-size: 0.75rem;
-            color: #475569;
-        }
-
-        .p-slot strong {
-            display: block;
-            color: var(--primary);
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            margin-bottom: 2px;
-        }
-
+        /* Results Styling */
         .camper-group {
-            border-bottom: 2px solid var(--border);
+            border-bottom: 8px solid var(--bg);
         }
 
-        .info-row td {
-            padding-bottom: 5px;
-            /* Bring the schedule row closer */
-            border-bottom: none;
+        .main-info-row td {
+            background: white;
+            font-weight: 500;
+            padding: 18px 12px;
         }
 
         .schedule-row td {
-            padding-top: 5px;
-            padding-bottom: 20px;
+            background: #f8fafc;
+            padding: 0 15px 15px 15px;
         }
 
-        .counselor-link {
-            color: #4f46e5;
-            /* Indigo */
-            text-decoration: none;
-            font-weight: 500;
-            border-bottom: 1px dashed #c7d2fe;
-            transition: all 0.2s ease;
+        .mini-schedule {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
         }
 
-        .counselor-link:hover {
-            color: #3730a3;
-            border-bottom: 1px solid #3730a3;
-            background-color: #f5f3ff;
-            border-radius: 2px;
+        .period-box {
+            font-size: 0.8rem;
+        }
+
+        .period-box strong {
+            display: block;
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        /* Danger Zone - Tucked Away */
+        .admin-footer {
+            margin-top: 50px;
+            padding: 20px;
+            border-top: 2px dashed #fee2e2;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+
+        .admin-footer:hover {
+            opacity: 1;
         }
     </style>
 </head>
 
 <body>
 
+    <nav class="nav-bar">
+        <a href="/" class="nav-btn">🏠 Hub</a>
+        <a href="/master-schedule" class="nav-btn">📅 Master Schedule</a>
+        <a href="/counselor-directory" class="nav-btn">👤 Staff Directory</a>
+        <a href="/search" class="nav-btn primary">🔍 Search</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+    </nav>
+
     <div class="container">
-        <div class="header">
-            <h1>🔍 Camper Search</h1>
-            <a href="/master-schedule" class="btn-back">← Master Schedule</a>
+        <div class="search-header">
+            <h1 style="margin:0;">Camper Lookup</h1>
+            <p style="color: var(--text-muted);">Find schedules, bus routes, and counselor assignments.</p>
+
+            <div class="search-bar-container">
+                <input type="text" id="camperSearch" class="search-input"
+                    placeholder="Type a name (e.g. 'Alex' or 'Smith')..." onkeyup="runCamperSearch()">
+                <button class="btn" style="background: #f1f5f9; color: #475569;" onclick="clearSearch()">Clear</button>
+            </div>
         </div>
 
-
-        <div class="search-box">
-            <input type="text" id="camperSearch" class="search-input" placeholder="Search by first or last name..."
-                value="<%= typeof query !== 'undefined' ? query : '' %>" onkeyup="runCamperSearch()">
-
-            <button class="clear-btn" onclick="clearSearch()">Clear</button>
-        </div>
-
-
-        <table>
+        <table style="width: 100%; border-collapse: collapse;">
             <thead>
-                <tr>
-                    <th>First Name</th>
-                    <th>Last Name</th>
+                <tr style="text-align: left; border-bottom: 2px solid #e2e8f0;">
+                    <th style="padding: 12px;">Camper</th>
                     <th>Age</th>
                     <th>Group</th>
                     <th>Counselor</th>
-                    <th>Bus</th>
-                    <th>Ext. Hrs</th>
+                    <th>Bus / Extended</th>
                     <th>Lunch</th>
-                    <th>Actions</th>
+                    <th style="text-align: right; padding-right: 12px;">Action</th>
                 </tr>
             </thead>
             <% if (typeof camper !=='undefined' && camper.length> 0) { %>
                 <% camper.forEach(function(c) { %>
-                    <tbody class="camper-group" data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>">
-                        <tr class="info-row">
-                            <td>
-                                <%= c.FirstName %>
-                            </td>
-                            <td>
-                                <%= c.LastName %>
+                    <tbody class="camper-group staff-item"
+                        data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>">
+                        <tr class="main-info-row" style="border-top: 1px solid #f1f5f9;">
+                            <td style="padding: 12px;">
+                                <div style="font-weight: 700; color: #1e293b;">
+                                    <%= c.FirstName %>
+                                        <%= c.LastName %>
+                                </div>
                             </td>
                             <td>
                                 <%= c.Age %>
                             </td>
-                            <td><span class="tag <%= c.ColorGroup %>">
-                                    <%= c.ColorGroup %>
-                                </span></td>
                             <td>
-                                <% if (c.HomeCounselor) { %>
+                                <span class="tag <%= c.HomeGroupColor %>">
+                                    <%= c.HomeGroupColor %>
+                                </span>
+                            </td>
+                            <td>
+                                <% if (c.HomeGroupCounselorID) { %>
                                     <a href="/counselor-profile/<%= c.HomeGroupCounselorID %>" class="counselor-link"
-                                        title="View Counselor Profile">
-                                        <%= c.HomeCounselor %>
+                                        style="text-decoration: none; color: #3b82f6; font-weight: 500;">
+                                        👤 <%= c.HomeCounselorName %>
                                     </a>
                                     <% } else { %>
                                         <span style="color: #94a3b8; font-style: italic;">Unassigned</span>
                                         <% } %>
                             </td>
-                            <td><small>
-                                    <%= c.BusRoute || 'None' %>
-                                </small></td>
                             <td>
-                                <%= c.ExtendedHours %>
+                                <div style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 2px;">
+                                    <span>🚌 <%= c.BusRoute || 'None' %></span>
+                                    <span style="font-size: 0.75rem; color: #64748b;">⏰ Ext: <%= c.ExtendedHours || 'No'
+                                            %></span>
+                                </div>
                             </td>
                             <td>
-                                <%= c.CampLunch %>
+                                <% if (c.CampLunch==='Yes' ) { %>
+                                    <span
+                                        style="background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">🍱
+                                        YES</span>
+                                    <% } else { %>
+                                        <span style="color: #94a3b8; font-size: 0.75rem;">Packed</span>
+                                        <% } %>
                             </td>
-                            <td><a href="/camper/<%= c.CamperID %>" class="action-link">Profile</a></td>
+                            <td style="text-align: right; padding-right: 12px;">
+                                <a href="/camper/<%= c.CamperID %>" class="action-btn"
+                                    style="padding: 6px 12px; font-size: 0.8rem; background: #f1f5f9; border-radius: 6px; color: #475569; text-decoration: none;">View
+                                    Profile</a>
+                            </td>
                         </tr>
                         <tr class="schedule-row">
-                            <td colspan="9">
-                                <div class="schedule-grid">
-                                    <div class="p-slot"><strong>P1</strong>
-                                        <%= c.P1 || '---' %>
-                                    </div>
-                                    <div class="p-slot"><strong>P2</strong>
-                                        <%= c.P2 || '---' %>
-                                    </div>
-                                    <div class="p-slot"><strong>P3</strong>
-                                        <%= c.P3 || '---' %>
-                                    </div>
-                                    <div class="p-slot"><strong>P4</strong>
-                                        <%= c.P4 || '---' %>
-                                    </div>
-                                    <div class="p-slot"><strong>P5</strong>
-                                        <%= c.P5 || '---' %>
-                                    </div>
+                            <td colspan="7" style="padding: 0 12px 12px 12px;">
+                                <div class="mini-schedule"
+                                    style="display: flex; gap: 8px; background: #f8fafc; padding: 10px; border-radius: 8px;">
+                                    <% ['P1', 'P2' , 'P3' , 'P4' , 'P5' ].forEach(p=> { %>
+                                        <div class="period-box"
+                                            style="flex: 1; font-size: 0.75rem; border-left: 3px solid #cbd5e1; padding-left: 8px;">
+                                            <strong style="display: block; color: #64748b; font-size: 0.65rem;">
+                                                <%= p %>
+                                            </strong>
+                                            <span
+                                                style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">
+                                                <%= c[p] || '---' %>
+                                            </span>
+                                        </div>
+                                        <% }) %>
                                 </div>
                             </td>
                         </tr>
                     </tbody>
                     <% }) %>
-                        <% } %>
+                        <% } else { %>
+                            <tbody>
+                                <tr>
+                                    <td colspan="7" style="text-align: center; padding: 40px; color: #94a3b8;">No
+                                        campers found matching your search.</td>
+                                </tr>
+                            </tbody>
+                            <% } %>
         </table>
-    </div>
-    <div style="margin-top: 20px; padding: 15px; border: 1px solid #fee2e2; background: #fef2f2; border-radius: 8px;">
-        <h3 style="color: #991b1b; margin-top: 0;">⚠️ Danger Zone</h3>
-        <p style="font-size: 0.85rem; color: #b91c1c;">This will permanently delete all campers and their associated
-            schedules.</p>
 
-        <form action="/clear-campers" method="POST"
-            onsubmit="return confirm('Are you ABSOLUTELY sure? This cannot be undone and all camper schedules will be wiped.');">
-            <button type="submit"
-                style="background: #dc2626; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: bold;">
-                Clear All Camper Data
-            </button>
-        </form>
+        <footer class="admin-footer">
+            <div
+                style="display: flex; justify-content: space-between; align-items: center; background: white; padding: 20px; border-radius: 12px; border: 1px solid #fee2e2;">
+                <div>
+                    <h4 style="margin:0; color: #991b1b;">Data Management</h4>
+                    <p style="margin:0; font-size: 0.8rem; color: #b91c1c;">Clear all camper records for a new session.
+                    </p>
+                </div>
+                <form action="/clear-campers" method="POST"
+                    onsubmit="return confirm('EXTREME WARNING: This wipes the entire database of campers. Proceed?');">
+                    <button type="submit"
+                        style="background: #fee2e2; color: #dc2626; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                        Clear Database
+                    </button>
+                </form>
+            </div>
+        </footer>
     </div>
+
     <script>
+        // Your existing search logic works perfectly, keeping it as is!
         function runCamperSearch() {
-            var input = document.getElementById('camperSearch');
-            // Clean the filter: remove extra spaces and lowercase it
-            var filter = input.value.trim().toLowerCase();
-
-            // We target the tbody "groups" so both rows hide/show together
+            var filter = document.getElementById('camperSearch').value.trim().toLowerCase();
             var groups = document.querySelectorAll('.camper-group');
-
             groups.forEach(function (group) {
-                var camperName = group.getAttribute('data-name');
-
-                // If the search is empty, show everyone. Otherwise, check for match.
-                if (filter === "" || camperName.indexOf(filter) > -1) {
-                    group.style.display = "";
-                } else {
-                    group.style.display = "none";
-                }
+                var name = group.getAttribute('data-name');
+                group.style.display = (filter === "" || name.includes(filter)) ? "" : "none";
             });
         }
+
         function clearSearch() {
-            // 1. Reset the input field value
-            const searchInput = document.getElementById('camperSearch');
-            searchInput.value = "";
-
-            // 2. Clear the URL parameters so the name doesn't come back on refresh
-            if (window.history.pushState) {
-                const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-                window.history.pushState({ path: newurl }, '', newurl);
-            }
-
-            // 3. Re-run the search with the now-empty string to show all rows
+            document.getElementById('camperSearch').value = "";
             runCamperSearch();
-
-            // 4. Focus back on the input for convenience
-            searchInput.focus();
+            document.getElementById('camperSearch').focus();
         }
-        // Trigger on load
-        window.addEventListener('load', function () {
-            if (document.getElementById('camperSearch').value !== "") {
-                runCamperSearch();
-            }
-        });
     </script>
 </body>
 

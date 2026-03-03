@@ -33,7 +33,7 @@ db.exec(`
     FirstName TEXT NOT NULL,
     LastName TEXT NOT NULL,
     StaffType TEXT CHECK(StaffType IN ('Unit Leader', 'Instructor')),
-    ColorGroup TEXT -- NULL for Instructors, assigned for Unit Leaders
+    HomeGroupColor TEXT -- NULL for Instructors, assigned for Unit Leaders
   );
 
   -- 3. Campers
@@ -43,7 +43,7 @@ db.exec(`
     LastName TEXT NOT NULL,
     Age INTEGER,
     -- Fixed typo constraint
-    ColorGroup TEXT CHECK(ColorGroup IN ('Red', 'Carolina', 'Green', 'Navy')),
+    HomeGroupColor TEXT CHECK(HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')),
     HomeGroupCounselorID INTEGER,
     BusRoute INTEGER,
     ExtendedHours TEXT CHECK(ExtendedHours IN ('AM', 'PM', 'Both', NULL)),
@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS Activities (
     ActivityID INTEGER PRIMARY KEY AUTOINCREMENT,
     Name TEXT UNIQUE NOT NULL,
     SideOfCamp TEXT CHECK(SideOfCamp IN ('Sports', 'Enrichment')),
-    MaxCapacity INTEGER DEFAULT 20
+    MaxCapacity INTEGER DEFAULT 20,
+    Location TEXT
   );
   CREATE TABLE IF NOT EXISTS Waitlists (
     WaitlistID INTEGER PRIMARY KEY AUTOINCREMENT,

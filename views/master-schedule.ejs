@@ -1,314 +1,367 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Master Schedule | Camp Management</title>
+    <title>Master Schedule | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
     <style>
-        :root {
-            --primary: #1e293b;
-            --accent: #6366f1;
-            --bg: #f8fafc;
-            --border: #e2e8f0;
-
-            /* New Activity Side Colors (Non-Red/Green) */
-            --enrichment-bg: #f5f3ff;
-            /* Soft Lavender */
-            --enrichment-border: #8b5cf6;
-            /* Purple */
-            --enrichment-text: #5b21b6;
-
-            --sports-bg: #fffbeb;
-            /* Soft Amber */
-            --sports-border: #f59e0b;
-            /* Gold/Orange */
-            --sports-text: #92400e;
+        .period-section {
+            margin-bottom: 40px;
         }
 
-        body {
-            font-family: -apple-system, sans-serif;
-            background: var(--bg);
-            color: var(--primary);
-            margin: 0;
-            padding: 20px;
-            line-height: 1.5;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: auto;
-        }
-
-        .header {
+        .period-header {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .btn-back {
-            text-decoration: none;
-            color: var(--accent);
-            font-weight: 600;
-            padding: 8px 16px;
-            border: 1px solid var(--accent);
-            border-radius: 6px;
-        }
-
-        /* Search & Filter Bar */
-        .controls {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-            display: flex;
-            flex-wrap: wrap;
             gap: 15px;
-            align-items: center;
+            margin-bottom: 14px;
         }
 
-        .search-input {
-            flex-grow: 2;
-            padding: 12px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            font-size: 1rem;
+        .period-badge {
+            background: var(--primary);
+            color: white;
+            font-weight: 800;
+            font-size: 0.85rem;
+            padding: 6px 16px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
         }
 
-        .filter-select {
-            padding: 12px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            background: white;
-            min-width: 150px;
+        .period-divider {
+            flex: 1;
+            height: 2px;
+            background: var(--border-color);
+            border-radius: 2px;
         }
 
-        /* Table Styling */
-        .table-container {
+        .class-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
             background: white;
             border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            text-align: left;
-        }
-
-        th {
+        .class-table th {
             background: #f8fafc;
-            padding: 15px;
-            border-bottom: 2px solid var(--border);
-            font-size: 0.75rem;
+            padding: 11px 15px;
+            text-align: left;
+            font-size: 0.72rem;
             text-transform: uppercase;
-            color: #64748b;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            border-bottom: 2px solid var(--border-color);
+            white-space: nowrap;
         }
 
-        td {
-            padding: 15px;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.9rem;
-            vertical-align: top;
+        .class-table td {
+            padding: 13px 15px;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 0.875rem;
+            vertical-align: middle;
         }
 
-        /* Dynamic Side Coloring - Classes replace inline styles */
-        .enrichment-cell {
-            border-left: 4px solid var(--enrichment-border);
-            background-color: var(--enrichment-bg);
+        .class-table tr:last-child td {
+            border-bottom: none;
         }
 
-        .sports-cell {
-            border-left: 4px solid var(--sports-border);
-            background-color: var(--sports-bg);
+        .class-table tr:hover td {
+            background: #fafbff;
         }
 
-        .label-enrichment {
-            color: var(--enrichment-text);
+        /* Activity name link */
+        .activity-link {
+            font-weight: 700;
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 0.92rem;
+        }
+        .activity-link:hover {
+            color: var(--primary-hover);
+            text-decoration: underline;
         }
 
-        .label-sports {
-            color: var(--sports-text);
-        }
-
-        .side-label {
-            font-size: 0.65rem;
-            font-weight: 800;
-            display: block;
-            margin-top: 6px;
+        /* Side of camp pill */
+        .side-pill {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 700;
             text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .side-sports    { background: #fee2e2; color: #991b1b; }
+        .side-enrichment { background: #dbeafe; color: #1e40af; }
+
+        /* Enrollment badge */
+        .enroll-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #f1f5f9;
+            border-radius: 6px;
+            padding: 3px 9px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-main);
+            white-space: nowrap;
+        }
+        .enroll-badge.near-full { background: #fef3c7; color: #92400e; }
+        .enroll-badge.full      { background: #fee2e2; color: #991b1b; }
+
+        /* Group dots */
+        .group-dots {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
         }
 
-
-
-        .split-note {
-            font-style: italic;
-            opacity: 0.7;
-            font-size: 0.6rem;
-            color: #475569;
+        /* Staff name link */
+        .staff-name {
+            font-size: 0.82rem;
+            color: var(--text-main);
+            white-space: nowrap;
+        }
+        .staff-type-label {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
         }
 
-        /* Color Group Tags */
-        .tag {
-            padding: 4px 10px;
+        /* Counselor chips */
+        .counselor-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .counselor-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
             border-radius: 20px;
             font-size: 0.75rem;
-            font-weight: 800;
+            font-weight: 600;
             color: white;
-            text-transform: uppercase;
+            text-decoration: none;
+            transition: opacity 0.15s;
+            white-space: nowrap;
+        }
+        .counselor-chip:hover { opacity: 0.82; }
+
+        /* Location cell */
+        .location-text {
+            font-size: 0.82rem;
+            color: var(--text-muted);
         }
 
-        .Red {
-            background-color: #dc2626;
-            border: 1px solid #991b1b;
+        /* Filters bar */
+        .filter-bar {
+            background: white;
+            padding: 14px 20px;
+            border-radius: 10px;
+            margin-bottom: 28px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            border: 1px solid var(--border-color);
+            flex-wrap: wrap;
         }
-
-        .Carolina {
-            background-color: #60a5fa;
-            border: 1px solid #2563eb;
+        .filter-bar label {
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: var(--text-main);
+            white-space: nowrap;
         }
-
-        /* Sky/Carolina Blue */
-        .Green {
-            background-color: #16a34a;
-            border: 1px solid #14532d;
-        }
-
-        .Navy {
-            background-color: #1e3a8a;
-            border: 1px solid #172554;
-        }
-
-        @media print {
-
-            .controls,
-            .btn-back {
-                display: none;
-            }
-
-            body {
-                padding: 0;
-                background: white;
-            }
-
-            .enrichment-cell,
-            .sports-cell {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
+        select.filter-dropdown {
+            padding: 7px 12px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            font-family: inherit;
+            font-size: 0.875rem;
+            background: white;
         }
     </style>
 </head>
-
 <body>
 
-    <div class="container">
-        <div class="header">
-            <h1>📅 Master Schedule</h1>
-            <a href="/" class="btn-back">← Dashboard</a>
-        </div>
+    <nav class="nav-bar">
+        <a href="/" class="nav-btn">🏠 Hub</a>
+        <a href="/search" class="nav-btn">🔍 Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">👤 Counselors</a>
+        <a href="/master-schedule" class="nav-btn primary">📅 Master Schedule</a>
+        <a href="/swap-tool" class="nav-btn">🔄 Swap Tools</a>
+        <a href="/promotions" class="nav-btn">🔔 Promotions</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+    </nav>
 
-        <div class="controls">
-            <input type="text" id="nameSearch" class="search-input" placeholder="🔍 Search by camper name..."
-                onkeyup="runFilters()">
-            <select id="groupFilter" class="filter-select" onchange="runFilters()">
+    <div class="container" style="max-width: 1400px;">
+        <header style="margin-bottom: 24px;">
+            <h1>Master Schedule</h1>
+            <p style="color: var(--text-muted); margin: 0;">All classes by period. Click a class name to view its full roster.</p>
+        </header>
+
+        <div class="filter-bar">
+            <label for="periodFilter">Period:</label>
+            <select id="periodFilter" class="filter-dropdown" onchange="applyFilters()">
+                <option value="all">All Periods</option>
+                <% for (let p = 1; p <= 6; p++) { %>
+                    <% if (p === 3) { %>
+                        <option value="3 AM">Period 3 AM</option>
+                        <option value="3 PM">Period 3 PM</option>
+                    <% } else { %>
+                        <option value="<%= p %>">Period <%= p %></option>
+                    <% } %>
+                <% } %>
+            </select>
+
+            <label for="sideFilter" style="margin-left: 10px;">Side:</label>
+            <select id="sideFilter" class="filter-dropdown" onchange="applyFilters()">
+                <option value="all">All</option>
+                <option value="Sports">Sports</option>
+                <option value="Enrichment">Enrichment</option>
+            </select>
+
+            <label for="groupFilter" style="margin-left: 10px;">Group:</label>
+            <select id="groupFilter" class="filter-dropdown" onchange="applyFilters()">
                 <option value="all">All Groups</option>
                 <option value="Red">Red</option>
                 <option value="Carolina">Carolina</option>
                 <option value="Green">Green</option>
                 <option value="Navy">Navy</option>
             </select>
-            <button onclick="window.print()"
-                style="padding: 12px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer;">🖨️
-                Print</button>
         </div>
 
+        <% schedule.forEach(function(period) { %>
+        <div class="period-section" data-period="<%= period.periodLabel %>">
+            <div class="period-header">
+                <span class="period-badge">Period <%= period.periodLabel %></span>
+                <div class="period-divider"></div>
+                <span style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;"><%= period.classes.length %> classes</span>
+            </div>
 
-
-        <div class="table-container">
-            <table id="masterTable">
+            <table class="class-table">
                 <thead>
                     <tr>
-                        <th style="width: 200px;">Camper</th>
-                        <th style="width: 100px;">Group</th>
-                        <th>P1 (AM)</th>
-                        <th>P2 (AM)</th>
-                        <th>P3 (Split)</th>
-                        <th>P4 (PM)</th>
-                        <th>P5 (PM)</th>
+                        <th style="width: 22%;">Class</th>
+                        <th style="width: 8%;">Side</th>
+                        <th style="width: 9%;">Enrolled</th>
+                        <th style="width: 16%;">Groups</th>
+                        <th style="width: 13%;">Staff</th>
+                        <th style="width: 10%;">Location</th>
+                        <th>Counselors</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <% if (data && data.length> 0) { %>
-                        <% data.forEach(function(row) { %>
-                            <tr class="schedule-row" data-group="<%= row.ColorGroup || '' %>"
-                                data-name="<%= (row.FirstName || '').toLowerCase() %> <%= (row.LastName || '').toLowerCase() %>">
+                    <% period.classes.forEach(function(cls) { %>
+                    <tr class="class-row"
+                        data-side="<%= cls.sideOfCamp || '' %>"
+                        data-groups="<%= cls.colorGroups.join(',') %>">
 
-                                <td>
-                                    <a href="/search?name=<%= encodeURIComponent(row.FirstName + ' ' + row.LastName) %>" 
-                                    style="text-decoration: none; color: var(--primary); font-weight: bold; border-bottom: 1px dashed #cbd5e1;">
-                                        <%= row.LastName %>, <%= row.FirstName %>
+                        <td>
+                            <a class="activity-link"
+                               href="/class-roster/<%= period.periodNumber %>/<%= encodeURIComponent(cls.activityName) %>">
+                                <%= cls.activityName %>
+                            </a>
+                        </td>
+
+                        <td>
+                            <% if (cls.sideOfCamp === 'Sports') { %>
+                                <span class="side-pill side-sports">Sports</span>
+                            <% } else if (cls.sideOfCamp === 'Enrichment') { %>
+                                <span class="side-pill side-enrichment">Enrichment</span>
+                            <% } else { %>
+                                <span class="side-pill" style="background:#f1f5f9; color:#64748b;">—</span>
+                            <% } %>
+                        </td>
+
+                        <td>
+                            <%
+                                const pct = cls.maxCapacity ? cls.enrolled / cls.maxCapacity : 0;
+                                let enrollClass = '';
+                                if (pct >= 1) enrollClass = 'full';
+                                else if (pct >= 0.85) enrollClass = 'near-full';
+                            %>
+                            <span class="enroll-badge <%= enrollClass %>">
+                                <%= cls.enrolled %><% if (cls.maxCapacity) { %>/<%= cls.maxCapacity %><% } %>
+                            </span>
+                        </td>
+
+                        <td>
+                            <div class="group-dots">
+                                <% cls.colorGroups.forEach(function(color) { %>
+                                    <span class="tag <%= color %>"><%= color %></span>
+                                <% }); %>
+                                <% if (cls.colorGroups.length === 0) { %>
+                                    <span style="color: var(--text-muted); font-size: 0.8rem;">—</span>
+                                <% } %>
+                            </div>
+                        </td>
+
+                        <td>
+                            <% if (cls.staff.length > 0) { %>
+                                <% cls.staff.forEach(function(s) { %>
+                                    <div>
+                                        <div class="staff-name"><%= s.FirstName %> <%= s.LastName %></div>
+                                        <div class="staff-type-label"><%= s.StaffType %></div>
+                                    </div>
+                                <% }); %>
+                            <% } else { %>
+                                <span style="color: var(--text-muted); font-size: 0.8rem;">—</span>
+                            <% } %>
+                        </td>
+
+                        <td>
+                            <span class="location-text"><%= cls.location || '—' %></span>
+                        </td>
+
+                        <td>
+                            <div class="counselor-chips">
+                                <% cls.counselors.forEach(function(c) { %>
+                                    <a href="/counselor-profile/<%= c.CounselorID %>"
+                                       class="counselor-chip <%= c.HomeGroupColor %>">
+                                        <%= c.FirstName %> <%= c.LastName %>
                                     </a>
-                                </td>
-                                <td><span class="tag <%= row.ColorGroup %>">
-                                        <%= row.ColorGroup || 'N/A' %>
-                                    </span></td>
-
-                                <% for(var i=1; i <=5; i++) { var activity=row['P' + i]; var side=row['S' + i]; var
-                                    cellClass="" ; var sideClass="" ; if (side==='Sports' ) { cellClass="sports-cell" ;
-                                    sideClass="label-sports" ; } else if (side==='Enrichment' ) {
-                                    cellClass="enrichment-cell" ; sideClass="label-enrichment" ; } %>
-                                    <td class="<%= cellClass %>">
-                                        <strong>
-                                            <%= activity || '---' %>
-                                        </strong>
-                                        <% if (side) { %>
-                                            <span class="side-label <%= sideClass %>">
-                                                <%= side %>
-                                                    <% if (i===3) { %>
-                                                        <span class="split-note">
-                                                            <% /* Updated Labels: Reds get AFT 1, Greens get MORN 3 */
-                                                                %>
-                                                                <%= (row.ColorGroup==='Red' ||
-                                                                    row.ColorGroup==='Carolina' ) ? '(Aft 1)'
-                                                                    : '(Morn 3)' %>
-                                                        </span>
-                                                        <% } %>
-                                            </span>
-                                            <% } %>
-                                    </td>
-                                    <% } %>
-                            </tr>
-                            <% }) %>
-                                <% } else { %>
-                                    <tr>
-                                        <td colspan="7" style="text-align: center; padding: 40px;">No records found.
-                                        </td>
-                                    </tr>
-                                    <% } %>
+                                <% }); %>
+                                <% if (cls.counselors.length === 0) { %>
+                                    <span style="color: var(--text-muted); font-size: 0.8rem;">—</span>
+                                <% } %>
+                            </div>
+                        </td>
+                    </tr>
+                    <% }); %>
                 </tbody>
             </table>
         </div>
+        <% }); %>
     </div>
 
     <script>
-        function runFilters() {
-            var nameVal = document.getElementById('nameSearch').value.toLowerCase();
-            var groupVal = document.getElementById('groupFilter').value;
-            var rows = document.querySelectorAll('.schedule-row');
+        function applyFilters() {
+            const period = document.getElementById('periodFilter').value;
+            const side   = document.getElementById('sideFilter').value;
+            const group  = document.getElementById('groupFilter').value;
 
-            for (var i = 0; i < rows.length; i++) {
-                var row = rows[i];
-                var nameMatch = row.getAttribute('data-name').indexOf(nameVal) > -1;
-                var groupMatch = (groupVal === 'all' || row.getAttribute('data-group') === groupVal);
-                row.style.display = (nameMatch && groupMatch) ? '' : 'none';
-            }
+            // Show/hide whole period sections
+            document.querySelectorAll('.period-section').forEach(section => {
+                const sectionPeriod = section.dataset.period;
+                const periodMatch = period === 'all' || sectionPeriod === period;
+                section.style.display = periodMatch ? '' : 'none';
+            });
+
+            // Show/hide individual rows within visible sections
+            document.querySelectorAll('.class-row').forEach(row => {
+                const sideMatch  = side  === 'all' || row.dataset.side  === side;
+                const groupMatch = group === 'all' || row.dataset.groups.split(',').includes(group);
+                row.style.display = (sideMatch && groupMatch) ? '' : 'none';
+            });
         }
     </script>
-
 </body>
-
 </html>
