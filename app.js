@@ -27,11 +27,47 @@ app.use(express.urlencoded({ extended: true }));
 // --- HELPER: Database Initialization ---
 // This ensures your tables match the logic used in the routes
 db.exec(`
+    CREATE TABLE IF NOT EXISTS Campers (
+        CamperID INTEGER PRIMARY KEY AUTOINCREMENT,
+        FirstName TEXT NOT NULL,
+        LastName TEXT NOT NULL,
+        Age INTEGER,
+        HomeGroupColor TEXT,
+        HomeGroupCounselorID INTEGER,
+        BusRoute TEXT,
+        ExtendedHours TEXT CHECK(ExtendedHours IN ('AM', 'PM', 'Both')),
+        CampLunch TEXT DEFAULT 'No'
+    );
+    CREATE TABLE IF NOT EXISTS Counselors (
+        CounselorID INTEGER PRIMARY KEY AUTOINCREMENT,
+        FirstName TEXT NOT NULL,
+        LastName TEXT NOT NULL,
+        HomeGroupColor TEXT,
+        ScheduleType TEXT,
+        BusRoute TEXT,
+        ExtendedHours TEXT
+    );
+    CREATE TABLE IF NOT EXISTS Staff (
+        StaffID INTEGER PRIMARY KEY AUTOINCREMENT,
+        FirstName TEXT NOT NULL,
+        LastName TEXT NOT NULL,
+        HomeGroupColor TEXT,
+        StaffType TEXT
+    );
+    CREATE TABLE IF NOT EXISTS Schedules (
+        ScheduleID INTEGER PRIMARY KEY AUTOINCREMENT,
+        PersonID INTEGER NOT NULL,
+        PersonType TEXT NOT NULL CHECK(PersonType IN ('Camper', 'Counselor', 'Staff')),
+        PeriodNumber INTEGER NOT NULL,
+        ActivityName TEXT NOT NULL,
+        Location TEXT
+    );
     CREATE TABLE IF NOT EXISTS Activities (
         ActivityID INTEGER PRIMARY KEY AUTOINCREMENT,
         Name TEXT UNIQUE NOT NULL,
         SideOfCamp TEXT CHECK(SideOfCamp IN ('Sports', 'Enrichment')),
-        MaxCapacity INTEGER DEFAULT 20
+        MaxCapacity INTEGER DEFAULT 20,
+        Location TEXT
     );
     CREATE TABLE IF NOT EXISTS Waitlists (
         WaitlistID INTEGER PRIMARY KEY AUTOINCREMENT,
