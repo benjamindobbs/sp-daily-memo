@@ -5,198 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Master Schedule | Camp Hub</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .period-section {
-            margin-bottom: 40px;
-        }
-
-        .period-header {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            margin-bottom: 14px;
-        }
-
-        .period-badge {
-            background: var(--primary);
-            color: white;
-            font-weight: 800;
-            font-size: 0.85rem;
-            padding: 6px 16px;
-            border-radius: 20px;
-            letter-spacing: 0.5px;
-            white-space: nowrap;
-        }
-
-        .period-divider {
-            flex: 1;
-            height: 2px;
-            background: var(--border-color);
-            border-radius: 2px;
-        }
-
-        .class-table {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: var(--shadow);
-            border: 1px solid var(--border-color);
-        }
-
-        .class-table th {
-            background: #f8fafc;
-            padding: 11px 15px;
-            text-align: left;
-            font-size: 0.72rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--text-muted);
-            border-bottom: 2px solid var(--border-color);
-            white-space: nowrap;
-        }
-
-        .class-table td {
-            padding: 13px 15px;
-            border-bottom: 1px solid #f1f5f9;
-            font-size: 0.875rem;
-            vertical-align: middle;
-        }
-
-        .class-table tr:last-child td {
-            border-bottom: none;
-        }
-
-        .class-table tr:hover td {
-            background: #fafbff;
-        }
-
-        /* Activity name link */
-        .activity-link {
-            font-weight: 700;
-            color: var(--primary);
-            text-decoration: none;
-            font-size: 0.92rem;
-        }
-        .activity-link:hover {
-            color: var(--primary-hover);
-            text-decoration: underline;
-        }
-
-        /* Side of camp pill */
-        .side-pill {
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 20px;
-            font-size: 0.72rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-        .side-sports    { background: #fee2e2; color: #991b1b; }
-        .side-enrichment { background: #dbeafe; color: #1e40af; }
-
-        /* Enrollment badge */
-        .enroll-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            background: #f1f5f9;
-            border-radius: 6px;
-            padding: 3px 9px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: var(--text-main);
-            white-space: nowrap;
-        }
-        .enroll-badge.near-full { background: #fef3c7; color: #92400e; }
-        .enroll-badge.full      { background: #fee2e2; color: #991b1b; }
-
-        /* Group dots */
-        .group-dots {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
-        }
-
-        /* Staff name link */
-        .staff-link {
-            text-decoration: none;
-            color: inherit;
-            display: block;
-        }
-        .staff-link:hover .staff-name {
-            color: var(--primary);
-            text-decoration: underline;
-        }
-        .staff-name {
-            font-size: 0.82rem;
-            color: var(--text-main);
-            white-space: nowrap;
-        }
-        .staff-type-label {
-            font-size: 0.68rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-
-        /* Counselor chips */
-        .counselor-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
-        }
-        .counselor-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 9px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: white;
-            text-decoration: none;
-            transition: opacity 0.15s;
-            white-space: nowrap;
-        }
-        .counselor-chip:hover { opacity: 0.82; }
-
-        /* Location cell */
-        .location-text {
-            font-size: 0.82rem;
-            color: var(--text-muted);
-        }
-
-        /* Filters bar */
-        .filter-bar {
-            background: white;
-            padding: 14px 20px;
-            border-radius: 10px;
-            margin-bottom: 28px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            border: 1px solid var(--border-color);
-            flex-wrap: wrap;
-        }
-        .filter-bar label {
-            font-weight: 600;
-            font-size: 0.875rem;
-            color: var(--text-main);
-            white-space: nowrap;
-        }
-        select.filter-dropdown {
-            padding: 7px 12px;
-            border-radius: 6px;
-            border: 1px solid #cbd5e1;
-            font-family: inherit;
-            font-size: 0.875rem;
-            background: white;
-        }
-    </style>
+    <script src="/js/nav.js" defer></script>
 </head>
 <body>
 
@@ -210,7 +19,7 @@
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
     </nav>
 
-    <div class="container" style="max-width: 1400px;">
+    <div class="container-xl">
         <header style="margin-bottom: 24px;">
             <h1>Master Schedule</h1>
             <p style="color: var(--text-muted); margin: 0;">All classes by period. Click a class name to view its full roster.</p>
@@ -317,7 +126,7 @@
                             <% if (cls.staff.length > 0) { %>
                                 <% cls.staff.forEach(function(s) { %>
                                     <a href="/staff-lookup?name=<%= encodeURIComponent(s.FirstName + ' ' + s.LastName) %>" class="staff-link">
-                                        <div class="staff-name"><%= s.FirstName %> <%= s.LastName %></div>
+                                        <div class="staff-name-sched"><%= s.FirstName %> <%= s.LastName %></div>
                                         <div class="staff-type-label"><%= s.StaffType %></div>
                                     </a>
                                 <% }); %>

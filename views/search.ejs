@@ -6,87 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Camper Search | Camp Hub</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .search-header {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: var(--shadow);
-            margin-bottom: 30px;
-            border: 1px solid var(--border-color);
-        }
-
-        .search-bar-container {
-            display: flex;
-            gap: 12px;
-            margin-top: 20px;
-        }
-
-        .search-input {
-            flex: 1;
-            padding: 14px 20px;
-            border: 2px solid #e2e8f0;
-            border-radius: 10px;
-            font-size: 1.1rem;
-            transition: all 0.2s;
-        }
-
-        .search-input:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
-            outline: none;
-        }
-
-        /* Results Styling */
-        .camper-group {
-            border-bottom: 8px solid var(--bg);
-        }
-
-        .main-info-row td {
-            background: white;
-            font-weight: 500;
-            padding: 18px 12px;
-        }
-
-        .schedule-row td {
-            background: #f8fafc;
-            padding: 0 15px 15px 15px;
-        }
-
-        .mini-schedule {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 10px;
-            background: white;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-        }
-
-        .period-box {
-            font-size: 0.8rem;
-        }
-
-        .period-box strong {
-            display: block;
-            font-size: 0.65rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-        }
-
-        /* Danger Zone - Tucked Away */
-        .admin-footer {
-            margin-top: 50px;
-            padding: 20px;
-            border-top: 2px dashed #fee2e2;
-            opacity: 0.7;
-            transition: opacity 0.3s;
-        }
-
-        .admin-footer:hover {
-            opacity: 1;
-        }
-    </style>
+    <script src="/js/nav.js" defer></script>
 </head>
 
 <body>
@@ -108,89 +28,72 @@
             <div class="search-bar-container">
                 <input type="text" id="camperSearch" class="search-input"
                     placeholder="Type a name (e.g. 'Alex' or 'Smith')..." onkeyup="runCamperSearch()">
-                <button class="btn" style="background: #f1f5f9; color: #475569;" onclick="clearSearch()">Clear</button>
+                <button class="btn action-btn" onclick="clearSearch()">Clear</button>
             </div>
         </div>
 
-        <table style="width: 100%; border-collapse: collapse;">
+        <div class="table-scroll">
+        <table class="search-table">
             <thead>
-                <tr style="text-align: left; border-bottom: 2px solid #e2e8f0;">
-                    <th style="padding: 12px;">Camper</th>
+                <tr>
+                    <th>Camper</th>
                     <th>Age</th>
                     <th>Group</th>
                     <th>Counselor</th>
                     <th>Bus / Extended</th>
                     <th>Lunch</th>
-                    <th style="text-align: right; padding-right: 12px;">Action</th>
+                    <th class="text-right">Action</th>
                 </tr>
             </thead>
             <% if (typeof camper !=='undefined' && camper.length> 0) { %>
                 <% camper.forEach(function(c) { %>
                     <tbody class="camper-group staff-item"
                         data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>">
-                        <tr class="main-info-row" style="border-top: 1px solid #f1f5f9;">
-                            <td style="padding: 12px;">
+                        <tr class="main-info-row">
+                            <td>
                                 <div style="font-weight: 700; color: #1e293b;">
-                                    <%= c.FirstName %>
-                                        <%= c.LastName %>
+                                    <%= c.FirstName %> <%= c.LastName %>
                                 </div>
                             </td>
+                            <td><%= c.Age %></td>
                             <td>
-                                <%= c.Age %>
-                            </td>
-                            <td>
-                                <span class="tag <%= c.HomeGroupColor %>">
-                                    <%= c.HomeGroupColor %>
-                                </span>
+                                <span class="tag <%= c.HomeGroupColor %>"><%= c.HomeGroupColor %></span>
                             </td>
                             <td>
                                 <% if (c.HomeGroupCounselorID) { %>
-                                    <a href="/counselor-profile/<%= c.HomeGroupCounselorID %>" class="counselor-link"
-                                        style="text-decoration: none; color: #3b82f6; font-weight: 500;">
+                                    <a href="/counselor-profile/<%= c.HomeGroupCounselorID %>" class="counselor-link">
                                         👤 <%= c.HomeCounselorName %>
                                     </a>
-                                    <% } else { %>
-                                        <span style="color: #94a3b8; font-style: italic;">Unassigned</span>
-                                        <% } %>
+                                <% } else { %>
+                                    <span class="text-muted" style="font-style: italic;">Unassigned</span>
+                                <% } %>
                             </td>
                             <td>
                                 <div style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 2px;">
                                     <span>🚌 <%= c.BusRoute || 'None' %></span>
-                                    <span style="font-size: 0.75rem; color: #64748b;">⏰ Ext: <%= c.ExtendedHours || 'No'
-                                            %></span>
+                                    <span class="text-muted" style="font-size: 0.75rem;">⏰ Ext: <%= c.ExtendedHours || 'No' %></span>
                                 </div>
                             </td>
                             <td>
-                                <% if (c.CampLunch==='Yes' ) { %>
-                                    <span
-                                        style="background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">🍱
-                                        YES</span>
-                                    <% } else { %>
-                                        <span style="color: #94a3b8; font-size: 0.75rem;">Packed</span>
-                                        <% } %>
+                                <% if (c.CampLunch === 'Yes') { %>
+                                    <span class="lunch-yes">🍱 YES</span>
+                                <% } else { %>
+                                    <span class="text-muted" style="font-size: 0.75rem;">Packed</span>
+                                <% } %>
                             </td>
-                            <td style="text-align: right; padding-right: 12px;">
-                                <a href="/camper/<%= c.CamperID %>" class="action-btn"
-                                    style="padding: 6px 12px; font-size: 0.8rem; background: #f1f5f9; border-radius: 6px; color: #475569; text-decoration: none;">View
-                                    Profile</a>
+                            <td class="text-right">
+                                <a href="/camper/<%= c.CamperID %>" class="action-btn">View Profile</a>
                             </td>
                         </tr>
                         <tr class="schedule-row">
-                            <td colspan="7" style="padding: 0 12px 12px 12px;">
-                                <div class="mini-schedule"
-                                    style="display: flex; gap: 8px; background: #f8fafc; padding: 10px; border-radius: 8px;">
-                                    <% ['P1', 'P2' , 'P3' , 'P4' , 'P5' ].forEach(p=> { %>
-                                        <div class="period-box"
-                                            style="flex: 1; font-size: 0.75rem; border-left: 3px solid #cbd5e1; padding-left: 8px;">
-                                            <strong style="display: block; color: #64748b; font-size: 0.65rem;">
-                                                <%= p %>
-                                            </strong>
-                                            <span
-                                                style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">
-                                                <%= c[p] || '---' %>
-                                            </span>
+                            <td colspan="7">
+                                <div class="mini-schedule">
+                                    <% ['P1', 'P2', 'P3', 'P4', 'P5'].forEach(p => { %>
+                                        <div class="period-box">
+                                            <strong><%= p %></strong>
+                                            <span><%= c[p] || '---' %></span>
                                         </div>
-                                        <% }) %>
+                                    <% }) %>
                                 </div>
                             </td>
                         </tr>
@@ -199,27 +102,22 @@
                         <% } else { %>
                             <tbody>
                                 <tr>
-                                    <td colspan="7" style="text-align: center; padding: 40px; color: #94a3b8;">No
-                                        campers found matching your search.</td>
+                                    <td colspan="7" style="text-align: center; padding: 40px;" class="text-muted">No campers found matching your search.</td>
                                 </tr>
                             </tbody>
                             <% } %>
         </table>
+        </div>
 
         <footer class="admin-footer">
-            <div
-                style="display: flex; justify-content: space-between; align-items: center; background: white; padding: 20px; border-radius: 12px; border: 1px solid #fee2e2;">
+            <div class="admin-footer-inner">
                 <div>
                     <h4 style="margin:0; color: #991b1b;">Data Management</h4>
-                    <p style="margin:0; font-size: 0.8rem; color: #b91c1c;">Clear all camper records for a new session.
-                    </p>
+                    <p style="margin:0; font-size: 0.8rem; color: #b91c1c;">Clear all camper records for a new session.</p>
                 </div>
                 <form action="/clear-campers" method="POST"
                     onsubmit="return confirm('EXTREME WARNING: This wipes the entire database of campers. Proceed?');">
-                    <button type="submit"
-                        style="background: #fee2e2; color: #dc2626; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                        Clear Database
-                    </button>
+                    <button type="submit" class="danger-btn">Clear Database</button>
                 </form>
             </div>
         </footer>

@@ -429,6 +429,60 @@ app.get('/counselor-profile/:id', (req, res) => {
     res.render('counselor-view', { counselor, schedule, campers });
 });
 
+app.get('/camper/:id', (req, res) => {
+    try {
+        const camper = db.prepare(`
+            SELECT c.*, co.FirstName || ' ' || co.LastName AS HomeCounselorName
+            FROM Campers c
+            LEFT JOIN Counselors co ON c.HomeGroupCounselorID = co.CounselorID
+            WHERE c.CamperID = ?
+        `).get(req.params.id);
+
+        if (!camper) return res.status(404).send('Camper not found');
+
+        const schedule = db.prepare(`
+            SELECT s.PeriodNumber, s.ActivityName, s.Location, a.SideOfCamp
+            FROM Schedules s
+            LEFT JOIN Activities a ON s.ActivityName = a.Name
+            WHERE s.PersonID = ? AND s.PersonType = 'Camper'
+            ORDER BY s.PeriodNumber ASC
+        `).all(req.params.id);
+
+        const counselors = db.prepare(
+            'SELECT CounselorID, FirstName, LastName, HomeGroupColor FROM Counselors ORDER BY HomeGroupColor, LastName ASC'
+        ).all();
+
+        res.render('camper-profile', { camper, schedule, counselors, alertMessage: req.query.message || null });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error loading camper profile: ' + err.message);
+    }
+});
+
+app.post('/camper/:id/update', (req, res) => {
+    try {
+        const { homeGroupCounselorID, busRoute, extendedHours, campLunch } = req.body;
+        db.prepare(`
+            UPDATE Campers
+            SET HomeGroupCounselorID = ?,
+                BusRoute             = ?,
+                ExtendedHours        = ?,
+                CampLunch            = ?
+            WHERE CamperID = ?
+        `).run(
+            homeGroupCounselorID ? parseInt(homeGroupCounselorID) : null,
+            busRoute ? busRoute.trim() : null,
+            extendedHours || null,
+            campLunch || 'No',
+            req.params.id
+        );
+        res.redirect(`/camper/${req.params.id}?message=Saved`);
+    } catch (err) {
+        console.error(err);
+        res.redirect(`/camper/${req.params.id}?message=Error+saving+changes`);
+    }
+});
+
 // --- SETTINGS & ACTIVITY MANAGEMENT ---
 app.get('/settings', (req, res) => {
     const activities = db.prepare('SELECT * FROM Activities ORDER BY SideOfCamp, Name').all();

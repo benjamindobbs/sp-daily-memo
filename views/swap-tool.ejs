@@ -2,45 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Schedule Swap | Camp Hub</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .swap-grid { display: grid; grid-template-columns: 400px 1fr; gap: 30px; align-items: start; }
-        
-        .period-card {
-            padding: 15px;
-            margin-bottom: 12px;
-            border: 2px solid transparent;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: all 0.2s;
-        }
-        .period-card:hover { border-color: var(--border-color); background: #f8fafc; }
-        .period-card.active { 
-            border-color: var(--primary); 
-            background: #eff6ff; 
-            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.1);
-        }
-
-        .option-link {
-            display: block;
-            padding: 15px;
-            margin-bottom: 10px;
-            background: white;
-            border-radius: 8px;
-            text-decoration: none;
-            color: var(--text-main);
-            border: 1px solid var(--border-color);
-            transition: all 0.2s;
-        }
-        .option-link:hover { transform: translateX(5px); border-color: var(--primary); }
-        .option-full { border-left: 5px solid var(--red-group); background: #fff1f2; }
-        .option-open { border-left: 5px solid var(--green-group); }
-        
-        .capacity-pill { font-weight: bold; font-size: 0.85rem; padding: 4px 8px; border-radius: 4px; background: #f1f5f9; }
-    </style>
+    <script src="/js/nav.js" defer></script>
 </head>
 <body>
 
@@ -55,9 +20,9 @@
     <div class="container">
         <header style="margin-bottom: 30px;">
             <h1>Camper Schedule Swapper</h1>
-            <form action="/swap-tool" method="GET" style="display: flex; gap: 10px; margin-top: 15px;">
-                <input type="text" name="name" placeholder="Search Camper Name..." 
-                       value="<%= query || '' %>" style="flex: 1; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+            <form action="/swap-tool" method="GET" class="search-bar-container" style="margin-top: 15px;">
+                <input type="text" name="name" placeholder="Search Camper Name..."
+                       value="<%= query || '' %>" class="search-input">
                 <button type="submit" class="btn btn-primary">Find Camper</button>
             </form>
         </header>
@@ -87,8 +52,8 @@
                     <div id="controls-container" style="display: none;">
                         <div class="card" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
                             <div id="side-indicator" style="font-weight: bold; color: var(--primary);"></div>
-                            <input type="text" id="activitySearch" placeholder="Filter activities..." 
-                                   onkeyup="filterActivities()" style="padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); width: 250px;">
+                            <input type="text" id="activitySearch" placeholder="Filter activities..."
+                                   onkeyup="filterActivities()" class="search-bar" style="max-width: 250px;">
                         </div>
                         <div id="options-container"></div>
                     </div>
@@ -137,12 +102,12 @@
                 const warning = isFull ? "onclick=\"return confirm('This class is FULL. Promoting will move camper to WAITLIST. Proceed?')\"" : "";
 
                 return `
-                    <a href="/process-swap?camperId=${activeCamperId}&period=${activePeriod}&newActivity=${encodeURIComponent(opt.Name)}" 
+                    <a href="/process-swap?camperId=${activeCamperId}&period=${activePeriod}&newActivity=${encodeURIComponent(opt.Name)}"
                        class="option-link ${statusClass}" ${warning}>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div class="option-inner">
                             <div>
                                 <strong>${opt.Name}</strong>
-                                ${isFull ? '<br><small style="color:var(--red-group)">Will trigger waitlist</small>' : ''}
+                                ${isFull ? '<br><small class="waitlist-warning">Will trigger waitlist</small>' : ''}
                             </div>
                             <div class="capacity-pill">${opt.CurrentEnrollment} / ${opt.MaxCapacity}</div>
                         </div>

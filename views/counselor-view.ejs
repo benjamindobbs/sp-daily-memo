@@ -3,105 +3,10 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Counselor: <%= counselor.FirstName %>
-            <%= counselor.LastName %>
-    </title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Counselor: <%= counselor.FirstName %> <%= counselor.LastName %> | Camp Hub</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .profile-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        /* Fixed Header Section */
-        .counselor-header {
-            background: var(--primary);
-            color: white;
-            padding: 40px;
-            border-radius: 16px;
-            margin-bottom: 30px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .duty-strip {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            padding: 20px;
-            border-radius: 12px;
-            margin-top: 20px;
-            backdrop-filter: blur(5px);
-        }
-
-        .duty-box small {
-            display: block;
-            text-transform: uppercase;
-            font-size: 0.7rem;
-            opacity: 0.8;
-            margin-bottom: 4px;
-        }
-
-        .duty-box strong {
-            font-size: 1.1rem;
-        }
-
-        /* Grid for Schedule and Roster */
-        .dashboard-layout {
-            display: grid;
-            grid-template-columns: 350px 1fr;
-            gap: 30px;
-        }
-
-        .schedule-list {
-            list-style: none;
-            padding: 0;
-        }
-
-        .schedule-card {
-            padding: 15px;
-            border-left: 4px solid var(--primary);
-            background: #f8fafc;
-            margin-bottom: 12px;
-            border-radius: 0 8px 8px 0;
-        }
-
-        /* Responsive Roster Table */
-        .roster-card {
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: var(--shadow);
-            border: 1px solid var(--border-color);
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th {
-            text-align: left;
-            padding: 12px;
-            border-bottom: 2px solid #edf2f7;
-            color: #64748b;
-            font-size: 0.8rem;
-            text-transform: uppercase;
-        }
-
-        td {
-            padding: 15px 12px;
-            border-bottom: 1px solid #f1f5f9;
-        }
-
-        @media (max-width: 900px) {
-            .dashboard-layout {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
+    <script src="/js/nav.js" defer></script>
 </head>
 
 <body>
@@ -167,7 +72,7 @@
                 </div>
             </section>
 
-            <section class="roster-card">
+            <section class="roster-card-cv">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h3 style="margin: 0;">Group Roster</h3>
                     <span class="tag" style="background: #e2e8f0; color: #475569;">

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= camper.FirstName %> <%= camper.LastName %> | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+</head>
+<body>
+    <nav class="nav-bar">
+        <a href="/" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn primary">&#128269; Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
+        <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+    </nav>
+
+    <div class="container-md">
+
+        <div class="page-header">
+            <a href="/search" class="back-link">&#8592; Camper Lookup</a>
+            <span class="pipe-sep">|</span>
+            <div>
+                <h1 style="margin:0;"><%= camper.FirstName %> <%= camper.LastName %></h1>
+                <p class="text-muted" style="margin:2px 0 0;">
+                    Age <%= camper.Age || '—' %> &nbsp;·&nbsp;
+                    <span class="tag <%= camper.HomeGroupColor %>"><%= camper.HomeGroupColor %></span>
+                </p>
+            </div>
+        </div>
+
+        <% if (alertMessage) { %>
+            <div class="alert" style="<%= alertMessage === 'Saved' ? '' : 'background:#fee2e2; color:#991b1b; border-color:#fca5a5;' %>">
+                <%= alertMessage === 'Saved' ? '✓ Changes saved successfully.' : alertMessage %>
+            </div>
+        <% } %>
+
+        <div class="roster-layout">
+
+            <!-- Left column: editable info -->
+            <div>
+                <div class="card">
+                    <h3 style="margin:0 0 20px;">Camper Details</h3>
+                    <form action="/camper/<%= camper.CamperID %>/update" method="POST">
+
+                        <div class="info-row">
+                            <span class="info-label">Home Counselor</span>
+                        </div>
+                        <div style="margin-bottom: 16px;">
+                            <select name="homeGroupCounselorID" style="width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.9rem; background:white;">
+                                <option value="">— Unassigned —</option>
+                                <% counselors.forEach(function(c) { %>
+                                    <option value="<%= c.CounselorID %>"
+                                        <%= camper.HomeGroupCounselorID === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %> (<%= c.HomeGroupColor %>)
+                                    </option>
+                                <% }); %>
+                            </select>
+                        </div>
+
+                        <div class="info-row">
+                            <span class="info-label">Bus Route</span>
+                        </div>
+                        <div style="margin-bottom: 16px;">
+                            <input type="text" name="busRoute" value="<%= camper.BusRoute || '' %>"
+                                placeholder="e.g. Route 12"
+                                style="width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.9rem; box-sizing:border-box;">
+                        </div>
+
+                        <div class="info-row">
+                            <span class="info-label">Extended Hours</span>
+                        </div>
+                        <div style="margin-bottom: 16px;">
+                            <select name="extendedHours" style="width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.9rem; background:white;">
+                                <option value="" <%= !camper.ExtendedHours ? 'selected' : '' %>>No</option>
+                                <option value="AM"   <%= camper.ExtendedHours === 'AM'   ? 'selected' : '' %>>AM Only</option>
+                                <option value="PM"   <%= camper.ExtendedHours === 'PM'   ? 'selected' : '' %>>PM Only</option>
+                                <option value="Both" <%= camper.ExtendedHours === 'Both' ? 'selected' : '' %>>AM + PM (Both)</option>
+                            </select>
+                        </div>
+
+                        <div class="info-row">
+                            <span class="info-label">Camp Lunch</span>
+                        </div>
+                        <div style="margin-bottom: 24px;">
+                            <select name="campLunch" style="width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.9rem; background:white;">
+                                <option value="No"      <%= camper.CampLunch === 'No'      ? 'selected' : '' %>>No (Packed)</option>
+                                <option value="Yes"     <%= camper.CampLunch === 'Yes'     ? 'selected' : '' %>>Yes</option>
+                                <option value="Allergy" <%= camper.CampLunch === 'Allergy' ? 'selected' : '' %>>Allergy Meal</option>
+                            </select>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Right column: schedule -->
+            <div>
+                <div class="roster-card">
+                    <div class="roster-card-header">
+                        <h3>Daily Schedule</h3>
+                    </div>
+
+                    <% if (schedule.length === 0) { %>
+                        <div style="text-align:center; padding:48px 20px; color:var(--text-muted);">
+                            No schedule assigned.
+                        </div>
+                    <% } else { %>
+                        <% schedule.forEach(function(s) { %>
+                            <div style="display:flex; align-items:center; gap:14px; padding:14px 20px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap;">
+                                <span class="period-badge" style="font-size:0.75rem; padding:4px 12px; white-space:nowrap;">
+                                    Period <%= s.PeriodNumber %>
+                                </span>
+                                <div style="flex:1; min-width:120px;">
+                                    <div style="font-weight:600; font-size:0.92rem;"><%= s.ActivityName %></div>
+                                    <% if (s.Location) { %>
+                                        <div class="text-muted" style="font-size:0.78rem;">&#128205; <%= s.Location %></div>
+                                    <% } %>
+                                </div>
+                                <% if (s.SideOfCamp) { %>
+                                    <span class="side-pill <%= s.SideOfCamp === 'Sports' ? 'side-sports' : 'side-enrichment' %>">
+                                        <%= s.SideOfCamp %>
+                                    </span>
+                                <% } %>
+                            </div>
+                        <% }); %>
+                    <% } %>
+                </div>
+
+                <div class="card" style="margin-top:20px;">
+                    <h4 style="margin:0 0 10px; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Swap Schedule</h4>
+                    <a href="/swap-tool?name=<%= encodeURIComponent(camper.FirstName + ' ' + camper.LastName) %>"
+                       class="btn btn-primary" style="display:block; text-align:center;">
+                        &#128260; Open Swap Tool
+                    </a>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</body>
+</html>

@@ -6,62 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Promotions | Camp Hub</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .promo-container {
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .promo-card {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            align-items: center;
-            border-left: 6px solid #10b981;
-            margin-bottom: 20px;
-            padding: 24px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-
-        .promo-details h2 {
-            margin: 0 0 8px 0;
-            font-size: 1.25rem;
-        }
-
-        .promo-info {
-            display: flex;
-            gap: 15px;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .capacity-badge {
-            background: #ecfdf5;
-            color: #065f46;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-weight: bold;
-            text-align: center;
-            border: 1px solid #10b981;
-        }
-
-        .timestamp {
-            color: var(--text-muted);
-            font-size: 0.8rem;
-            margin-top: 10px;
-            display: block;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 80px 20px;
-            background: white;
-            border-radius: 12px;
-            border: 2px dashed var(--border-color);
-        }
-    </style>
+    <script src="/js/nav.js" defer></script>
 </head>
 
 <body>
@@ -76,8 +21,7 @@
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
     </nav>
     <% if (typeof alertMessage !== 'undefined' && alertMessage) { %>
-        <div class="alert"
-            style="background: #dcfce7; color: #166534; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #bbf7d0;">
+        <div class="alert">
             <%= alertMessage %>
         </div>
     <% } %>
@@ -126,18 +70,15 @@
                                         </span>
                                     </div>
 
-                                    <div style="text-align: right;">
+                                    <div class="promo-action">
                                         <div class="capacity-badge" style="margin-bottom: 15px;">
                                             <%= promo.CurrentEnrollment %> / <%= promo.MaxCapacity %> Filled
-                                                    <div
-                                                        style="font-size: 0.7rem; font-weight: normal; text-transform: uppercase; margin-top: 2px;">
-                                                        Spot Available</div>
+                                            <div class="cap-sub">Spot Available</div>
                                         </div>
 
                                         <form action="/promote-waitlist" method="POST">
                                             <input type="hidden" name="WaitlistID" value="<%= promo.WaitlistID %>">
-                                            <button type="submit" class="btn btn-success"
-                                                style="width: 100%; padding: 12px 20px;">
+                                            <button type="submit" class="btn btn-success" style="width: 100%;">
                                                 Confirm Promotion
                                             </button>
                                         </form>
@@ -148,8 +89,7 @@
                         <% } %>
             </div>
             <div class="promo-container">
-                <header
-                    style="margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end;">
+                <header style="margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px;">
                     <div>
                         <h1>Ready for Promotion</h1>
                         <p style="color: var(--text-muted);">Process waitlist requests with available spots.</p>
@@ -158,8 +98,7 @@
                     <% if (potentialPromotions.length> 0) { %>
                         <form action="/promote-all" method="POST"
                             onsubmit="return confirm('Promote all eligible campers at once?')">
-                            <button type="submit" class="btn btn-success"
-                                style="padding: 10px 25px; font-weight: bold; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);">
+                            <button type="submit" class="btn btn-success">
                                 🚀 Promote All Eligible (<%= potentialPromotions.length %>)
                             </button>
                         </form>

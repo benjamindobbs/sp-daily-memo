@@ -5,148 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Staff Lookup | Camp Hub</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .search-header {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: var(--shadow);
-            margin-bottom: 30px;
-            border: 1px solid var(--border-color);
-        }
-
-        .search-bar-container {
-            display: flex;
-            gap: 12px;
-            margin-top: 20px;
-        }
-
-        .search-input {
-            flex: 1;
-            padding: 14px 20px;
-            border: 2px solid #e2e8f0;
-            border-radius: 10px;
-            font-size: 1.1rem;
-            transition: all 0.2s;
-            font-family: inherit;
-        }
-
-        .search-input:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
-            outline: none;
-        }
-
-        /* Table */
-        .staff-table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: var(--shadow);
-            border: 1px solid var(--border-color);
-        }
-
-        .staff-table thead th {
-            text-align: left;
-            padding: 12px 16px;
-            border-bottom: 2px solid #e2e8f0;
-            font-size: 0.75rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--text-muted);
-            background: #f8fafc;
-        }
-
-        .staff-row td {
-            padding: 14px 16px;
-            border-bottom: 1px solid #f1f5f9;
-            vertical-align: top;
-        }
-
-        .staff-row:last-child td {
-            border-bottom: none;
-        }
-
-        .staff-row:hover td {
-            background: #fafbff;
-        }
-
-        .staff-name {
-            font-weight: 700;
-            color: #1e293b;
-            font-size: 0.95rem;
-        }
-
-        .staff-type-badge {
-            display: inline-block;
-            font-size: 0.68rem;
-            font-weight: 700;
-            padding: 2px 8px;
-            border-radius: 20px;
-            background: #e0e7ff;
-            color: #3730a3;
-            text-transform: uppercase;
-            white-space: nowrap;
-        }
-
-        /* Mini schedule */
-        .mini-sched {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .period-pill {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-left: 3px solid var(--primary);
-            border-radius: 0 6px 6px 0;
-            padding: 6px 10px;
-            min-width: 100px;
-        }
-
-        .period-pill-label {
-            font-size: 0.62rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            letter-spacing: 0.5px;
-            margin-bottom: 2px;
-        }
-
-        .period-pill-activity {
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: #1e293b;
-        }
-
-        .period-pill-location {
-            font-size: 0.72rem;
-            color: var(--text-muted);
-            margin-top: 1px;
-        }
-
-        .no-results {
-            text-align: center;
-            padding: 48px 20px;
-            color: var(--text-muted);
-            font-style: italic;
-        }
-
-        .type-group-header td {
-            padding: 6px 16px;
-            background: #f1f5f9;
-            font-size: 0.72rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--text-muted);
-            border-bottom: 1px solid #e2e8f0;
-        }
-    </style>
+    <script src="/js/nav.js" defer></script>
 </head>
 <body>
     <nav class="nav-bar">
@@ -193,6 +52,7 @@
             const PERIODS = [1, 2, 3, 4, 5, 6];
         %>
 
+        <div class="table-scroll">
         <table class="staff-table" id="staffTable">
             <thead>
                 <tr>
@@ -237,6 +97,8 @@
             <% }); %>
             </tbody>
         </table>
+
+        </div><!-- /table-scroll -->
 
         <div id="noResults" style="display:none; background: white; border-radius: 12px; box-shadow: var(--shadow); border: 1px solid var(--border-color);">
             <div class="no-results">No staff members found matching your search.</div>

@@ -5,57 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><%= title %> Attendance | Camp Hub</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .att-header { margin-bottom: 24px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-        .att-title h1 { margin: 0; font-size: 1.5rem; }
-        .att-title p { margin: 2px 0 0; color: var(--text-muted); font-size: 0.875rem; }
-
-        .roster-card { background: white; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: var(--shadow); overflow: hidden; }
-        .roster-card-header { padding: 16px 20px; border-bottom: 2px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
-        .count-bar { font-size: 0.82rem; color: var(--text-muted); }
-        .count-present { color: #166534; font-weight: 700; }
-        .count-absent  { color: #991b1b; font-weight: 700; }
-
-        .camper-row { display: flex; align-items: center; gap: 12px; padding: 13px 20px; border-bottom: 1px solid #f1f5f9; }
-        .camper-row:last-child { border-bottom: none; }
-        .camper-name { font-weight: 600; font-size: 0.92rem; flex: 1; }
-        .camper-badges { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-        .badge-absent-am   { background: #fef9c3; color: #854d0e; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
-        .badge-absent-bus  { background: #dbeafe; color: #1e40af; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
-        .badge-dismissed   { background: #fee2e2; color: #991b1b; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
-
-        .toggle-wrap { display: flex; gap: 6px; align-items: center; }
-        .btn-present, .btn-absent {
-            padding: 6px 14px; border-radius: 6px; font-size: 0.82rem; font-weight: 600;
-            border: 2px solid transparent; cursor: pointer; transition: background 0.12s, border-color 0.12s;
-            font-family: inherit;
-        }
-        .btn-present { background: #f1f5f9; color: var(--text-muted); }
-        .btn-present.active { background: #dcfce7; color: #166534; border-color: #86efac; }
-        .btn-absent  { background: #f1f5f9; color: var(--text-muted); }
-        .btn-absent.active  { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
-
-        .btn-dismiss {
-            padding: 5px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600;
-            background: none; border: 1px solid #fca5a5; color: #991b1b; cursor: pointer;
-            font-family: inherit; white-space: nowrap;
-        }
-        .btn-dismiss:hover { background: #fee2e2; }
-
-        .dismiss-modal {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4);
-            z-index: 1000; align-items: center; justify-content: center;
-        }
-        .dismiss-modal.open { display: flex; }
-        .dismiss-box { background: white; border-radius: 14px; padding: 28px; width: 340px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
-        .dismiss-box h3 { margin: 0 0 16px; font-size: 1.1rem; }
-
-        .search-bar { padding: 8px 14px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.875rem; font-family: inherit; width: 220px; outline: none; }
-        .search-bar:focus { border-color: var(--primary); }
-
-        .saving-indicator { font-size: 0.75rem; color: var(--text-muted); margin-left: 6px; opacity: 0; transition: opacity 0.2s; }
-        .saving-indicator.show { opacity: 1; }
-    </style>
+    <script src="/js/nav.js" defer></script>
 </head>
 <body>
     <nav class="nav-bar">
@@ -67,10 +17,10 @@
         <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
     </nav>
 
-    <div class="container" style="max-width: 900px;">
+    <div class="container-sm">
         <div class="att-header">
-            <a href="<%= backLink %>" style="color: var(--text-muted); text-decoration: none; font-size: 0.875rem; white-space: nowrap;">&#8592; Attendance</a>
-            <span style="color: var(--border-color);">|</span>
+            <a href="<%= backLink %>" class="back-link">&#8592; Attendance</a>
+            <span class="pipe-sep">|</span>
             <div class="att-title">
                 <h1><%= title %></h1>
                 <p><%= date %></p>
@@ -120,22 +70,22 @@
     <div class="dismiss-modal" id="dismissModal">
         <div class="dismiss-box">
             <h3>Early Dismissal</h3>
-            <p id="dismissName" style="margin:0 0 14px; font-weight:600; color:var(--text-main);"></p>
+            <p id="dismissName" style="margin:0 0 14px; font-weight:600;"></p>
             <form action="/attendance/early-dismissal" method="POST">
                 <input type="hidden" name="date" value="<%= date %>">
                 <input type="hidden" name="camperId" id="dismissCamperId">
                 <input type="hidden" name="returnTo" value="/attendance/<%= sessionType === 'class' ? 'class/' + periodNumber + '/' + encodeURIComponent(activityName) : sessionType.replace('_','/') %>?date=<%= date %><%= (typeof half !== 'undefined' && half) ? '&half=' + half : '' %>">
-                <div style="margin-bottom:12px;">
-                    <label style="font-size:0.82rem; font-weight:600; display:block; margin-bottom:4px;">Dismissal Time</label>
-                    <input type="time" name="dismissalTime" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-family:inherit; font-size:0.875rem;">
+                <div class="dismiss-field">
+                    <label>Dismissal Time</label>
+                    <input type="time" name="dismissalTime">
                 </div>
-                <div style="margin-bottom:18px;">
-                    <label style="font-size:0.82rem; font-weight:600; display:block; margin-bottom:4px;">Notes (optional)</label>
-                    <input type="text" name="notes" placeholder="e.g. parent picked up" style="width:100%; padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-family:inherit; font-size:0.875rem;">
+                <div class="dismiss-field" style="margin-bottom:18px;">
+                    <label>Notes (optional)</label>
+                    <input type="text" name="notes" placeholder="e.g. parent picked up">
                 </div>
-                <div style="display:flex; gap:10px; justify-content:flex-end;">
-                    <button type="button" onclick="closeDismiss()" style="padding:8px 16px; border-radius:6px; border:1px solid #cbd5e1; background:white; cursor:pointer; font-family:inherit;">Cancel</button>
-                    <button type="submit" style="padding:8px 16px; border-radius:6px; border:none; background:#ef4444; color:white; font-weight:700; cursor:pointer; font-family:inherit;">Confirm Dismissal</button>
+                <div class="dismiss-actions">
+                    <button type="button" class="btn-cancel" onclick="closeDismiss()">Cancel</button>
+                    <button type="submit" class="btn-dismiss-confirm">Confirm Dismissal</button>
                 </div>
             </form>
         </div>

@@ -5,21 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Late Arrivals | Camp Hub</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .date-bar { background: white; border: 1px solid var(--border-color); border-radius: 10px; padding: 14px 20px; margin-bottom: 28px; display: flex; align-items: center; gap: 16px; box-shadow: var(--shadow); }
-        .date-bar label { font-weight: 600; font-size: 0.875rem; }
-        .late-card { background: white; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: var(--shadow); overflow: hidden; }
-        .late-table { width: 100%; border-collapse: collapse; }
-        .late-table th { background: #f8fafc; padding: 11px 16px; text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); border-bottom: 1px solid var(--border-color); }
-        .late-table td { padding: 13px 16px; border-bottom: 1px solid #f8fafc; font-size: 0.875rem; vertical-align: middle; }
-        .late-table tr:last-child td { border-bottom: none; }
-        .late-table tr:hover td { background: #fafbff; }
-        .sched-mini { display: flex; gap: 5px; flex-wrap: wrap; }
-        .sched-pill { font-size: 0.7rem; background: #f1f5f9; color: var(--text-muted); padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
-        .btn-checkin { padding: 7px 16px; background: #22c55e; color: white; border: none; border-radius: 6px; font-weight: 700; font-size: 0.82rem; cursor: pointer; font-family: inherit; }
-        .btn-checkin:hover { background: #16a34a; }
-        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
-    </style>
+    <script src="/js/nav.js" defer></script>
 </head>
 <body>
     <nav class="nav-bar">
@@ -31,13 +17,13 @@
         <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
     </nav>
 
-    <div class="container" style="max-width: 1100px;">
-        <header style="margin-bottom: 20px; display: flex; align-items: center; gap: 14px;">
-            <a href="/attendance?date=<%= date %>" style="color: var(--text-muted); text-decoration: none; font-size: 0.875rem; white-space: nowrap;">&#8592; Attendance</a>
-            <span style="color: var(--border-color);">|</span>
+    <div class="container-lg">
+        <header class="page-header">
+            <a href="/attendance?date=<%= date %>" class="back-link">&#8592; Attendance</a>
+            <span class="pipe-sep">|</span>
             <div>
-                <h1 style="margin: 0; font-size: 1.5rem;">&#9888; Late Arrivals</h1>
-                <p style="margin: 2px 0 0; color: var(--text-muted); font-size: 0.875rem;">Campers marked absent this morning. Check them in when they arrive.</p>
+                <h1>&#9888; Late Arrivals</h1>
+                <p>Campers marked absent this morning. Check them in when they arrive.</p>
             </div>
         </header>
 
@@ -47,7 +33,7 @@
                    onchange="window.location='/attendance/late-arrivals?date='+this.value">
         </div>
 
-        <div class="late-card">
+        <div class="late-card table-scroll">
             <% if (roster.length === 0) { %>
                 <div class="empty-state">
                     <span style="font-size: 2.5rem;">&#10003;</span>
@@ -69,7 +55,7 @@
                         <tr>
                             <td>
                                 <a href="/search?name=<%= encodeURIComponent(c.FirstName+' '+c.LastName) %>"
-                                   style="font-weight:600; color:var(--primary); text-decoration:none;">
+                                   class="camper-name-link">
                                     <%= c.FirstName %> <%= c.LastName %>
                                 </a>
                             </td>

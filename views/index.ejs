@@ -5,41 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Camp Hub | Dashboard</title>
     <link rel="stylesheet" href="/css/style.css">
-    <style>
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 20px;
-            margin-top: 30px;
-        }
-        .stat-card {
-            text-align: center;
-            padding: 30px;
-        }
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: 800;
-            display: block;
-            color: var(--primary);
-        }
-        .stat-label {
-            color: var(--text-muted);
-            text-transform: uppercase;
-            font-size: 0.8rem;
-            letter-spacing: 1px;
-        }
-        .promo-alert {
-            background: #ecfdf5;
-            border: 1px solid #10b981;
-            color: #065f46;
-            padding: 15px;
-            border-radius: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 25px;
-        }
-    </style>
+    <script src="/js/nav.js" defer></script>
 </head>
 <body>
 
@@ -59,7 +25,7 @@
         <header class="header-flex">
             <div>
                 <h1>Welcome back, Director</h1>
-                <p style="color: var(--text-muted);">Here is what's happening at camp today.</p>
+                <p class="text-muted">Here is what's happening at camp today.</p>
             </div>
         </header>
 
@@ -85,21 +51,21 @@
             </div>
         </div>
 
-        <div class="mt-20" style="display: flex; gap: 15px;">
-            <div class="card" style="flex: 1;">
+        <div class="quick-tasks mt-20">
+            <div class="card">
                 <h3>Quick Tasks</h3>
-                <ul style="list-style: none; padding: 0;">
-                    <li style="padding: 10px 0; border-bottom: 1px solid #eee;">
-                        <a href="/settings" style="text-decoration: none; color: var(--primary);">Adjust Activity Capacities →</a>
+                <ul>
+                    <li>
+                        <a href="/settings">Adjust Activity Capacities →</a>
                     </li>
-                    <li style="padding: 10px 0;">
-                        <a href="/settings" style="text-decoration: none; color: var(--primary);">Upload New CSV Data →</a>
+                    <li>
+                        <a href="/settings">Upload New CSV Data →</a>
                     </li>
                 </ul>
             </div>
-            <div class="card" style="flex: 1;">
+            <div class="card">
                 <h3>System Status</h3>
-                <p style="font-size: 0.9rem; color: var(--text-muted);">
+                <p class="text-muted" style="font-size: 0.9rem;">
                     Database: <span style="color: var(--success);">● Operational</span><br>
                     Current Season: Summer 2026<br>
                     Last Backup: Today, 8:00 AM
