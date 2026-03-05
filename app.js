@@ -770,6 +770,9 @@ app.post('/clear-staff', (req, res) => {
 // CLEAR CAMPERS
 app.post('/clear-campers', (req, res) => {
     db.prepare("DELETE FROM Schedules WHERE PersonType = 'Camper'").run();
+    db.prepare("DELETE FROM Waitlists").run();
+    db.prepare("DELETE FROM Attendance").run();
+    db.prepare("DELETE FROM EarlyDismissals").run();
     db.prepare("DELETE FROM Campers").run();
     res.redirect('/settings?message=Campers+Cleared');
 });
