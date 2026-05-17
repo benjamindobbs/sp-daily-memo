@@ -8,14 +8,31 @@
     <script src="/js/nav.js" defer></script>
 </head>
 <body>
+    <% if (viewMode === 'admin') { %>
     <nav class="nav-bar">
-        <a href="/" class="nav-btn">&#127968; Hub</a>
-        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn primary">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
         <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
     </nav>
+    <% } else { %>
+    <nav class="nav-bar">
+        <a href="/staff" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn primary">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="admin">
+            <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
+        </form>
+    </nav>
+    <% } %>
 
     <div class="container-xl">
         <header class="page-header" style="margin-bottom: 26px;">
@@ -40,6 +57,7 @@
                     <div class="info-card-body">
                         <div class="info-row">
                             <span class="info-label">&#128205; Location</span>
+                            <% if (viewMode === 'admin') { %>
                             <form action="/update-class-location" method="POST" style="display:flex; gap:5px; align-items:center; margin:0;">
                                 <input type="hidden" name="activityName" value="<%= activityName %>">
                                 <input type="hidden" name="periodNumber" value="<%= periodNumber %>">
@@ -49,6 +67,9 @@
                                 <button type="submit" title="Save location"
                                     style="background:none; border:none; cursor:pointer; font-size:0.95rem; padding:0; color:var(--primary);">&#10003;</button>
                             </form>
+                            <% } else { %>
+                            <span class="info-value"><%= location || '—' %></span>
+                            <% } %>
                         </div>
                         <div class="info-row"><span class="info-label">&#128101; Enrolled</span><span class="info-value"><%= campers.length %><% if (maxCapacity) { %> / <%= maxCapacity %><% } %></span></div>
                         <div class="info-row">

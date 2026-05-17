@@ -8,14 +8,31 @@
     <script src="/js/nav.js" defer></script>
 </head>
 <body>
+    <% if (viewMode === 'admin') { %>
     <nav class="nav-bar">
-        <a href="/" class="nav-btn">&#127968; Hub</a>
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
         <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
     </nav>
+    <% } else { %>
+    <nav class="nav-bar">
+        <a href="/staff" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="admin">
+            <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
+        </form>
+    </nav>
+    <% } %>
 
     <div class="container-sm">
         <div class="att-header">
@@ -49,6 +66,7 @@
                             <% if (c.absentAM) { %><span class="badge-absent-am">&#9888; Absent AM</span><% } %>
                             <% if (c.absentBusAM) { %><span class="badge-absent-bus">&#128652; Absent Bus AM</span><% } %>
                             <% if (c.dismissed) { %><span class="badge-dismissed">&#128663; Dismissed</span><% } %>
+                            <% if (c.seenEarlier) { %><span class="badge-seen-earlier">&#10003; Seen Earlier</span><% } %>
                         </div>
                         <div class="toggle-wrap">
                             <button class="btn-present <%= c.currentStatus === 'present' || c.currentStatus === 'late' ? 'active' : '' %>"

@@ -9,15 +9,32 @@
 </head>
 <body>
 
+    <% if (viewMode === 'admin') { %>
     <nav class="nav-bar">
-        <a href="/" class="nav-btn">🏠 Hub</a>
-        <a href="/search" class="nav-btn">🔍 Camper Lookup</a>
-        <a href="/counselor-directory" class="nav-btn">👤 Counselors</a>
-        <a href="/master-schedule" class="nav-btn primary">📅 Master Schedule</a>
-        <a href="/swap-tool" class="nav-btn">🔄 Swap Tools</a>
-        <a href="/promotions" class="nav-btn">🔔 Promotions</a>
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn primary">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
+        <a href="/staff-lookup" class="nav-btn">&#128101; Staff Lookup</a>
+        <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
     </nav>
+    <% } else { %>
+    <nav class="nav-bar">
+        <a href="/staff" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn primary">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="admin">
+            <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
+        </form>
+    </nav>
+    <% } %>
 
     <div class="container-xl">
         <header style="margin-bottom: 24px;">
@@ -125,10 +142,17 @@
                         <td>
                             <% if (cls.staff.length > 0) { %>
                                 <% cls.staff.forEach(function(s) { %>
+                                    <% if (viewMode === 'admin') { %>
                                     <a href="/staff-lookup?name=<%= encodeURIComponent(s.FirstName + ' ' + s.LastName) %>" class="staff-link">
                                         <div class="staff-name-sched"><%= s.FirstName %> <%= s.LastName %></div>
                                         <div class="staff-type-label"><%= s.StaffType %></div>
                                     </a>
+                                    <% } else { %>
+                                    <div class="staff-link" style="cursor:default;">
+                                        <div class="staff-name-sched"><%= s.FirstName %> <%= s.LastName %></div>
+                                        <div class="staff-type-label"><%= s.StaffType %></div>
+                                    </div>
+                                    <% } %>
                                 <% }); %>
                             <% } else { %>
                                 <span style="color: var(--text-muted); font-size: 0.8rem;">—</span>

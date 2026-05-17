@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedule Change History | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .change-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .change-table th { text-align: left; padding: 10px 12px; background: #f8fafc; border-bottom: 2px solid #e2e8f0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; }
+        .change-table td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+        .change-table tr:last-child td { border-bottom: none; }
+        .change-table tr:hover td { background: #f8fafc; }
+        .arrow { color: #94a3b8; margin: 0 6px; }
+        .old-act { color: #ef4444; text-decoration: line-through; }
+        .new-act { color: #22c55e; font-weight: 600; }
+        .ts { font-size: 0.78rem; color: #94a3b8; white-space: nowrap; }
+        .archive-section { margin-top: 40px; }
+        .archive-section summary { cursor: pointer; font-weight: 600; font-size: 0.95rem; color: #64748b; padding: 8px 0; }
+        .archive-table td { color: #94a3b8; font-size: 0.85rem; }
+        .archive-table .old-act { color: #cbd5e1; }
+        .archive-table .new-act { color: #94a3b8; font-weight: normal; }
+        .select-all-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .empty-state { text-align: center; padding: 60px 20px; color: #94a3b8; }
+        .empty-state span { font-size: 2.5rem; display: block; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">📅 Master Schedule</a>
+        <a href="/search" class="nav-btn">🔍 Camper Lookup</a>
+        <a href="/swap-tool" class="nav-btn">🔄 Swap Tools</a>
+        <a href="/schedule-history" class="nav-btn primary">📋 Change History</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+    </nav>
+
+    <div class="container">
+        <header style="margin-bottom: 24px;">
+            <h1>Schedule Change History</h1>
+            <p style="color: var(--text-muted); margin: 4px 0 0 0;">
+                Check off changes once they have been updated in CampBrain. Checked items move to the archive.
+            </p>
+        </header>
+
+        <% if (alertMessage) { %>
+            <div class="alert"><%= alertMessage %></div>
+        <% } %>
+
+        <% if (changes.length > 0) { %>
+            <form action="/archive-schedule-changes" method="POST">
+                <div class="select-all-row">
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #64748b; cursor: pointer;">
+                        <input type="checkbox" id="selectAll" onchange="toggleAll(this)"> Select all
+                    </label>
+                    <button type="submit" class="btn primary btn-small">
+                        ✓ Mark Selected as Updated in CampBrain
+                    </button>
+                </div>
+
+                <div style="border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;">
+                    <table class="change-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 36px;"></th>
+                                <th>Camper</th>
+                                <th>Group</th>
+                                <th>Period</th>
+                                <th>Change</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% changes.forEach(c => { %>
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" name="changeIds" value="<%= c.ChangeID %>" class="change-checkbox">
+                                    </td>
+                                    <td><strong><%= c.CamperName %></strong></td>
+                                    <td>
+                                        <% if (c.ColorGroup) { %>
+                                            <span class="tag <%= c.ColorGroup %>"><%= c.ColorGroup %></span>
+                                        <% } else { %>
+                                            <span style="color: #94a3b8;">—</span>
+                                        <% } %>
+                                    </td>
+                                    <td>P<%= c.PeriodNumber %></td>
+                                    <td>
+                                        <span class="old-act"><%= c.OldActivity %></span>
+                                        <span class="arrow">→</span>
+                                        <span class="new-act"><%= c.NewActivity %></span>
+                                    </td>
+                                    <td class="ts"><%= new Date(c.ChangedAt).toLocaleString() %></td>
+                                </tr>
+                            <% }) %>
+                        </tbody>
+                    </table>
+                </div>
+            </form>
+        <% } else { %>
+            <div class="empty-state">
+                <span>✅</span>
+                <p>No pending schedule changes — all caught up!</p>
+            </div>
+        <% } %>
+
+        <% if (archived.length > 0) { %>
+            <div class="archive-section">
+                <details>
+                    <summary>Archive (<%= archived.length %> change<%= archived.length !== 1 ? 's' : '' %>)</summary>
+                    <div style="border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-top: 12px;">
+                        <table class="change-table archive-table">
+                            <thead>
+                                <tr>
+                                    <th>Camper</th>
+                                    <th>Group</th>
+                                    <th>Period</th>
+                                    <th>Change</th>
+                                    <th>Changed</th>
+                                    <th>Archived</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <% archived.forEach(c => { %>
+                                    <tr>
+                                        <td><%= c.CamperName %></td>
+                                        <td>
+                                            <% if (c.ColorGroup) { %>
+                                                <span class="tag <%= c.ColorGroup %>" style="opacity: 0.5;"><%= c.ColorGroup %></span>
+                                            <% } else { %>
+                                                <span>—</span>
+                                            <% } %>
+                                        </td>
+                                        <td>P<%= c.PeriodNumber %></td>
+                                        <td>
+                                            <span class="old-act"><%= c.OldActivity %></span>
+                                            <span class="arrow">→</span>
+                                            <span class="new-act"><%= c.NewActivity %></span>
+                                        </td>
+                                        <td class="ts"><%= new Date(c.ChangedAt).toLocaleString() %></td>
+                                        <td class="ts"><%= new Date(c.ArchivedAt).toLocaleString() %></td>
+                                    </tr>
+                                <% }) %>
+                            </tbody>
+                        </table>
+                    </div>
+                </details>
+            </div>
+        <% } %>
+    </div>
+
+    <script>
+        function toggleAll(source) {
+            document.querySelectorAll('.change-checkbox').forEach(cb => cb.checked = source.checked);
+        }
+    </script>
+</body>
+</html>

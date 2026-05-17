@@ -4,6 +4,7 @@ const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
+const cookieParser = require('cookie-parser');
 
 const app = express();
 const db = new Database(process.env.DB_PATH || 'camp_manager.db');
@@ -23,6 +24,38 @@ function staffDbPeriod(camperPeriod, sideOfCamp, isLowerCamp = false) {
 app.set('view engine', 'ejs');
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+app.use(express.json());
+
+// Make viewMode available in all templates
+app.use((req, res, next) => {
+    res.locals.viewMode = req.cookies.viewMode || 'staff';
+    next();
+});
+
+// Protect admin-only paths
+const ADMIN_ONLY_PREFIXES = [
+    '/admin', '/settings', '/swap-tool', '/process-swap', '/get-options',
+    '/schedule-history', '/archive-schedule-changes', '/staff-lookup',
+    '/faculty-summer', '/upload-staff-week', '/clear-staff-week',
+    '/counselor-directory', '/counselor-view', '/promotions',
+    '/promote-waitlist', '/promote-all', '/upload-campers', '/upload-counselors',
+    '/upload-staff', '/upload-activity-rules', '/add-activity',
+    '/delete-activity', '/update-activity', '/add-activity-period-group',
+    '/delete-activity-period-group',
+    '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings',
+    '/save-counselor-assignments', '/export-counselor-schedule', '/export-staff-schedule',
+    '/export-master-schedule', '/save-counselor-group-assignments',
+];
+const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
+app.use((req, res, next) => {
+    if (UNPROTECTED.has(req.path)) return next();
+    const isAdminPath = ADMIN_ONLY_PREFIXES.some(p => req.path === p || req.path.startsWith(p + '/'));
+    if (isAdminPath && req.cookies.adminAuth !== 'true') {
+        return res.redirect('/admin-login');
+    }
+    next();
+});
 
 // --- HELPER: Database Initialization ---
 // This ensures your tables match the logic used in the routes
@@ -67,7 +100,46 @@ db.exec(`
         Name TEXT UNIQUE NOT NULL,
         SideOfCamp TEXT CHECK(SideOfCamp IN ('Sports', 'Enrichment')),
         MaxCapacity INTEGER DEFAULT 20,
-        Location TEXT
+        Location TEXT,
+        AllowedGroups TEXT CHECK(AllowedGroups IN ('Red', 'Carolina', 'Red-Carolina', 'Green-Navy') OR AllowedGroups IS NULL)
+    );
+    CREATE TABLE IF NOT EXISTS StaffWeekSchedules (
+        StaffID      INTEGER NOT NULL,
+        WeekNumber   INTEGER NOT NULL CHECK(WeekNumber BETWEEN 1 AND 6),
+        PeriodNumber INTEGER NOT NULL CHECK(PeriodNumber BETWEEN 1 AND 6),
+        ActivityName TEXT    NOT NULL,
+        Location     TEXT,
+        PRIMARY KEY (StaffID, WeekNumber, PeriodNumber),
+        FOREIGN KEY (StaffID) REFERENCES Staff(StaffID) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS ScheduleChanges (
+        ChangeID     INTEGER PRIMARY KEY AUTOINCREMENT,
+        CamperID     INTEGER NOT NULL,
+        CamperName   TEXT    NOT NULL,
+        ColorGroup   TEXT,
+        PeriodNumber INTEGER NOT NULL,
+        OldActivity  TEXT    NOT NULL,
+        NewActivity  TEXT    NOT NULL,
+        ChangedAt    DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (CamperID) REFERENCES Campers(CamperID)
+    );
+    CREATE TABLE IF NOT EXISTS ScheduleChangesArchive (
+        ChangeID     INTEGER PRIMARY KEY,
+        CamperID     INTEGER NOT NULL,
+        CamperName   TEXT    NOT NULL,
+        ColorGroup   TEXT,
+        PeriodNumber INTEGER NOT NULL,
+        OldActivity  TEXT    NOT NULL,
+        NewActivity  TEXT    NOT NULL,
+        ChangedAt    DATETIME,
+        ArchivedAt   DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS ActivityPeriodGroups (
+        ActivityName  TEXT    NOT NULL,
+        PeriodNumber  INTEGER NOT NULL,
+        AllowedGroups TEXT    NOT NULL CHECK(AllowedGroups IN ('Red', 'Carolina', 'Red-Carolina', 'Green-Navy')),
+        PRIMARY KEY (ActivityName, PeriodNumber),
+        FOREIGN KEY (ActivityName) REFERENCES Activities(Name) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS Waitlists (
         WaitlistID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,6 +173,28 @@ db.exec(`
         UNIQUE (Date, CamperID),
         FOREIGN KEY (CamperID) REFERENCES Campers(CamperID)
     );
+    CREATE TABLE IF NOT EXISTS CounselorPreferences (
+        CounselorID          INTEGER PRIMARY KEY,
+        HomeGroupPreference  TEXT,
+        SchedulePreference   TEXT,
+        ActivityPreferences  TEXT,
+        SubmittedAt          DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (CounselorID) REFERENCES Counselors(CounselorID) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS WeeklyOfferings (
+        OfferingID            INTEGER PRIMARY KEY AUTOINCREMENT,
+        ActivityName          TEXT NOT NULL,
+        PreliminaryEnrollment INTEGER DEFAULT 0,
+        SideOfCamp            TEXT
+    );
+    CREATE TABLE IF NOT EXISTS CounselorScheduleAssignments (
+        AssignmentID INTEGER PRIMARY KEY AUTOINCREMENT,
+        PeriodNumber INTEGER NOT NULL,
+        ActivityName TEXT NOT NULL,
+        PersonID     INTEGER NOT NULL,
+        PersonType   TEXT NOT NULL CHECK(PersonType IN ('Counselor', 'Staff')),
+        UNIQUE(PeriodNumber, PersonID, PersonType)
+    );
 `);
 
 // Migration: if Campers was created with a CHECK constraint on ExtendedHours, recreate it without one.
@@ -127,13 +221,123 @@ try {
     }
 }
 
-// --- DASHBOARD ---
+// Migration: add PeriodNumber column to WeeklyOfferings if it doesn't exist yet
+try {
+    db.prepare("SELECT PeriodNumber FROM WeeklyOfferings LIMIT 1").get();
+} catch {
+    db.exec("ALTER TABLE WeeklyOfferings ADD COLUMN PeriodNumber INTEGER");
+}
+
+// Migration: add AllowedGroups column to Activities if it doesn't exist yet
+try {
+    db.prepare("SELECT AllowedGroups FROM Activities LIMIT 1").get();
+} catch (e) {
+    db.prepare("ALTER TABLE Activities ADD COLUMN AllowedGroups TEXT").run();
+}
+
+// Migration: create ActivityPeriodGroups table if it doesn't exist yet
+db.exec(`
+    CREATE TABLE IF NOT EXISTS ActivityPeriodGroups (
+        ActivityName  TEXT    NOT NULL,
+        PeriodNumber  INTEGER NOT NULL,
+        AllowedGroups TEXT    NOT NULL CHECK(AllowedGroups IN ('Red', 'Carolina', 'Red-Carolina', 'Green-Navy')),
+        PRIMARY KEY (ActivityName, PeriodNumber),
+        FOREIGN KEY (ActivityName) REFERENCES Activities(Name) ON DELETE CASCADE
+    );
+`);
+
+// Migration: create StaffWeekSchedules table if it doesn't exist yet
+db.exec(`
+    CREATE TABLE IF NOT EXISTS StaffWeekSchedules (
+        StaffID      INTEGER NOT NULL,
+        WeekNumber   INTEGER NOT NULL CHECK(WeekNumber BETWEEN 1 AND 6),
+        PeriodNumber INTEGER NOT NULL CHECK(PeriodNumber BETWEEN 1 AND 6),
+        ActivityName TEXT    NOT NULL,
+        Location     TEXT,
+        PRIMARY KEY (StaffID, WeekNumber, PeriodNumber),
+        FOREIGN KEY (StaffID) REFERENCES Staff(StaffID) ON DELETE CASCADE
+    );
+`);
+
+// Migration: create schedule change log tables if they don't exist yet
+db.exec(`
+    CREATE TABLE IF NOT EXISTS ScheduleChanges (
+        ChangeID     INTEGER PRIMARY KEY AUTOINCREMENT,
+        CamperID     INTEGER NOT NULL,
+        CamperName   TEXT    NOT NULL,
+        ColorGroup   TEXT,
+        PeriodNumber INTEGER NOT NULL,
+        OldActivity  TEXT    NOT NULL,
+        NewActivity  TEXT    NOT NULL,
+        ChangedAt    DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (CamperID) REFERENCES Campers(CamperID)
+    );
+    CREATE TABLE IF NOT EXISTS ScheduleChangesArchive (
+        ChangeID     INTEGER PRIMARY KEY,
+        CamperID     INTEGER NOT NULL,
+        CamperName   TEXT    NOT NULL,
+        ColorGroup   TEXT,
+        PeriodNumber INTEGER NOT NULL,
+        OldActivity  TEXT    NOT NULL,
+        NewActivity  TEXT    NOT NULL,
+        ChangedAt    DATETIME,
+        ArchivedAt   DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+`);
+
+// --- VIEW SELECTION & AUTH ---
 app.get('/', (req, res) => {
+    const { viewMode, adminAuth } = req.cookies;
+    if (viewMode === 'staff') return res.redirect('/staff');
+    if (viewMode === 'admin') {
+        return adminAuth === 'true' ? res.redirect('/admin') : res.redirect('/admin-login');
+    }
+    res.render('splash');
+});
+
+app.post('/choose-view', (req, res) => {
+    const { view } = req.body;
+    if (view === 'staff') {
+        res.cookie('viewMode', 'staff', { maxAge: 365 * 24 * 60 * 60 * 1000 });
+        return res.redirect('/staff');
+    }
+    if (view === 'admin') {
+        res.cookie('viewMode', 'admin', { maxAge: 365 * 24 * 60 * 60 * 1000 });
+        return req.cookies.adminAuth === 'true' ? res.redirect('/admin') : res.redirect('/admin-login');
+    }
+    res.redirect('/');
+});
+
+app.get('/admin-login', (req, res) => {
+    if (req.cookies.adminAuth === 'true') return res.redirect('/admin');
+    res.render('admin-login', { error: null });
+});
+
+app.post('/admin-login', (req, res) => {
+    if (req.body.password === 'N0placeLike') {
+        res.cookie('adminAuth', 'true', { maxAge: 8 * 60 * 60 * 1000, httpOnly: true });
+        res.cookie('viewMode', 'admin', { maxAge: 365 * 24 * 60 * 60 * 1000 });
+        return res.redirect('/admin');
+    }
+    res.render('admin-login', { error: 'Incorrect password. Please try again.' });
+});
+
+app.get('/logout', (_req, res) => {
+    res.clearCookie('adminAuth');
+    res.cookie('viewMode', 'staff', { maxAge: 365 * 24 * 60 * 60 * 1000 });
+    res.redirect('/staff');
+});
+
+app.get('/staff', (_req, res) => {
+    res.render('staff-hub');
+});
+
+// --- DASHBOARD ---
+app.get('/admin', (req, res) => {
     const camperTotal = db.prepare("SELECT COUNT(*) AS count FROM Campers").get().count;
     const staffTotal = db.prepare("SELECT COUNT(*) AS count FROM Counselors").get().count;
     const activityCount = db.prepare("SELECT COUNT(*) AS count FROM Activities").get().count;
 
-    // Check for potential promotions
     const waitlistCount = db.prepare(`
         SELECT COUNT(*) as count FROM Waitlists w
         JOIN Activities a ON w.RequestedActivity = a.Name
@@ -422,6 +626,49 @@ app.get('/staff-lookup', (req, res) => {
     res.render('staff-lookup', { staff, query });
 });
 
+app.get('/faculty-summer', (req, res) => {
+    const allStaff = db.prepare('SELECT * FROM Staff ORDER BY StaffType, LastName, FirstName').all();
+
+    // Pivot StaffWeekSchedules into one row per (StaffID, WeekNumber) with P1-P6 / L1-L6 columns
+    const weekRows = db.prepare(`
+        SELECT
+            StaffID, WeekNumber,
+            MAX(CASE WHEN PeriodNumber = 1 THEN ActivityName END) AS P1,
+            MAX(CASE WHEN PeriodNumber = 1 THEN Location END)     AS L1,
+            MAX(CASE WHEN PeriodNumber = 2 THEN ActivityName END) AS P2,
+            MAX(CASE WHEN PeriodNumber = 2 THEN Location END)     AS L2,
+            MAX(CASE WHEN PeriodNumber = 3 THEN ActivityName END) AS P3,
+            MAX(CASE WHEN PeriodNumber = 3 THEN Location END)     AS L3,
+            MAX(CASE WHEN PeriodNumber = 4 THEN ActivityName END) AS P4,
+            MAX(CASE WHEN PeriodNumber = 4 THEN Location END)     AS L4,
+            MAX(CASE WHEN PeriodNumber = 5 THEN ActivityName END) AS P5,
+            MAX(CASE WHEN PeriodNumber = 5 THEN Location END)     AS L5,
+            MAX(CASE WHEN PeriodNumber = 6 THEN ActivityName END) AS P6,
+            MAX(CASE WHEN PeriodNumber = 6 THEN Location END)     AS L6
+        FROM StaffWeekSchedules
+        GROUP BY StaffID, WeekNumber
+        ORDER BY StaffID, WeekNumber
+    `).all();
+
+    // Build map: staffId -> array of week objects
+    const weekMap = {};
+    for (const row of weekRows) {
+        if (!weekMap[row.StaffID]) weekMap[row.StaffID] = [];
+        weekMap[row.StaffID].push(row);
+    }
+
+    // Attach weeks to each staff member
+    const staff = allStaff.map(s => ({ ...s, weeks: weekMap[s.StaffID] || [] }));
+
+    // Count staff per week for the upload section header badges
+    const weekCounts = {};
+    for (const row of weekRows) {
+        weekCounts[row.WeekNumber] = (weekCounts[row.WeekNumber] || 0) + 1;
+    }
+
+    res.render('faculty-summer', { staff, weekCounts, alertMessage: req.query.message });
+});
+
 app.get('/counselor-profile/:id', (req, res) => {
     const counselor = db.prepare('SELECT * FROM Counselors WHERE CounselorID = ?').get(req.params.id);
     const schedule = db.prepare("SELECT * FROM Schedules WHERE PersonID = ? AND PersonType = 'Counselor' ORDER BY PeriodNumber ASC").all(req.params.id);
@@ -486,7 +733,8 @@ app.post('/camper/:id/update', (req, res) => {
 // --- SETTINGS & ACTIVITY MANAGEMENT ---
 app.get('/settings', (req, res) => {
     const activities = db.prepare('SELECT * FROM Activities ORDER BY SideOfCamp, Name').all();
-    res.render('settings', { activities, alertMessage: req.query.message });
+    const periodOverrides = db.prepare('SELECT * FROM ActivityPeriodGroups ORDER BY ActivityName, PeriodNumber').all();
+    res.render('settings', { activities, periodOverrides, alertMessage: req.query.message });
 });
 app.post('/upload-activity-rules', upload.single('file'), (req, res) => {
     const results = [];
@@ -494,23 +742,26 @@ app.post('/upload-activity-rules', upload.single('file'), (req, res) => {
         .pipe(csv())
         .on('data', (data) => results.push(data))
         .on('end', () => {
+            const validGroups = ['Red', 'Carolina', 'Red-Carolina', 'Green-Navy'];
             const upsertActivity = db.prepare(`
-                INSERT INTO Activities (Name, SideOfCamp, MaxCapacity, Location)
-                VALUES (@Name, @SideOfCamp, @MaxCapacity, @Location)
+                INSERT INTO Activities (Name, SideOfCamp, MaxCapacity, Location, AllowedGroups)
+                VALUES (@Name, @SideOfCamp, @MaxCapacity, @Location, @AllowedGroups)
                 ON CONFLICT(Name) DO UPDATE SET
-                    SideOfCamp  = excluded.SideOfCamp,
-                    MaxCapacity = excluded.MaxCapacity,
-                    Location    = excluded.Location
+                    SideOfCamp    = excluded.SideOfCamp,
+                    MaxCapacity   = excluded.MaxCapacity,
+                    Location      = excluded.Location,
+                    AllowedGroups = excluded.AllowedGroups
             `);
 
             const insertBatch = db.transaction((dataArray) => {
                 for (const row of dataArray) {
-                    // Ensure the CSV headers match: Name, SideOfCamp, MaxCapacity, Location
+                    const rawGroups = row.AllowedGroups ? row.AllowedGroups.trim() : null;
                     upsertActivity.run({
-                        Name:        row.Name.trim(),
-                        SideOfCamp:  row.SideOfCamp ? row.SideOfCamp.trim() : null,
-                        MaxCapacity: parseInt(row.MaxCapacity) || 20,
-                        Location:    row.Location ? row.Location.trim() : null
+                        Name:          row.Name.trim(),
+                        SideOfCamp:    row.SideOfCamp ? row.SideOfCamp.trim() : null,
+                        MaxCapacity:   parseInt(row.MaxCapacity) || 20,
+                        Location:      row.Location ? row.Location.trim() : null,
+                        AllowedGroups: validGroups.includes(rawGroups) ? rawGroups : null
                     });
                 }
             });
@@ -527,10 +778,12 @@ app.post('/upload-activity-rules', upload.single('file'), (req, res) => {
 });
 app.post('/add-activity', (req, res) => {
     const activityName = (req.body.activityName || '').trim();
-    const { side, capacity, location } = req.body;
+    const { side, capacity, location, allowedGroups } = req.body;
     if (!activityName) return res.redirect('/settings?message=Activity+name+cannot+be+empty');
+    const validGroups = ['Red', 'Carolina', 'Red-Carolina', 'Green-Navy'];
+    const groups = validGroups.includes(allowedGroups) ? allowedGroups : null;
     try {
-        db.prepare("INSERT INTO Activities (Name, SideOfCamp, MaxCapacity, Location) VALUES (?, ?, ?, ?)").run(activityName, side, parseInt(capacity) || 20, location || null);
+        db.prepare("INSERT INTO Activities (Name, SideOfCamp, MaxCapacity, Location, AllowedGroups) VALUES (?, ?, ?, ?, ?)").run(activityName, side, parseInt(capacity) || 20, location || null, groups);
         res.redirect('/settings?message=Activity+Added');
     } catch (err) {
         console.error(err);
@@ -543,16 +796,45 @@ app.post('/delete-activity/:name', (req, res) => {
     res.redirect('/settings?message=Activity+Deleted');
 });
 app.post('/update-activity', (req, res) => {
-    const { activityName, maxCapacity, location } = req.body;
+    const { activityName, maxCapacity, location, allowedGroups } = req.body;
+    const validGroups = ['Red', 'Carolina', 'Red-Carolina', 'Green-Navy'];
+    const groups = validGroups.includes(allowedGroups) ? allowedGroups : null;
     try {
-        db.prepare("UPDATE Activities SET MaxCapacity = ?, Location = ? WHERE Name = ?")
-          .run(parseInt(maxCapacity) || 20, location || null, activityName);
+        db.prepare("UPDATE Activities SET MaxCapacity = ?, Location = ?, AllowedGroups = ? WHERE Name = ?")
+          .run(parseInt(maxCapacity) || 20, location || null, groups, activityName);
         res.redirect('/settings?message=Activity+Updated');
     } catch (err) {
         console.error(err);
         res.status(500).send("Error updating activity");
     }
 });
+// --- ACTIVITY PERIOD OVERRIDES ---
+app.post('/add-activity-period-group', (req, res) => {
+    const { activityName, periodNumber, allowedGroups } = req.body;
+    const validGroups = ['Red', 'Carolina', 'Red-Carolina', 'Green-Navy'];
+    if (!activityName || !periodNumber || !validGroups.includes(allowedGroups)) {
+        return res.redirect('/settings?message=Invalid+period+override+data');
+    }
+    try {
+        db.prepare(`
+            INSERT INTO ActivityPeriodGroups (ActivityName, PeriodNumber, AllowedGroups)
+            VALUES (?, ?, ?)
+            ON CONFLICT(ActivityName, PeriodNumber) DO UPDATE SET AllowedGroups = excluded.AllowedGroups
+        `).run(activityName, parseInt(periodNumber), allowedGroups);
+        res.redirect('/settings?message=Period+Override+Saved');
+    } catch (err) {
+        console.error(err);
+        res.redirect('/settings?message=Error+saving+period+override');
+    }
+});
+
+app.post('/delete-activity-period-group', (req, res) => {
+    const { activityName, periodNumber } = req.body;
+    db.prepare("DELETE FROM ActivityPeriodGroups WHERE ActivityName = ? AND PeriodNumber = ?")
+      .run(activityName, parseInt(periodNumber));
+    res.redirect('/settings?message=Period+Override+Removed');
+});
+
 // --- WAITLIST & PROMOTIONS ---
 app.get('/promotions', (req, res) => {
     const potentialPromotions = db.prepare(`
@@ -628,50 +910,50 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
         .on('data', (data) => results.push(data))
         .on('end', () => {
             const findCounselor = db.prepare("SELECT CounselorID FROM Counselors WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
-            
-            // 8 placeholders for 8 columns
-            const insertCamper = db.prepare(`
-                INSERT INTO Campers (
-                    FirstName, LastName, Age, HomeGroupColor, 
-                    HomeGroupCounselorID, BusRoute, ExtendedHours, CampLunch
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            const findCamper    = db.prepare("SELECT CamperID FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
+            const insertCamper  = db.prepare(`
+                INSERT INTO Campers (FirstName, LastName, Age, HomeGroupColor, HomeGroupCounselorID, BusRoute, ExtendedHours, CampLunch)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `);
-
-            // 3 placeholders for 3 columns (PersonType is handled in the SQL string)
-            const insertSched = db.prepare(`
-                INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName) 
-                VALUES (?, 'Camper', ?, ?)
+            const updateCamper  = db.prepare(`
+                UPDATE Campers SET Age = ?, HomeGroupColor = ?, HomeGroupCounselorID = ?, BusRoute = ?, ExtendedHours = ?, CampLunch = ?
+                WHERE CamperID = ?
             `);
+            const deleteSched   = db.prepare(`DELETE FROM Schedules WHERE PersonID = ? AND PersonType = 'Camper'`);
+            const insertSched   = db.prepare(`INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName) VALUES (?, 'Camper', ?, ?)`);
 
             const safeTrim = (val) => (val && typeof val === 'string') ? val.trim() : '';
 
             try {
                 db.transaction((data) => {
                     for (const row of data) {
+                        const firstName = safeTrim(row.FirstName);
+                        const lastName  = safeTrim(row.LastName);
                         const counselorNameLookup = safeTrim(row.HomeGroupCounselor);
                         const counselor = counselorNameLookup ? findCounselor.get(counselorNameLookup) : null;
                         const cID = counselor ? counselor.CounselorID : null;
 
-                        // Correctly matching the 8 placeholders
-                        const info = insertCamper.run(
-                            safeTrim(row.FirstName),
-                            safeTrim(row.LastName),
-                            row.Age || 0,
-                            safeTrim(row.HomeGroupColor),
-                            cID,
-                            safeTrim(row.BusRoute),
-                            safeTrim(row.ExtendedHours) || null, // NULL is valid per CHECK constraint; 'No' is not
-                            safeTrim(row.CampLunch) || 'No'
-                        );
+                        const existing = findCamper.get(`${firstName} ${lastName}`);
+                        let personId;
+                        if (existing) {
+                            updateCamper.run(
+                                row.Age || 0, safeTrim(row.HomeGroupColor), cID,
+                                safeTrim(row.BusRoute), safeTrim(row.ExtendedHours) || null,
+                                safeTrim(row.CampLunch) || 'No', existing.CamperID
+                            );
+                            personId = existing.CamperID;
+                        } else {
+                            personId = insertCamper.run(
+                                firstName, lastName, row.Age || 0, safeTrim(row.HomeGroupColor),
+                                cID, safeTrim(row.BusRoute), safeTrim(row.ExtendedHours) || null,
+                                safeTrim(row.CampLunch) || 'No'
+                            ).lastInsertRowid;
+                        }
 
-                        const newId = info.lastInsertRowid;
-
+                        deleteSched.run(personId);
                         for (let i = 1; i <= 5; i++) {
                             const act = row[`P${i}`];
-                            if (act && act.trim() !== "") {
-                                // Corrected: Passing exactly 3 values for the 3 '?'
-                                insertSched.run(newId, i, act.trim());
-                            }
+                            if (act && act.trim() !== '') insertSched.run(personId, i, act.trim());
                         }
                     }
                 })(results);
@@ -689,18 +971,28 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
 app.post('/upload-counselors', upload.single('file'), (req, res) => {
     const results = [];
     fs.createReadStream(req.file.path).pipe(csv()).on('data', (d) => results.push(d)).on('end', () => {
-        const insCounselor = db.prepare(`
-            INSERT INTO Counselors (FirstName, LastName, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        `);
-        const insSched = db.prepare(`INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName) VALUES (?, 'Counselor', ?, ?)`);
+        const findCounselor = db.prepare("SELECT CounselorID FROM Counselors WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
+        const insCounselor  = db.prepare(`INSERT INTO Counselors (FirstName, LastName, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours) VALUES (?, ?, ?, ?, ?, ?)`);
+        const updCounselor  = db.prepare(`UPDATE Counselors SET HomeGroupColor = ?, ScheduleType = ?, BusRoute = ?, ExtendedHours = ? WHERE CounselorID = ?`);
+        const deleteSched   = db.prepare(`DELETE FROM Schedules WHERE PersonID = ? AND PersonType = 'Counselor'`);
+        const insSched      = db.prepare(`INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName) VALUES (?, 'Counselor', ?, ?)`);
 
         try {
             db.transaction((data) => {
                 for (const row of data) {
-                    const cid = insCounselor.run(row.FirstName, row.LastName, row.HomeGroupColor, row.ScheduleType, row.Bus, row.Extended).lastInsertRowid;
+                    const firstName = (row.FirstName || '').trim();
+                    const lastName  = (row.LastName  || '').trim();
+                    const existing  = findCounselor.get(`${firstName} ${lastName}`);
+                    let personId;
+                    if (existing) {
+                        updCounselor.run(row.HomeGroupColor, row.ScheduleType, row.Bus, row.Extended, existing.CounselorID);
+                        personId = existing.CounselorID;
+                    } else {
+                        personId = insCounselor.run(firstName, lastName, row.HomeGroupColor, row.ScheduleType, row.Bus, row.Extended).lastInsertRowid;
+                    }
+                    deleteSched.run(personId);
                     for (let i = 1; i <= 6; i++) {
-                        if (row[`P${i}`]) insSched.run(cid, i, row[`P${i}`]);
+                        if (row[`P${i}`]) insSched.run(personId, i, row[`P${i}`]);
                     }
                 }
             })(results);
@@ -718,18 +1010,28 @@ app.post('/upload-counselors', upload.single('file'), (req, res) => {
 app.post('/upload-staff', upload.single('file'), (req, res) => {
     const results = [];
     fs.createReadStream(req.file.path).pipe(csv()).on('data', (d) => results.push(d)).on('end', () => {
-        const insStaff = db.prepare(`
-            INSERT INTO Staff (FirstName, LastName, HomeGroupColor, StaffType)
-            VALUES (?, ?, ?, ?)
-        `);
-        const insSched = db.prepare(`INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName, Location) VALUES (?, 'Staff', ?, ?, ?)`);
+        const findStaff  = db.prepare("SELECT StaffID FROM Staff WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
+        const insStaff   = db.prepare(`INSERT INTO Staff (FirstName, LastName, HomeGroupColor, StaffType) VALUES (?, ?, ?, ?)`);
+        const updStaff   = db.prepare(`UPDATE Staff SET HomeGroupColor = ?, StaffType = ? WHERE StaffID = ?`);
+        const deleteSched = db.prepare(`DELETE FROM Schedules WHERE PersonID = ? AND PersonType = 'Staff'`);
+        const insSched   = db.prepare(`INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName, Location) VALUES (?, 'Staff', ?, ?, ?)`);
 
         try {
             db.transaction((data) => {
                 for (const row of data) {
-                    const sid = insStaff.run(row.FirstName, row.LastName, row.HomeGroupColor, row.StaffType).lastInsertRowid;
+                    const firstName = (row.FirstName || '').trim();
+                    const lastName  = (row.LastName  || '').trim();
+                    const existing  = findStaff.get(`${firstName} ${lastName}`);
+                    let personId;
+                    if (existing) {
+                        updStaff.run(row.HomeGroupColor, row.StaffType, existing.StaffID);
+                        personId = existing.StaffID;
+                    } else {
+                        personId = insStaff.run(firstName, lastName, row.HomeGroupColor, row.StaffType).lastInsertRowid;
+                    }
+                    deleteSched.run(personId);
                     for (let i = 1; i <= 6; i++) {
-                        if (row[`P${i}`]) insSched.run(sid, i, row[`P${i}`], row[`L${i}`] || null);
+                        if (row[`P${i}`]) insSched.run(personId, i, row[`P${i}`], row[`L${i}`] || null);
                     }
                 }
             })(results);
@@ -741,6 +1043,54 @@ app.post('/upload-staff', upload.single('file'), (req, res) => {
             if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         }
     });
+});
+
+// UPLOAD STAFF FULL-SUMMER WEEK (replaces all data for that week number)
+app.post('/upload-staff-week/:weekNumber', upload.single('file'), (req, res) => {
+    const weekNumber = parseInt(req.params.weekNumber);
+    if (weekNumber < 1 || weekNumber > 6) return res.redirect('/faculty-summer?message=Invalid+week+number');
+
+    const results = [];
+    fs.createReadStream(req.file.path).pipe(csv()).on('data', (d) => results.push(d)).on('end', () => {
+        const findStaff  = db.prepare('SELECT StaffID FROM Staff WHERE FirstName = ? AND LastName = ? LIMIT 1');
+        const insStaff   = db.prepare('INSERT INTO Staff (FirstName, LastName, HomeGroupColor, StaffType) VALUES (?, ?, ?, ?)');
+        const delWeek    = db.prepare('DELETE FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ?');
+        const insSchedule = db.prepare('INSERT OR REPLACE INTO StaffWeekSchedules (StaffID, WeekNumber, PeriodNumber, ActivityName, Location) VALUES (?, ?, ?, ?, ?)');
+
+        try {
+            db.transaction((data) => {
+                for (const row of data) {
+                    const firstName = (row.FirstName || '').trim();
+                    const lastName  = (row.LastName  || '').trim();
+                    if (!firstName && !lastName) continue;
+
+                    let found = findStaff.get(firstName, lastName);
+                    const staffId = found
+                        ? found.StaffID
+                        : insStaff.run(firstName, lastName, row.HomeGroupColor || null, row.StaffType || null).lastInsertRowid;
+
+                    delWeek.run(staffId, weekNumber);
+                    for (let i = 1; i <= 6; i++) {
+                        if (row[`P${i}`] && row[`P${i}`].trim()) {
+                            insSchedule.run(staffId, weekNumber, i, row[`P${i}`].trim(), row[`L${i}`] ? row[`L${i}`].trim() : null);
+                        }
+                    }
+                }
+            })(results);
+            res.redirect(`/faculty-summer?message=Week+${weekNumber}+Imported`);
+        } catch (err) {
+            console.error('Week upload error:', err);
+            res.redirect(`/faculty-summer?message=Error+importing+Week+${weekNumber}`);
+        } finally {
+            if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        }
+    });
+});
+
+app.post('/clear-staff-week/:weekNumber', (req, res) => {
+    const weekNumber = parseInt(req.params.weekNumber);
+    db.prepare('DELETE FROM StaffWeekSchedules WHERE WeekNumber = ?').run(weekNumber);
+    res.redirect(`/faculty-summer?message=Week+${weekNumber}+Cleared`);
 });
 
 // CLEAR ACTIVITIES
@@ -802,29 +1152,34 @@ app.get('/swap-tool', (req, res) => {
 app.get('/get-options/:camperId/:period', (req, res) => {
     const { camperId, period } = req.params;
 
-    // Determine which side of camp the camper's current activity is on
-    const current = db.prepare(`
-        SELECT s.ActivityName, a.SideOfCamp
-        FROM Schedules s
-        LEFT JOIN Activities a ON s.ActivityName = a.Name
-        WHERE s.PersonID = ? AND s.PeriodNumber = ? AND s.PersonType = 'Camper'
-    `).get(camperId, period);
+    // Get the camper's home group color for AllowedGroups filtering
+    const camper = db.prepare('SELECT HomeGroupColor FROM Campers WHERE CamperID = ?').get(camperId);
+    const color = camper ? camper.HomeGroupColor : null;
 
-    const side = current ? current.SideOfCamp : null;
-
-    // Get all activities on the same side with their current enrollment, excluding classes not running (0 enrolled)
+    // Resolve effective AllowedGroups: period-specific override takes precedence over activity default.
+    // Only return activities whose effective group permits this camper's color, with enrollment > 0.
     const options = db.prepare(`
-        SELECT * FROM (
+        WITH effective AS (
             SELECT a.Name, a.SideOfCamp, a.MaxCapacity,
-                   (SELECT COUNT(*) FROM Schedules s WHERE s.ActivityName = a.Name AND s.PeriodNumber = ? AND s.PersonType = 'Camper') AS CurrentEnrollment
+                   COALESCE(apg.AllowedGroups, a.AllowedGroups) AS EffectiveGroups,
+                   (SELECT COUNT(*) FROM Schedules s
+                    WHERE s.ActivityName = a.Name AND s.PeriodNumber = @period AND s.PersonType = 'Camper') AS CurrentEnrollment
             FROM Activities a
-            WHERE a.SideOfCamp = ? OR ? IS NULL
-        ) sub
+            LEFT JOIN ActivityPeriodGroups apg
+                   ON apg.ActivityName = a.Name AND apg.PeriodNumber = @period
+        )
+        SELECT * FROM effective
         WHERE CurrentEnrollment > 0
+          AND (
+              EffectiveGroups IS NULL OR
+              EffectiveGroups = @color OR
+              (EffectiveGroups = 'Red-Carolina' AND @color IN ('Red', 'Carolina')) OR
+              (EffectiveGroups = 'Green-Navy'   AND @color IN ('Green', 'Navy'))
+          )
         ORDER BY CurrentEnrollment ASC, Name ASC
-    `).all(period, side, side);
+    `).all({ period, color });
 
-    res.json({ options, side: side || 'All' });
+    res.json({ options, colorGroup: color || 'All' });
 });
 
 // Processes a swap — updates schedule or adds to waitlist if full
@@ -843,6 +1198,8 @@ app.get('/process-swap', (req, res) => {
         WHERE ActivityName = ? AND PeriodNumber = ? AND PersonType = 'Camper'
     `).get(newActivity, period);
 
+    const camper = db.prepare('SELECT * FROM Campers WHERE CamperID = ?').get(camperId);
+
     if (currentEnrollment.count >= activity.MaxCapacity) {
         // Activity is full — add to waitlist instead
         db.prepare(`
@@ -850,16 +1207,82 @@ app.get('/process-swap', (req, res) => {
             VALUES (?, ?, ?)
         `).run(camperId, period, newActivity);
     } else {
-        // Spot available — do the swap
+        // Capture current activity before overwriting it
+        const currentSlot = db.prepare(`
+            SELECT ActivityName FROM Schedules
+            WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper'
+        `).get(camperId, period);
+
+        // Do the swap
         db.prepare(`
             UPDATE Schedules SET ActivityName = ?
             WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper'
         `).run(newActivity, camperId, period);
+
+        // Log the change
+        if (camper && currentSlot) {
+            db.prepare(`
+                INSERT INTO ScheduleChanges (CamperID, CamperName, ColorGroup, PeriodNumber, OldActivity, NewActivity)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `).run(
+                camper.CamperID,
+                `${camper.FirstName} ${camper.LastName}`,
+                camper.HomeGroupColor || null,
+                parseInt(period),
+                currentSlot.ActivityName,
+                newActivity
+            );
+        }
     }
 
-    const camper = db.prepare('SELECT * FROM Campers WHERE CamperID = ?').get(camperId);
     const name = camper ? `${camper.FirstName}+${camper.LastName}` : '';
     res.redirect(`/swap-tool?name=${name}&message=Schedule+Updated`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCHEDULE HISTORY
+// ─────────────────────────────────────────────────────────────────────────────
+
+app.get('/schedule-history', (req, res) => {
+    const changes = db.prepare(`
+        SELECT * FROM ScheduleChanges ORDER BY ChangedAt DESC
+    `).all();
+    const archived = db.prepare(`
+        SELECT * FROM ScheduleChangesArchive ORDER BY ArchivedAt DESC
+    `).all();
+    res.render('schedule-history', { changes, archived, alertMessage: req.query.message });
+});
+
+app.post('/archive-schedule-changes', (req, res) => {
+    // ids may come in as a single string or an array depending on how many are checked
+    const raw = req.body.changeIds;
+    if (!raw) return res.redirect('/schedule-history?message=Nothing+selected');
+
+    const ids = (Array.isArray(raw) ? raw : [raw]).map(Number).filter(Boolean);
+    if (!ids.length) return res.redirect('/schedule-history?message=Nothing+selected');
+
+    const archiveOne = db.prepare(`
+        INSERT OR IGNORE INTO ScheduleChangesArchive
+            (ChangeID, CamperID, CamperName, ColorGroup, PeriodNumber, OldActivity, NewActivity, ChangedAt)
+        SELECT ChangeID, CamperID, CamperName, ColorGroup, PeriodNumber, OldActivity, NewActivity, ChangedAt
+        FROM ScheduleChanges WHERE ChangeID = ?
+    `);
+    const deleteOne = db.prepare('DELETE FROM ScheduleChanges WHERE ChangeID = ?');
+
+    const moveSelected = db.transaction((selectedIds) => {
+        for (const id of selectedIds) {
+            archiveOne.run(id);
+            deleteOne.run(id);
+        }
+    });
+
+    try {
+        moveSelected(ids);
+        res.redirect('/schedule-history?message=Marked+as+Updated+in+CampBrain');
+    } catch (err) {
+        console.error(err);
+        res.redirect('/schedule-history?message=Error+archiving+changes');
+    }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1041,12 +1464,20 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
     db.prepare("SELECT CamperID, Status FROM Attendance WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''")
         .all(date, sessionType).forEach(r => { statusMap[r.CamperID] = r.Status; });
 
+    const seenEarlierSet = new Set(
+        db.prepare(`SELECT DISTINCT CamperID FROM Attendance
+                    WHERE Date = ? AND Status IN ('present','late')
+                      AND NOT (SessionType = ? AND PeriodNumber = 0 AND ActivityName = '')`)
+            .all(date, sessionType).map(r => r.CamperID)
+    );
+
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || 'present',
         absentAM: absentAMSet.has(c.CamperID),
         absentBusAM: absentBusAMSet.has(c.CamperID),
-        dismissed: dismissedSet.has(c.CamperID)
+        dismissed: dismissedSet.has(c.CamperID),
+        seenEarlier: seenEarlierSet.has(c.CamperID)
     }));
 
     res.render('attendance-form', {
@@ -1079,11 +1510,19 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
     db.prepare("SELECT CamperID, Status FROM Attendance WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''")
         .all(date, sessionType).forEach(r => { statusMap[r.CamperID] = r.Status; });
 
+    const seenEarlierSet = new Set(
+        db.prepare(`SELECT DISTINCT CamperID FROM Attendance
+                    WHERE Date = ? AND Status IN ('present','late')
+                      AND NOT (SessionType = ? AND PeriodNumber = 0 AND ActivityName = '')`)
+            .all(date, sessionType).map(r => r.CamperID)
+    );
+
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || 'present',
         absentAM: absentAMSet.has(c.CamperID),
-        dismissed: dismissedSet.has(c.CamperID)
+        dismissed: dismissedSet.has(c.CamperID),
+        seenEarlier: seenEarlierSet.has(c.CamperID)
     }));
 
     res.render('attendance-form', {
@@ -1124,11 +1563,19 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
     db.prepare("SELECT CamperID, Status FROM Attendance WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?")
         .all(date, period, activityName).forEach(r => { statusMap[r.CamperID] = r.Status; });
 
+    const seenEarlierSet = new Set(
+        db.prepare(`SELECT DISTINCT CamperID FROM Attendance
+                    WHERE Date = ? AND Status IN ('present','late')
+                      AND NOT (SessionType = 'class' AND PeriodNumber = ? AND ActivityName = ?)`)
+            .all(date, period, activityName).map(r => r.CamperID)
+    );
+
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || 'present',
         absentAM: absentAMSet.has(c.CamperID),
-        dismissed: dismissedSet.has(c.CamperID)
+        dismissed: dismissedSet.has(c.CamperID),
+        seenEarlier: seenEarlierSet.has(c.CamperID)
     }));
 
     const pLabel = period === 3 && half ? `3 ${half.toUpperCase()}` : String(period);
@@ -1162,11 +1609,19 @@ app.get('/attendance/bus/:route/:session', (req, res) => {
     db.prepare("SELECT CamperID, Status FROM Attendance WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''")
         .all(date, sessionType).forEach(r => { statusMap[r.CamperID] = r.Status; });
 
+    const seenEarlierSet = new Set(
+        db.prepare(`SELECT DISTINCT CamperID FROM Attendance
+                    WHERE Date = ? AND Status IN ('present','late')
+                      AND NOT (SessionType = ? AND PeriodNumber = 0 AND ActivityName = '')`)
+            .all(date, sessionType).map(r => r.CamperID)
+    );
+
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || 'present',
         absentAM: absentAMSet.has(c.CamperID),
-        dismissed: dismissedSet.has(c.CamperID)
+        dismissed: dismissedSet.has(c.CamperID),
+        seenEarlier: seenEarlierSet.has(c.CamperID)
     }));
 
     res.render('attendance-form', {
@@ -1200,11 +1655,19 @@ app.get('/attendance/extended/:session', (req, res) => {
     db.prepare("SELECT CamperID, Status FROM Attendance WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''")
         .all(date, sessionType).forEach(r => { statusMap[r.CamperID] = r.Status; });
 
+    const seenEarlierSet = new Set(
+        db.prepare(`SELECT DISTINCT CamperID FROM Attendance
+                    WHERE Date = ? AND Status IN ('present','late')
+                      AND NOT (SessionType = ? AND PeriodNumber = 0 AND ActivityName = '')`)
+            .all(date, sessionType).map(r => r.CamperID)
+    );
+
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || 'present',
         absentAM: absentAMSet.has(c.CamperID),
-        dismissed: dismissedSet.has(c.CamperID)
+        dismissed: dismissedSet.has(c.CamperID),
+        seenEarlier: seenEarlierSet.has(c.CamperID)
     }));
 
     res.render('attendance-form', {
@@ -1277,6 +1740,233 @@ app.post('/attendance/early-dismissal', (req, res) => {
             Notes = excluded.Notes
     `).run(date, camperId, dismissalTime || null, notes || null);
     res.redirect(returnTo || `/attendance?date=${date}`);
+});
+
+// --- Counselor Scheduling Tool ---
+app.get('/counselor-scheduling', (req, res) => {
+    const offerings = db.prepare("SELECT * FROM WeeklyOfferings ORDER BY SideOfCamp, ActivityName").all();
+    const counselors = db.prepare("SELECT CounselorID, FirstName, LastName, HomeGroupColor, BusRoute, ScheduleType FROM Counselors ORDER BY LastName, FirstName").all();
+    const alertMessage = req.query.message || null;
+
+    const availability = {};
+    const staffAvailability = {};
+
+    for (let p = 1; p <= 6; p++) {
+        availability[p] = {
+            Sports: db.prepare(`
+                SELECT DISTINCT c.CounselorID, c.FirstName, c.LastName, c.HomeGroupColor
+                FROM Counselors c
+                JOIN Schedules s ON s.PersonID = c.CounselorID AND s.PersonType = 'Counselor' AND s.PeriodNumber = ?
+                JOIN Activities a ON a.Name = s.ActivityName AND a.SideOfCamp = 'Sports'
+                ORDER BY c.LastName, c.FirstName
+            `).all(p),
+            Enrichment: db.prepare(`
+                SELECT DISTINCT c.CounselorID, c.FirstName, c.LastName, c.HomeGroupColor
+                FROM Counselors c
+                JOIN Schedules s ON s.PersonID = c.CounselorID AND s.PersonType = 'Counselor' AND s.PeriodNumber = ?
+                JOIN Activities a ON a.Name = s.ActivityName AND a.SideOfCamp = 'Enrichment'
+                ORDER BY c.LastName, c.FirstName
+            `).all(p),
+        };
+        staffAvailability[p] = {
+            Sports: db.prepare(`
+                SELECT DISTINCT st.StaffID, st.FirstName, st.LastName, st.StaffType
+                FROM Staff st
+                JOIN Schedules s ON s.PersonID = st.StaffID AND s.PersonType = 'Staff' AND s.PeriodNumber = ?
+                JOIN Activities a ON a.Name = s.ActivityName AND a.SideOfCamp = 'Sports'
+                ORDER BY st.LastName, st.FirstName
+            `).all(p),
+            Enrichment: db.prepare(`
+                SELECT DISTINCT st.StaffID, st.FirstName, st.LastName, st.StaffType
+                FROM Staff st
+                JOIN Schedules s ON s.PersonID = st.StaffID AND s.PersonType = 'Staff' AND s.PeriodNumber = ?
+                JOIN Activities a ON a.Name = s.ActivityName AND a.SideOfCamp = 'Enrichment'
+                ORDER BY st.LastName, st.FirstName
+            `).all(p),
+        };
+    }
+
+    const rawAssignments = db.prepare("SELECT * FROM CounselorScheduleAssignments").all();
+    const existingAssignments = {};
+    rawAssignments.forEach(a => {
+        const key = `${a.PeriodNumber}|${a.ActivityName}`;
+        if (!existingAssignments[key]) existingAssignments[key] = { counselors: [], staff: [] };
+        if (a.PersonType === 'Counselor') existingAssignments[key].counselors.push(a.PersonID);
+        else existingAssignments[key].staff.push(a.PersonID);
+    });
+
+    res.render('counselor-scheduling', { offerings, counselors, availability, staffAvailability, existingAssignments, alertMessage });
+});
+
+app.post('/save-counselor-group-assignments', (req, res) => {
+    const { counselors } = req.body;
+    if (!Array.isArray(counselors)) return res.status(400).json({ error: 'Invalid payload' });
+    const update = db.prepare('UPDATE Counselors SET HomeGroupColor = ?, BusRoute = ?, ScheduleType = ? WHERE CounselorID = ?');
+    db.transaction(list => {
+        for (const c of list) {
+            if (c.counselorID) update.run(c.homeGroupColor || null, c.busRoute || null, c.scheduleType || null, c.counselorID);
+        }
+    })(counselors);
+    res.json({ ok: true });
+});
+
+app.post('/upload-weekly-offerings', upload.single('file'), (req, res) => {
+    if (!req.file) return res.redirect('/counselor-scheduling?message=No+file+uploaded.');
+    const rows = [];
+    fs.createReadStream(req.file.path)
+        .pipe(csv())
+        .on('data', row => {
+            const name       = (row.ActivityName || '').trim();
+            const enrollment = parseInt(row.PreliminaryEnrollment) || 0;
+            const side       = (row.SideOfCamp || '').trim();
+            const period     = parseInt(row.PeriodNumber) || null;
+            if (name) rows.push([name, enrollment, side, period]);
+        })
+        .on('end', () => {
+            fs.unlinkSync(req.file.path);
+            db.exec('DELETE FROM WeeklyOfferings; DELETE FROM CounselorScheduleAssignments;');
+            const ins = db.prepare('INSERT INTO WeeklyOfferings (ActivityName, PreliminaryEnrollment, SideOfCamp, PeriodNumber) VALUES (?, ?, ?, ?)');
+            db.transaction(items => { for (const item of items) ins.run(...item); })(rows);
+            res.redirect(`/counselor-scheduling?message=Loaded+${rows.length}+offerings.`);
+        })
+        .on('error', () => res.redirect('/counselor-scheduling?message=Error+reading+file.'));
+});
+
+app.post('/clear-weekly-offerings', (_req, res) => {
+    db.exec('DELETE FROM WeeklyOfferings; DELETE FROM CounselorScheduleAssignments;');
+    res.redirect('/counselor-scheduling?message=Offerings+cleared.');
+});
+
+app.post('/save-counselor-assignments', (req, res) => {
+    const { assignments } = req.body;
+    if (!Array.isArray(assignments)) return res.status(400).json({ error: 'Invalid payload' });
+    db.exec('DELETE FROM CounselorScheduleAssignments');
+    const ins = db.prepare('INSERT OR IGNORE INTO CounselorScheduleAssignments (PeriodNumber, ActivityName, PersonID, PersonType) VALUES (?, ?, ?, ?)');
+    db.transaction(items => {
+        for (const a of items) {
+            if (a.periodNumber && a.activityName && a.personID && a.personType) {
+                ins.run(a.periodNumber, a.activityName, a.personID, a.personType);
+            }
+        }
+    })(assignments);
+    res.json({ ok: true });
+});
+
+app.get('/export-counselor-schedule', (_req, res) => {
+    const counselors = db.prepare(`
+        SELECT c.CounselorID, c.FirstName, c.LastName, c.HomeGroupColor, c.ScheduleType, c.BusRoute, c.ExtendedHours
+        FROM Counselors c
+        ORDER BY c.LastName, c.FirstName
+    `).all();
+    const assignments = db.prepare(`
+        SELECT PersonID, PeriodNumber, ActivityName
+        FROM CounselorScheduleAssignments
+        WHERE PersonType = 'Counselor'
+    `).all();
+    const periodsByID = {};
+    assignments.forEach(a => {
+        if (!periodsByID[a.PersonID]) periodsByID[a.PersonID] = {};
+        periodsByID[a.PersonID][a.PeriodNumber] = a.ActivityName;
+    });
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    let out = 'FirstName,LastName,HomeGroupColor,ScheduleType,Bus,Extended,P1,P2,P3,P4,P5,P6\n';
+    counselors.forEach(c => {
+        const p = periodsByID[c.CounselorID] || {};
+        out += [c.FirstName, c.LastName, c.HomeGroupColor, c.ScheduleType, c.BusRoute, c.ExtendedHours,
+            p[1]||'', p[2]||'', p[3]||'', p[4]||'', p[5]||'', p[6]||''].map(q).join(',') + '\n';
+    });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="counselor-schedule.csv"');
+    res.send(out);
+});
+
+app.get('/export-staff-schedule', (_req, res) => {
+    const rows = db.prepare(`
+        SELECT a.PeriodNumber, a.ActivityName, st.StaffID, st.FirstName, st.LastName, st.HomeGroupColor, st.StaffType
+        FROM CounselorScheduleAssignments a
+        JOIN Staff st ON st.StaffID = a.PersonID AND a.PersonType = 'Staff'
+        ORDER BY st.LastName, st.FirstName, a.PeriodNumber
+    `).all();
+    const byID = {};
+    rows.forEach(r => {
+        if (!byID[r.StaffID]) byID[r.StaffID] = { FirstName: r.FirstName, LastName: r.LastName, HomeGroupColor: r.HomeGroupColor, StaffType: r.StaffType, periods: {} };
+        byID[r.StaffID].periods[r.PeriodNumber] = r.ActivityName;
+    });
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    let out = 'FirstName,LastName,HomeGroupColor,StaffType,P1,P2,P3,P4,P5,P6\n';
+    Object.values(byID).forEach(s => {
+        out += [s.FirstName, s.LastName, s.HomeGroupColor, s.StaffType,
+            s.periods[1]||'', s.periods[2]||'', s.periods[3]||'',
+            s.periods[4]||'', s.periods[5]||'', s.periods[6]||''].map(q).join(',') + '\n';
+    });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="staff-schedule.csv"');
+    res.send(out);
+});
+
+app.get('/export-master-schedule', (_req, res) => {
+    const rows = db.prepare(`
+        SELECT
+            s.PeriodNumber,
+            s.ActivityName,
+            a.SideOfCamp,
+            (SELECT COUNT(*) FROM Schedules sc
+             WHERE sc.PersonType = 'Camper' AND sc.PeriodNumber = s.PeriodNumber AND sc.ActivityName = s.ActivityName
+            ) AS Enrollment,
+            (SELECT GROUP_CONCAT(st.FirstName || ' ' || st.LastName, '; ')
+             FROM Staff st JOIN Schedules ss ON st.StaffID = ss.PersonID AND ss.PersonType = 'Staff'
+             WHERE ss.PeriodNumber = s.PeriodNumber AND ss.ActivityName = s.ActivityName
+            ) AS Staff,
+            (SELECT ss.Location FROM Schedules ss
+             WHERE ss.PersonType = 'Staff' AND ss.PeriodNumber = s.PeriodNumber AND ss.ActivityName = s.ActivityName
+             AND ss.Location IS NOT NULL AND ss.Location != '' LIMIT 1
+            ) AS Location,
+            (SELECT GROUP_CONCAT(c.FirstName || ' ' || c.LastName, '; ')
+             FROM Counselors c JOIN Schedules ss ON c.CounselorID = ss.PersonID AND ss.PersonType = 'Counselor'
+             WHERE ss.PeriodNumber = s.PeriodNumber AND ss.ActivityName = s.ActivityName
+            ) AS Counselors
+        FROM (SELECT DISTINCT PeriodNumber, ActivityName FROM Schedules) s
+        LEFT JOIN Activities a ON s.ActivityName = a.Name
+        ORDER BY s.PeriodNumber, a.SideOfCamp, s.ActivityName
+    `).all();
+
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    let out = 'Period,Activity Name,Side of Camp,Enrollment,Staff,Location,Counselors\n';
+    rows.forEach(r => {
+        out += [r.PeriodNumber, r.ActivityName, r.SideOfCamp, r.Enrollment, r.Staff, r.Location, r.Counselors].map(q).join(',') + '\n';
+    });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="master-schedule.csv"');
+    res.send(out);
+});
+
+// --- Counselor Preferences ---
+app.get('/counselor-preferences', (req, res) => {
+    const counselors = db.prepare("SELECT CounselorID, FirstName, LastName, HomeGroupColor FROM Counselors ORDER BY LastName, FirstName").all();
+    const activities = db.prepare("SELECT Name, SideOfCamp FROM Activities ORDER BY SideOfCamp, Name").all();
+    const alertMessage = req.query.message || null;
+    res.render('counselor-preferences', { counselors, activities, alertMessage });
+});
+
+app.post('/counselor-preferences', (req, res) => {
+    const { counselorID, homeGroupPreference, schedulePreference } = req.body;
+    const activityPreferences = Array.isArray(req.body.activityPreferences)
+        ? req.body.activityPreferences
+        : req.body.activityPreferences ? [req.body.activityPreferences] : [];
+
+    if (!counselorID) return res.redirect('/counselor-preferences?message=Please+select+a+counselor.');
+
+    db.prepare(`
+        INSERT INTO CounselorPreferences (CounselorID, HomeGroupPreference, SchedulePreference, ActivityPreferences, SubmittedAt)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT (CounselorID) DO UPDATE SET
+            HomeGroupPreference  = excluded.HomeGroupPreference,
+            SchedulePreference   = excluded.SchedulePreference,
+            ActivityPreferences  = excluded.ActivityPreferences,
+            SubmittedAt          = CURRENT_TIMESTAMP
+    `).run(counselorID, homeGroupPreference || null, schedulePreference || null, JSON.stringify(activityPreferences));
+
+    res.redirect('/counselor-preferences?message=Preferences+saved!');
 });
 
 app.listen(3000, () => console.log('Camp Manager running at http://localhost:3000'));

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Hub | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .hub-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 16px;
+            margin-top: 32px;
+        }
+        .hub-card {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 32px 20px;
+            box-shadow: var(--shadow);
+            text-align: center;
+            text-decoration: none;
+            display: block;
+            transition: transform 0.15s, box-shadow 0.15s;
+            color: var(--text);
+        }
+        .hub-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+        .hub-card-icon { font-size: 2.4rem; margin-bottom: 12px; }
+        .hub-card-title { font-size: 1.05rem; font-weight: 700; margin: 0; }
+        .switch-bar { margin-top: 48px; text-align: center; }
+        .switch-bar a, .switch-bar button { color: #94a3b8; font-size: 0.82rem; background: none; border: none; cursor: pointer; font-family: inherit; text-decoration: underline; }
+        .switch-bar a:hover, .switch-bar button:hover { color: var(--text); }
+    </style>
+</head>
+<body>
+    <nav class="nav-bar">
+        <a href="/staff" class="nav-btn primary">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/counselor-preferences" class="nav-btn">&#127381; My Preferences</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="admin">
+            <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
+        </form>
+    </nav>
+
+    <div class="container">
+        <header class="header-flex" style="margin-bottom: 8px;">
+            <div>
+                <h1>Welcome</h1>
+                <p class="text-muted">Select a tool to get started.</p>
+            </div>
+        </header>
+
+        <div class="hub-cards">
+            <a href="/attendance" class="hub-card">
+                <div class="hub-card-icon">&#128203;</div>
+                <div class="hub-card-title">Attendance</div>
+            </a>
+            <a href="/search" class="hub-card">
+                <div class="hub-card-icon">&#128269;</div>
+                <div class="hub-card-title">Camper Lookup</div>
+            </a>
+            <a href="/master-schedule" class="hub-card">
+                <div class="hub-card-icon">&#128197;</div>
+                <div class="hub-card-title">Master Schedule</div>
+            </a>
+            <a href="/counselor-preferences" class="hub-card">
+                <div class="hub-card-icon">&#127381;</div>
+                <div class="hub-card-title">My Preferences</div>
+            </a>
+        </div>
+
+        <div class="switch-bar">
+            <form action="/choose-view" method="POST" style="display:inline;">
+                <input type="hidden" name="view" value="admin">
+                <button type="submit">Switch to Admin View</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

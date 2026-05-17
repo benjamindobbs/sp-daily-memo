@@ -11,14 +11,32 @@
 
 <body>
 
+    <% if (viewMode === 'admin') { %>
     <nav class="nav-bar">
-        <a href="/" class="nav-btn">🏠 Hub</a>
-        <a href="/master-schedule" class="nav-btn">📅 Master Schedule</a>
-        <a href="/counselor-directory" class="nav-btn">👤 Counselors</a>
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn primary">&#128269; Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
         <a href="/staff-lookup" class="nav-btn">&#128101; Staff Lookup</a>
-        <a href="/search" class="nav-btn primary">🔍 Search</a>
+        <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
     </nav>
+    <% } else { %>
+    <nav class="nav-bar">
+        <a href="/staff" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn primary">&#128269; Camper Lookup</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="admin">
+            <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
+        </form>
+    </nav>
+    <% } %>
 
     <div class="container">
         <div class="search-header">
@@ -109,6 +127,7 @@
         </table>
         </div>
 
+        <% if (viewMode === 'admin') { %>
         <footer class="admin-footer">
             <div class="admin-footer-inner">
                 <div>
@@ -121,6 +140,7 @@
                 </form>
             </div>
         </footer>
+        <% } %>
     </div>
 
     <script>

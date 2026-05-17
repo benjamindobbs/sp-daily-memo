@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\benja\\\\Documents\\\\GitHub\\\\sp-daily-memo\" -Recurse -File | Where-Object {$_.Extension -match '\\\\.\\(js|json|html|sql|csv\\)$'} | Select-Object -ExpandProperty FullName | Sort-Object)",
+      "Bash(grep -E '\\\\.\\(js|json|html\\)$')",
+      "Bash(grep -iE '\\\\.\\(md|txt|json\\)$')",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\benja\\\\Documents\\\\GitHub\\\\sp-daily-memo\" -Recurse -Name)",
+      "Bash(node -e \"require\\('cookie-parser'\\); console.log\\('ok'\\)\")",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('./app.js'\\); console.log\\('OK'\\)\")"
     ]
   }
 }

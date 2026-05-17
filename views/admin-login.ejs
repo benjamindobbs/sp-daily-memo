@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        body { background: var(--background); display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .login-card {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 40px 36px;
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 380px;
+            text-align: center;
+        }
+        .login-icon { font-size: 2.4rem; margin-bottom: 10px; }
+        .login-title { font-size: 1.4rem; font-weight: 800; margin: 0 0 4px; color: var(--text); }
+        .login-sub { color: var(--text-muted); font-size: 0.88rem; margin: 0 0 28px; }
+        .login-error { background: #fee2e2; color: #991b1b; border-radius: 8px; padding: 10px 14px; font-size: 0.85rem; font-weight: 600; margin-bottom: 16px; }
+        .login-label { display: block; text-align: left; font-size: 0.8rem; font-weight: 600; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .login-input { width: 100%; box-sizing: border-box; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.95rem; font-family: inherit; margin-bottom: 20px; }
+        .login-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+        .login-btn { width: 100%; padding: 11px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; font-family: inherit; }
+        .login-btn:hover { background: var(--primary-hover, #4f46e5); }
+        .back-link-wrap { margin-top: 20px; }
+        .back-link-wrap a { color: var(--text-muted); font-size: 0.83rem; text-decoration: none; }
+        .back-link-wrap a:hover { color: var(--text); }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-icon">&#128274;</div>
+        <h1 class="login-title">Admin Access</h1>
+        <p class="login-sub">Enter the administrator password to continue.</p>
+
+        <% if (error) { %>
+            <div class="login-error">&#9888; <%= error %></div>
+        <% } %>
+
+        <form action="/admin-login" method="POST">
+            <label class="login-label" for="password">Password</label>
+            <input class="login-input" type="password" id="password" name="password" autofocus required>
+            <button class="login-btn" type="submit">Sign In</button>
+        </form>
+
+        <div class="back-link-wrap">
+            <a href="/staff">&#8592; Back to Staff View</a>
+        </div>
+    </div>
+</body>
+</html>

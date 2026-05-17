@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Faculty Full Summer | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .week-upload-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 32px;
+        }
+        @media (max-width: 700px) {
+            .week-upload-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        .week-upload-card {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 14px 16px;
+            box-shadow: var(--shadow);
+        }
+        .week-upload-card h4 {
+            margin: 0 0 4px 0;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .count-badge {
+            font-size: 0.72rem;
+            background: #dbeafe;
+            color: #1d4ed8;
+            border-radius: 20px;
+            padding: 2px 8px;
+            font-weight: 600;
+        }
+        .week-upload-card form { margin-top: 8px; }
+        .week-upload-card input[type="file"] { font-size: 0.78rem; width: 100%; margin-bottom: 6px; }
+
+        /* Staff summer table */
+        .summer-table { width: 100%; border-collapse: collapse; }
+        .summer-table th {
+            text-align: left;
+            padding: 10px 14px;
+            background: #f8fafc;
+            border-bottom: 2px solid #e2e8f0;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #64748b;
+        }
+        .summer-table td { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+        .summer-table tr:last-child td { border-bottom: none; }
+        .summer-table tr.type-group-header td {
+            background: #f1f5f9;
+            font-weight: 700;
+            font-size: 0.82rem;
+            color: #475569;
+            padding: 8px 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .week-selector {
+            padding: 5px 8px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            background: white;
+            cursor: pointer;
+            min-width: 130px;
+        }
+        .week-schedule { margin-top: 10px; }
+        .no-data-msg { color: var(--text-muted); font-style: italic; font-size: 0.83rem; }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
+        <a href="/staff-lookup" class="nav-btn">&#128101; Staff Lookup</a>
+        <a href="/faculty-summer" class="nav-btn primary">&#128197; Full Summer</a>
+        <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+    </nav>
+
+    <div class="container">
+        <header style="margin-bottom: 24px;">
+            <h1>Faculty Full Summer Schedule</h1>
+            <p style="color: var(--text-muted); margin: 4px 0 0 0;">
+                Upload a CSV per week, then browse each staff member's schedule by week.
+            </p>
+        </header>
+
+        <% if (alertMessage) { %>
+            <div class="alert"><%= alertMessage %></div>
+        <% } %>
+
+        <!-- ── Week Upload Cards ── -->
+        <section style="margin-bottom: 36px;">
+            <h2 style="font-size: 1rem; margin-bottom: 12px;">Weekly CSV Uploads</h2>
+            <p class="text-muted" style="font-size: 0.78rem; margin-bottom: 14px;">
+                Headers: <strong>FirstName, LastName, HomeGroupColor, StaffType, P1, L1, P2, L2, P3, L3, P4, L4, P5, L5, P6, L6</strong><br>
+                Uploading a week replaces all existing data for that week.
+            </p>
+            <div class="week-upload-grid">
+                <% for (let w = 1; w <= 6; w++) { %>
+                    <div class="week-upload-card">
+                        <h4>
+                            Week <%= w %>
+                            <% if (weekCounts[w]) { %>
+                                <span class="count-badge"><%= weekCounts[w] %> staff</span>
+                            <% } %>
+                        </h4>
+                        <form action="/upload-staff-week/<%= w %>" method="POST" enctype="multipart/form-data">
+                            <input type="file" name="file" accept=".csv" required>
+                            <button type="submit" class="btn primary btn-small" style="width: 100%;">Upload Week <%= w %></button>
+                        </form>
+                        <% if (weekCounts[w]) { %>
+                            <form action="/clear-staff-week/<%= w %>" method="POST"
+                                  onsubmit="return confirm('Clear all Week <%= w %> schedule data? This cannot be undone.');"
+                                  style="margin-top: 6px;">
+                                <button type="submit" class="settings-link-btn" style="font-size: 0.74rem;">🗑️ Clear Week <%= w %></button>
+                            </form>
+                        <% } %>
+                    </div>
+                <% } %>
+            </div>
+        </section>
+
+        <!-- ── Staff List ── -->
+        <section>
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 14px; flex-wrap: wrap;">
+                <h2 style="font-size: 1rem; margin: 0;">Staff Schedules</h2>
+                <input type="text" id="staffSearch" class="search-input"
+                       placeholder="Filter by name…" oninput="runSearch()"
+                       style="max-width: 260px; padding: 7px 12px; font-size: 0.85rem;">
+            </div>
+
+            <% if (staff.length === 0) { %>
+                <div class="card" style="text-align: center; padding: 50px; color: var(--text-muted);">
+                    No staff records found. Import staff data in Settings first.
+                </div>
+            <% } else { %>
+
+            <%
+                const groups = [];
+                let lastType = null;
+                staff.forEach(function(s) {
+                    if (s.StaffType !== lastType) {
+                        groups.push({ type: s.StaffType || 'Other', members: [] });
+                        lastType = s.StaffType;
+                    }
+                    groups[groups.length - 1].members.push(s);
+                });
+                const PERIODS = [1, 2, 3, 4, 5, 6];
+            %>
+
+            <div style="border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow);">
+                <table class="summer-table" id="summerTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 180px;">Name</th>
+                            <th style="width: 120px;">Type</th>
+                            <th>Week / Schedule</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <% groups.forEach(function(group) { %>
+                        <tr class="type-group-header" data-group-header>
+                            <td colspan="3"><%= group.type %></td>
+                        </tr>
+                        <% group.members.forEach(function(s) { %>
+                        <tr class="summer-staff-row" data-name="<%= (s.FirstName + ' ' + s.LastName).toLowerCase() %>">
+                            <td>
+                                <div class="staff-name"><%= s.FirstName %> <%= s.LastName %></div>
+                            </td>
+                            <td>
+                                <span class="staff-type-badge"><%= s.StaffType || '—' %></span>
+                            </td>
+                            <td>
+                                <% if (s.weeks.length === 0) { %>
+                                    <span class="no-data-msg">No full summer schedule uploaded.</span>
+                                <% } else { %>
+                                    <select class="week-selector"
+                                            onchange="showWeek(this, 'staff-<%= s.StaffID %>')">
+                                        <option value="">— Select Week —</option>
+                                        <% s.weeks.forEach(function(wk) { %>
+                                            <option value="<%= wk.WeekNumber %>">Week <%= wk.WeekNumber %></option>
+                                        <% }); %>
+                                    </select>
+
+                                    <% s.weeks.forEach(function(wk) { %>
+                                        <div class="week-schedule mini-sched"
+                                             id="staff-<%= s.StaffID %>-week-<%= wk.WeekNumber %>"
+                                             style="display: none;">
+                                            <% PERIODS.forEach(function(p) { %>
+                                                <% if (wk['P' + p]) { %>
+                                                    <div class="period-pill">
+                                                        <div class="period-pill-label">Period <%= p %></div>
+                                                        <div class="period-pill-activity"><%= wk['P' + p] %></div>
+                                                        <% if (wk['L' + p]) { %>
+                                                            <div class="period-pill-location">&#128205; <%= wk['L' + p] %></div>
+                                                        <% } %>
+                                                    </div>
+                                                <% } %>
+                                            <% }); %>
+                                            <% if (!PERIODS.some(function(p) { return wk['P' + p]; })) { %>
+                                                <span class="no-data-msg">No periods assigned this week.</span>
+                                            <% } %>
+                                        </div>
+                                    <% }); %>
+                                <% } %>
+                            </td>
+                        </tr>
+                        <% }); %>
+                    <% }); %>
+                    </tbody>
+                </table>
+            </div>
+            <% } %>
+        </section>
+    </div>
+
+    <script>
+        function showWeek(select, staffPrefix) {
+            const row = select.closest('tr');
+            row.querySelectorAll('.week-schedule').forEach(function(el) {
+                el.style.display = 'none';
+            });
+            if (select.value) {
+                const target = document.getElementById(staffPrefix + '-week-' + select.value);
+                if (target) target.style.display = '';
+            }
+        }
+
+        function runSearch() {
+            const term = document.getElementById('staffSearch').value.trim().toLowerCase();
+            const rows = document.querySelectorAll('.summer-staff-row');
+            const headers = document.querySelectorAll('[data-group-header]');
+            const visibleGroups = new Set();
+
+            rows.forEach(function(row) {
+                const name = row.getAttribute('data-name');
+                const show = term === '' || name.includes(term);
+                row.style.display = show ? '' : 'none';
+                if (show) {
+                    let prev = row.previousElementSibling;
+                    while (prev) {
+                        if (prev.hasAttribute('data-group-header')) { visibleGroups.add(prev); break; }
+                        prev = prev.previousElementSibling;
+                    }
+                }
+            });
+
+            headers.forEach(function(h) {
+                h.style.display = visibleGroups.has(h) ? '' : 'none';
+            });
+        }
+    </script>
+</body>
+</html>

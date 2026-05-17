@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        body { background: var(--background); display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .splash-wrap { text-align: center; padding: 24px 16px; width: 100%; max-width: 680px; }
+        .splash-logo { font-size: 3rem; margin-bottom: 8px; }
+        .splash-title { font-size: 2rem; font-weight: 800; color: var(--text); margin: 0 0 6px; }
+        .splash-sub { color: var(--text-muted); margin: 0 0 40px; font-size: 1rem; }
+        .splash-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 480px) { .splash-cards { grid-template-columns: 1fr; } }
+        .splash-card {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 36px 24px;
+            box-shadow: var(--shadow);
+            cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s;
+            text-decoration: none;
+            display: block;
+        }
+        .splash-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+        .splash-card-icon { font-size: 2.4rem; margin-bottom: 14px; }
+        .splash-card-title { font-size: 1.2rem; font-weight: 700; color: var(--text); margin: 0 0 6px; }
+        .splash-card-desc { font-size: 0.85rem; color: var(--text-muted); margin: 0; line-height: 1.5; }
+        .splash-card.admin { border-color: var(--primary); }
+        .splash-card.admin .splash-card-title { color: var(--primary); }
+        .splash-card-lock { font-size: 0.72rem; color: #94a3b8; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="splash-wrap">
+        <div class="splash-logo">&#127968;</div>
+        <h1 class="splash-title">Camp Hub</h1>
+        <p class="splash-sub">Who are you today?</p>
+
+        <div class="splash-cards">
+            <form action="/choose-view" method="POST">
+                <input type="hidden" name="view" value="staff">
+                <button type="submit" class="splash-card" style="width:100%; background:white; border:1px solid var(--border-color); font-family:inherit;">
+                    <div class="splash-card-icon">&#128100;</div>
+                    <div class="splash-card-title">Staff / Counselor</div>
+                    <p class="splash-card-desc">Attendance, camper lookup, and master schedule.</p>
+                </button>
+            </form>
+
+            <form action="/choose-view" method="POST">
+                <input type="hidden" name="view" value="admin">
+                <button type="submit" class="splash-card admin" style="width:100%; background:white; font-family:inherit;">
+                    <div class="splash-card-icon">&#128274;</div>
+                    <div class="splash-card-title">Administrator</div>
+                    <p class="splash-card-desc">Full access to schedules, data management, and tools.</p>
+                    <p class="splash-card-lock">Password required</p>
+                </button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

@@ -8,14 +8,31 @@
     <script src="/js/nav.js" defer></script>
 </head>
 <body>
+    <% if (viewMode === 'admin') { %>
     <nav class="nav-bar">
-        <a href="/" class="nav-btn">&#127968; Hub</a>
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn primary">&#128269; Camper Lookup</a>
         <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
         <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
     </nav>
+    <% } else { %>
+    <nav class="nav-bar">
+        <a href="/staff" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn primary">&#128269; Camper Lookup</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="admin">
+            <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
+        </form>
+    </nav>
+    <% } %>
 
     <div class="container-md">
 
@@ -39,7 +56,8 @@
 
         <div class="roster-layout">
 
-            <!-- Left column: editable info -->
+            <!-- Left column: editable info (admin only) -->
+            <% if (viewMode === 'admin') { %>
             <div>
                 <div class="card">
                     <h3 style="margin:0 0 20px;">Camper Details</h3>
@@ -96,6 +114,7 @@
                     </form>
                 </div>
             </div>
+            <% } %>
 
             <!-- Right column: schedule -->
             <div>
@@ -130,6 +149,7 @@
                     <% } %>
                 </div>
 
+                <% if (viewMode === 'admin') { %>
                 <div class="card" style="margin-top:20px;">
                     <h4 style="margin:0 0 10px; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Swap Schedule</h4>
                     <a href="/swap-tool?name=<%= encodeURIComponent(camper.FirstName + ' ' + camper.LastName) %>"
@@ -137,6 +157,7 @@
                         &#128260; Open Swap Tool
                     </a>
                 </div>
+                <% } %>
             </div>
 
         </div>

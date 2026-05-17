@@ -12,7 +12,7 @@
 <body>
 
     <nav class="nav-bar">
-        <a href="/" class="nav-btn">🏠 Hub</a>
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
         <a href="/master-schedule" class="nav-btn">📅 Schedule</a>
         <a href="/settings" class="nav-btn primary">⚙️ Settings</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
@@ -36,7 +36,8 @@
                         <div class="upload-box">
                             <h4 style="margin-top:0; font-size: 0.9rem;">Bulk Upload Activities</h4>
                             <p class="text-muted" style="font-size: 0.7rem; margin-bottom: 10px;">
-                                Headers: <strong>Name | SideOfCamp | MaxCapacity</strong>
+                                Headers: <strong>Name | SideOfCamp | MaxCapacity | AllowedGroups</strong><br>
+                                AllowedGroups: <em>Red, Carolina, Red-Carolina, Green-Navy</em> (or blank for all)
                             </p>
                             <form action="/upload-activity-rules" method="POST" enctype="multipart/form-data" class="inline-form">
                                 <input type="file" name="file" accept=".csv" required style="font-size: 0.75rem; flex: 1;">
@@ -49,11 +50,18 @@
                             </form>
                         </div>
 
-                        <form action="/add-activity" method="POST" class="inline-form" style="margin-bottom: 20px;">
+                        <form action="/add-activity" method="POST" class="inline-form" style="margin-bottom: 20px; flex-wrap: wrap;">
                             <input type="text" name="activityName" placeholder="Activity name" required style="flex: 2; min-width: 120px;">
                             <select name="side" style="flex: 1; min-width: 100px;">
                                 <option value="Enrichment">Enrichment</option>
                                 <option value="Sports">Sports</option>
+                            </select>
+                            <select name="allowedGroups" style="flex: 1; min-width: 120px;">
+                                <option value="">All Groups</option>
+                                <option value="Red">Red</option>
+                                <option value="Carolina">Carolina</option>
+                                <option value="Red-Carolina">Red-Carolina</option>
+                                <option value="Green-Navy">Green-Navy</option>
                             </select>
                             <button type="submit" class="btn primary btn-small">Add</button>
                         </form>
@@ -70,7 +78,7 @@
                                     <tr>
                                         <th>Activity</th>
                                         <th>Side</th>
-                                        <th>Max</th>
+                                        <th>Allowed Groups / Max</th>
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -87,13 +95,21 @@
 
                                             <td>
                                                 <form action="/update-activity" method="POST"
-                                                    style="display: flex; align-items: center; gap: 5px;">
+                                                    style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
                                                     <input type="hidden" name="activityName" value="<%= act.Name %>">
+                                                    <select name="allowedGroups"
+                                                        style="padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.8rem;">
+                                                        <option value="" <%= !act.AllowedGroups ? 'selected' : '' %>>All</option>
+                                                        <option value="Red" <%= act.AllowedGroups === 'Red' ? 'selected' : '' %>>Red</option>
+                                                        <option value="Carolina" <%= act.AllowedGroups === 'Carolina' ? 'selected' : '' %>>Carolina</option>
+                                                        <option value="Red-Carolina" <%= act.AllowedGroups === 'Red-Carolina' ? 'selected' : '' %>>Red-Carolina</option>
+                                                        <option value="Green-Navy" <%= act.AllowedGroups === 'Green-Navy' ? 'selected' : '' %>>Green-Navy</option>
+                                                    </select>
                                                     <input type="number" name="maxCapacity"
                                                         value="<%= act.MaxCapacity %>"
                                                         style="width: 60px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.85rem;"
                                                         title="Max Capacity">
-                                                    <button type="submit" title="Save Capacity"
+                                                    <button type="submit" title="Save"
                                                         style="background: none; border: none; cursor: pointer; font-size: 1rem; padding: 0;">
                                                         💾
                                                     </button>
@@ -111,6 +127,68 @@
                                         <% }) %>
                                 </tbody>
                             </table>
+                        </div>
+
+                        <div style="margin-top: 20px; border-top: 1px solid #f1f5f9; padding-top: 16px;">
+                            <h4 style="margin: 0 0 8px 0; font-size: 0.9rem;">Period Group Exceptions</h4>
+                            <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">
+                                Override an activity's allowed groups for a specific period only.
+                            </p>
+
+                            <form action="/add-activity-period-group" method="POST" class="inline-form" style="flex-wrap: wrap; margin-bottom: 12px;">
+                                <select name="activityName" required style="flex: 2; min-width: 140px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem;">
+                                    <option value="">-- Activity --</option>
+                                    <% activities.forEach(act => { %>
+                                        <option value="<%= act.Name %>"><%= act.Name %></option>
+                                    <% }) %>
+                                </select>
+                                <select name="periodNumber" required style="flex: 1; min-width: 90px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem;">
+                                    <option value="">-- Period --</option>
+                                    <% [1,2,3,4,5,6].forEach(p => { %>
+                                        <option value="<%= p %>">Period <%= p %></option>
+                                    <% }) %>
+                                </select>
+                                <select name="allowedGroups" required style="flex: 1; min-width: 120px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem;">
+                                    <option value="">-- Groups --</option>
+                                    <option value="Red">Red</option>
+                                    <option value="Carolina">Carolina</option>
+                                    <option value="Red-Carolina">Red-Carolina</option>
+                                    <option value="Green-Navy">Green-Navy</option>
+                                </select>
+                                <button type="submit" class="btn primary btn-small">Add</button>
+                            </form>
+
+                            <% if (periodOverrides.length > 0) { %>
+                                <table class="settings-table" style="font-size: 0.82rem;">
+                                    <thead>
+                                        <tr>
+                                            <th>Activity</th>
+                                            <th>Period</th>
+                                            <th>Groups</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <% periodOverrides.forEach(ov => { %>
+                                            <tr>
+                                                <td><%= ov.ActivityName %></td>
+                                                <td>P<%= ov.PeriodNumber %></td>
+                                                <td><strong><%= ov.AllowedGroups %></strong></td>
+                                                <td>
+                                                    <form action="/delete-activity-period-group" method="POST"
+                                                          onsubmit="return confirm('Remove this period exception?');">
+                                                        <input type="hidden" name="activityName" value="<%= ov.ActivityName %>">
+                                                        <input type="hidden" name="periodNumber" value="<%= ov.PeriodNumber %>">
+                                                        <button type="submit" style="background:none; border:none; cursor:pointer;">🗑️</button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                        <% }) %>
+                                    </tbody>
+                                </table>
+                            <% } else { %>
+                                <p class="text-muted" style="font-size: 0.8rem; font-style: italic;">No period exceptions configured.</p>
+                            <% } %>
                         </div>
                     </section>
 

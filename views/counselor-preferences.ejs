@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedule Preferences | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+</head>
+<body>
+
+    <% if (viewMode === 'admin') { %>
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
+        <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
+    </nav>
+    <% } else { %>
+    <nav class="nav-bar">
+        <a href="/staff" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/counselor-preferences" class="nav-btn primary">&#127381; My Preferences</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="admin">
+            <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
+        </form>
+    </nav>
+    <% } %>
+
+    <div class="container-md">
+
+        <div class="page-header" style="margin-bottom: 28px;">
+            <div>
+                <h1 style="margin:0;">Schedule Preferences</h1>
+                <p class="text-muted" style="margin:4px 0 0;">Submit your scheduling preferences for the upcoming session. You can resubmit at any time to update your response.</p>
+            </div>
+        </div>
+
+        <% if (alertMessage) { %>
+            <div class="alert" style="<%= alertMessage.includes('saved') ? '' : 'background:#fee2e2; color:#991b1b; border-color:#fca5a5;' %>">
+                <%= alertMessage %>
+            </div>
+        <% } %>
+
+        <form action="/counselor-preferences" method="POST">
+
+            <div class="card" style="margin-bottom: 20px;">
+                <h3 style="margin:0 0 18px;">Your Name</h3>
+                <select name="counselorID" required style="width:100%; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.95rem; background:white;">
+                    <option value="">— Select your name —</option>
+                    <% counselors.forEach(function(c) { %>
+                        <option value="<%= c.CounselorID %>">
+                            <%= c.FirstName %> <%= c.LastName %> (<%= c.HomeGroupColor %> Group)
+                        </option>
+                    <% }); %>
+                </select>
+            </div>
+
+            <div class="card" style="margin-bottom: 20px;">
+                <h3 style="margin:0 0 6px;">Home Group Preference</h3>
+                <p class="text-muted" style="margin:0 0 16px; font-size:0.85rem;">Which home group would you prefer to be assigned to?</p>
+                <div style="display:flex; flex-wrap:wrap; gap:10px;">
+                    <% ['Red', 'Carolina', 'Green', 'Navy', 'No Preference'].forEach(function(grp) { %>
+                        <label style="display:flex; align-items:center; gap:8px; padding:10px 16px; border:1px solid var(--border-color); border-radius:8px; cursor:pointer; font-size:0.9rem; background:white; flex:1; min-width:120px;">
+                            <input type="radio" name="homeGroupPreference" value="<%= grp %>" required>
+                            <% if (grp !== 'No Preference') { %>
+                                <span class="tag <%= grp %>" style="margin:0;"><%= grp %></span>
+                            <% } else { %>
+                                <span><%= grp %></span>
+                            <% } %>
+                        </label>
+                    <% }); %>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 20px;">
+                <h3 style="margin:0 0 6px;">Schedule Preference</h3>
+                <p class="text-muted" style="margin:0 0 16px; font-size:0.85rem;">What type of schedule would you prefer?</p>
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <% [
+                        { value: 'All Sports',                  label: 'All Sports',                  desc: 'Sports activities across all periods' },
+                        { value: 'All Enrichment',              label: 'All Enrichment',              desc: 'Enrichment activities across all periods' },
+                        { value: 'AM Sports / PM Enrichment',   label: 'AM Sports / PM Enrichment',   desc: 'Sports in the morning, Enrichment in the afternoon' },
+                        { value: 'AM Enrichment / PM Sports',   label: 'AM Enrichment / PM Sports',   desc: 'Enrichment in the morning, Sports in the afternoon' },
+                        { value: 'No Preference',               label: 'No Preference',               desc: 'No preference — assign wherever needed' }
+                    ].forEach(function(opt) { %>
+                        <label style="display:flex; align-items:flex-start; gap:12px; padding:12px 16px; border:1px solid var(--border-color); border-radius:8px; cursor:pointer; background:white;">
+                            <input type="radio" name="schedulePreference" value="<%= opt.value %>" required style="margin-top:2px; flex-shrink:0;">
+                            <div>
+                                <div style="font-weight:600; font-size:0.9rem;"><%= opt.label %></div>
+                                <div class="text-muted" style="font-size:0.78rem;"><%= opt.desc %></div>
+                            </div>
+                        </label>
+                    <% }); %>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 28px;">
+                <h3 style="margin:0 0 6px;">Activity Preferences</h3>
+                <p class="text-muted" style="margin:0 0 16px; font-size:0.85rem;">Select all activities you would enjoy teaching. Check as many as you like.</p>
+
+                <div style="margin-bottom: 12px;">
+                    <input type="text" id="activityFilter" placeholder="&#128269; Filter activities..."
+                        onkeyup="filterActivities()"
+                        style="width:100%; padding:8px 12px; border:1px solid var(--border-color); border-radius:8px; font-size:0.88rem; font-family:inherit; box-sizing:border-box;">
+                </div>
+
+                <% const sports = activities.filter(a => a.SideOfCamp === 'Sports'); %>
+                <% const enrichment = activities.filter(a => a.SideOfCamp === 'Enrichment'); %>
+                <% const other = activities.filter(a => a.SideOfCamp !== 'Sports' && a.SideOfCamp !== 'Enrichment'); %>
+
+                <% if (sports.length > 0) { %>
+                <div style="margin-bottom: 18px;">
+                    <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px;">Sports</div>
+                    <div class="activity-checkbox-grid" id="sportsGrid">
+                        <% sports.forEach(function(act) { %>
+                            <label class="activity-check-label" data-name="<%= act.Name.toLowerCase() %>">
+                                <input type="checkbox" name="activityPreferences" value="<%= act.Name %>">
+                                <span><%= act.Name %></span>
+                            </label>
+                        <% }); %>
+                    </div>
+                </div>
+                <% } %>
+
+                <% if (enrichment.length > 0) { %>
+                <div style="margin-bottom: 18px;">
+                    <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px;">Enrichment</div>
+                    <div class="activity-checkbox-grid" id="enrichmentGrid">
+                        <% enrichment.forEach(function(act) { %>
+                            <label class="activity-check-label" data-name="<%= act.Name.toLowerCase() %>">
+                                <input type="checkbox" name="activityPreferences" value="<%= act.Name %>">
+                                <span><%= act.Name %></span>
+                            </label>
+                        <% }); %>
+                    </div>
+                </div>
+                <% } %>
+
+                <% if (other.length > 0) { %>
+                <div>
+                    <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px;">Other</div>
+                    <div class="activity-checkbox-grid" id="otherGrid">
+                        <% other.forEach(function(act) { %>
+                            <label class="activity-check-label" data-name="<%= act.Name.toLowerCase() %>">
+                                <input type="checkbox" name="activityPreferences" value="<%= act.Name %>">
+                                <span><%= act.Name %></span>
+                            </label>
+                        <% }); %>
+                    </div>
+                </div>
+                <% } %>
+
+                <% if (activities.length === 0) { %>
+                    <p class="text-muted" style="font-style:italic;">No activities have been added yet.</p>
+                <% } %>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width:100%; padding:14px; font-size:1rem;">
+                Submit Preferences
+            </button>
+
+        </form>
+    </div>
+
+    <script>
+        function filterActivities() {
+            const term = document.getElementById('activityFilter').value.toLowerCase();
+            document.querySelectorAll('.activity-check-label').forEach(function(label) {
+                label.style.display = label.dataset.name.includes(term) ? '' : 'none';
+            });
+        }
+    </script>
+</body>
+</html>
