@@ -22,6 +22,28 @@ const HOME_GROUP_LABELS = {
     Bus: 'Bus', LilPlace: "Li'l Place", KinderPlace: 'Kinder Place', SPLIT: 'SPLIT'
 };
 
+// Adjust start/end times (24-hour, EDT = UTC-4) to match the actual camp day
+const PERIOD_SCHEDULE = [
+    { period: 1, startH: 9,  startM: 0,  endH: 10, endM: 0 },
+    { period: 2, startH: 10, startM: 0,  endH: 11, endM: 0 },
+    { period: 3, startH: 11, startM: 0,  endH: 12, endM: 0 },
+    { period: 4, startH: 13, startM: 0,  endH: 14, endM: 0 },
+    { period: 5, startH: 14, startM: 0,  endH: 15, endM: 0 },
+];
+
+function getCurrentPeriod() {
+    const now = new Date();
+    const etMins = ((now.getUTCHours() - 4 + 24) % 24) * 60 + now.getUTCMinutes();
+    for (const s of PERIOD_SCHEDULE) {
+        if (etMins >= s.startH * 60 + s.startM && etMins < s.endH * 60 + s.endM) return s.period;
+    }
+    return null;
+}
+
+function getTodayEDT() {
+    return new Date(Date.now() - 4 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
 // Maps a camper-facing period + activity side to the counselor DB period.
 // Sports P3 is split: upper camp (Green/Navy) → '3AM', lower camp (Red/Carolina) → '3PM'.
 // Sports P4/P5 are offset by 1 to account for the day structure.
@@ -470,8 +492,17 @@ app.post('/hub-content/:id', (req, res) => {
 // --- DASHBOARD ---
 app.get('/admin', (req, res) => {
     const camperTotal = db.prepare("SELECT COUNT(*) AS count FROM Campers").get().count;
-    const staffTotal = db.prepare("SELECT COUNT(*) AS count FROM Counselors").get().count;
-    const activityCount = db.prepare("SELECT COUNT(*) AS count FROM Activities").get().count;
+    const activityCount = db.prepare(
+        "SELECT COUNT(DISTINCT ActivityName) AS count FROM WeeklyOfferings WHERE WeekNumber=?"
+    ).get(getActiveWeek()).count;
+
+    const groupRows = db.prepare(
+        "SELECT HomeGroupColor AS color, COUNT(*) AS cnt FROM Campers WHERE HomeGroupColor IS NOT NULL AND HomeGroupColor != '' GROUP BY HomeGroupColor"
+    ).all();
+    const groupCounts = {};
+    for (const r of groupRows) groupCounts[r.color] = r.cnt;
+
+    const pendingChanges = db.prepare("SELECT COUNT(*) AS count FROM ScheduleChanges").get().count;
 
     const waitlistCount = db.prepare(`
         SELECT COUNT(*) as count FROM Waitlists w
@@ -479,18 +510,38 @@ app.get('/admin', (req, res) => {
         WHERE (SELECT COUNT(*) FROM Schedules WHERE ActivityName = a.Name AND PeriodNumber = w.PeriodNumber) < a.MaxCapacity
     `).get().count;
 
+    const today = getTodayEDT();
+    const currentPeriod = getCurrentPeriod();
+    let attStats = null;
+    if (currentPeriod !== null) {
+        const classes = db.prepare(`
+            SELECT DISTINCT s.ActivityName, COALESCE(a.SideOfCamp, 'Other') AS SideOfCamp
+            FROM Schedules s
+            LEFT JOIN Activities a ON a.Name = s.ActivityName
+            WHERE s.PersonType='Camper' AND s.PeriodNumber=?
+        `).all(currentPeriod);
+        const checkAtt = db.prepare(
+            "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?"
+        );
+        const stats = { Sports: { total: 0, submitted: 0 }, Enrichment: { total: 0, submitted: 0 } };
+        for (const cls of classes) {
+            const side = cls.SideOfCamp === 'Sports' ? 'Sports' : 'Enrichment';
+            stats[side].total++;
+            if ((checkAtt.get(today, currentPeriod, cls.ActivityName)?.n || 0) > 0) stats[side].submitted++;
+        }
+        attStats = stats;
+    }
+
     const announcement  = db.prepare("SELECT content FROM HubContent WHERE id='announcement'").get()?.content || '';
     const directorNotes = db.prepare("SELECT content FROM HubContent WHERE id='director_notes'").get()?.content || '';
     const sessions = db.prepare('SELECT * FROM Sessions ORDER BY weekNumber').all();
+
     res.render('index', {
-        camperTotal,
-        staffTotal,
-        activityCount,
-        waitlistCount,
+        camperTotal, activityCount, groupCounts,
+        pendingChanges, waitlistCount,
+        currentPeriod, attStats, today,
         alertMessage: req.query.message,
-        announcement,
-        directorNotes,
-        sessions
+        announcement, directorNotes, sessions
     });
 });
 
@@ -2419,4 +2470,5 @@ app.get('/counselor-week-assignments/:week', (req, res) => {
     res.json(rows);
 });
 
-app.listen(3000, () => console.log('Camp Manager running at http://localhost:3000'));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => console.log(`Camp Manager running on port ${PORT}`));

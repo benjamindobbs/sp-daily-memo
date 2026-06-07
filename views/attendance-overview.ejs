@@ -215,7 +215,7 @@
         <% periodOrder.forEach(function(pk) { %>
         <% if (byPeriod[pk]) { %>
         <% const pStat = secStat(byPeriod[pk].sessions); %>
-        <details class="att-section">
+        <details class="att-section" data-period-key="<%= pk %>">
             <summary>
                 &#127947; Period <%= byPeriod[pk].label %>
                 <% if (pStat) { %><span class="sec-count <%= pStat.cls %>"><%= pStat.sub %>/<%= pStat.tot %></span><% } %>
@@ -360,6 +360,20 @@
         document.getElementById('attSearch').addEventListener('blur', function() {
             this.style.borderColor = '#cbd5e1';
         });
+
+        // Auto-open the period section when navigated from the admin hub stat card
+        (function() {
+            const p = new URLSearchParams(location.search).get('period');
+            if (!p) return;
+            // Period 3 opens both 3am and 3pm; others match directly
+            const keys = p === '3' ? ['3am', '3pm'] : [p];
+            let first = null;
+            keys.forEach(k => {
+                const el = document.querySelector(`[data-period-key="${k}"]`);
+                if (el) { el.open = true; if (!first) first = el; }
+            });
+            if (first) setTimeout(() => first.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+        })();
     </script>
 </body>
 </html>

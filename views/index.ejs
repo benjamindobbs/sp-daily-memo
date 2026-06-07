@@ -7,6 +7,44 @@
     <link rel="stylesheet" href="/css/style.css">
     <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
     <script src="/js/nav.js" defer></script>
+    <style>
+        .hub-stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .hub-stat-card {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 18px 20px;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            text-decoration: none;
+            color: var(--text);
+            transition: box-shadow 0.15s, transform 0.1s;
+        }
+        a.hub-stat-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.10); transform: translateY(-1px); }
+        .hub-stat-num { font-size: 2rem; font-weight: 800; line-height: 1; }
+        .hub-stat-label { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+        .hub-stat-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+        .hub-stat-inactive { opacity: 0.45; }
+
+        .sys-status-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        .sys-status-table td { padding: 5px 0; }
+        .sys-status-table td:last-child { text-align: right; font-weight: 600; }
+        .sys-status-divider td { padding-top: 10px; padding-bottom: 4px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); border-top: 1px solid var(--border-color); }
+        .group-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+        .group-dot.Red { background: #dc2626; }
+        .group-dot.Carolina { background: #2563eb; }
+        .group-dot.Green { background: #16a34a; }
+        .group-dot.Navy { background: #1e3a5f; }
+        .hub-num-amber  { color: #f59e0b; }
+        .hub-num-purple { color: #8b5cf6; }
+        .hub-num-muted  { color: #94a3b8; }
+    </style>
 </head>
 <body>
 
@@ -38,59 +76,59 @@
             </span>
         </header>
 
-        <% if (waitlistCount > 0) { %>
-            <div class="promo-alert">
-                <span><strong>Promotion Available:</strong> There are <%= waitlistCount %> campers eligible for open spots!</span>
-                <a href="/promotions" class="btn btn-success">View Promotions</a>
-            </div>
-        <% } %>
+        <%/* ── Stat Cards ── */%>
+        <div class="hub-stat-grid">
 
-        <div class="stats-grid">
-            <div class="card stat-card">
-                <span class="stat-number"><%= camperTotal %></span>
-                <span class="stat-label">Active Campers</span>
+            <%/* Sports Attendance */%>
+            <% if (currentPeriod !== null && attStats) { %>
+            <% const sS = attStats.Sports; const sPct = sS.total > 0 ? Math.round(sS.submitted / sS.total * 100) : null; %>
+            <a href="/attendance?date=<%= today %>&period=<%= currentPeriod %>" class="hub-stat-card" style="border-top:3px solid #3b82f6;">
+                <span class="hub-stat-num" style="color:#3b82f6;"><%= sPct !== null ? sPct + '%' : '—' %></span>
+                <span class="hub-stat-label">Sports Attendance In</span>
+                <span class="hub-stat-sub">Period <%= currentPeriod %> &middot; <%= sS.submitted %>/<%= sS.total %> classes</span>
+            </a>
+            <% } else { %>
+            <div class="hub-stat-card hub-stat-inactive" style="border-top:3px solid #3b82f6;">
+                <span class="hub-stat-num" style="color:#3b82f6;">—</span>
+                <span class="hub-stat-label">Sports Attendance In</span>
+                <span class="hub-stat-sub">No active period</span>
             </div>
-            <div class="card stat-card">
-                <span class="stat-number"><%= staffTotal %></span>
-                <span class="stat-label">Total Staff</span>
+            <% } %>
+
+            <%/* Enrichment Attendance */%>
+            <% if (currentPeriod !== null && attStats) { %>
+            <% const eS = attStats.Enrichment; const ePct = eS.total > 0 ? Math.round(eS.submitted / eS.total * 100) : null; %>
+            <a href="/attendance?date=<%= today %>&period=<%= currentPeriod %>" class="hub-stat-card" style="border-top:3px solid #10b981;">
+                <span class="hub-stat-num" style="color:#10b981;"><%= ePct !== null ? ePct + '%' : '—' %></span>
+                <span class="hub-stat-label">Enrichment Attendance In</span>
+                <span class="hub-stat-sub">Period <%= currentPeriod %> &middot; <%= eS.submitted %>/<%= eS.total %> classes</span>
+            </a>
+            <% } else { %>
+            <div class="hub-stat-card hub-stat-inactive" style="border-top:3px solid #10b981;">
+                <span class="hub-stat-num" style="color:#10b981;">—</span>
+                <span class="hub-stat-label">Enrichment Attendance In</span>
+                <span class="hub-stat-sub">No active period</span>
             </div>
-            <div class="card stat-card">
-                <span class="stat-number"><%= activityCount %></span>
-                <span class="stat-label">Activities Running</span>
-            </div>
+            <% } %>
+
+            <%/* CampBrain Pending */%>
+            <a href="/schedule-history" class="hub-stat-card" style="border-top:3px solid #f59e0b;">
+                <span class="hub-stat-num <%= pendingChanges > 0 ? 'hub-num-amber' : 'hub-num-muted' %>"><%= pendingChanges %></span>
+                <span class="hub-stat-label">CampBrain Updates Pending</span>
+                <span class="hub-stat-sub"><%= pendingChanges > 0 ? 'Needs sync' : 'All up to date' %></span>
+            </a>
+
+            <%/* Promotions */%>
+            <a href="/promotions" class="hub-stat-card" style="border-top:3px solid #8b5cf6;">
+                <span class="hub-stat-num <%= waitlistCount > 0 ? 'hub-num-purple' : 'hub-num-muted' %>"><%= waitlistCount %></span>
+                <span class="hub-stat-label">Promotions Available</span>
+                <span class="hub-stat-sub"><%= waitlistCount > 0 ? 'Campers ready to promote' : 'Waitlist clear' %></span>
+            </a>
+
         </div>
 
-        <div class="quick-tasks mt-20">
-            <div class="card">
-                <h3>Quick Tasks</h3>
-                <ul>
-                    <li>
-                        <a href="/counselor-scheduling">Build Counselor Schedule →</a>
-                    </li>
-                    <li>
-                        <a href="/export-master-schedule">Download Master Schedule CSV →</a>
-                    </li>
-                    <li>
-                        <a href="/settings">Adjust Activity Capacities →</a>
-                    </li>
-                    <li>
-                        <a href="/settings">Upload New CSV Data →</a>
-                    </li>
-                    <li>
-                        <a href="/photo-gallery">View Photo Gallery →</a>
-                    </li>
-                </ul>
-            </div>
-            <div class="card">
-                <h3>System Status</h3>
-                <p class="text-muted" style="font-size: 0.9rem;">
-                    Database: <span style="color: var(--success);">● Operational</span><br>
-                    Current Season: Summer 2026<br>
-                    Last Backup: Today, 8:00 AM
-                </p>
-            </div>
-        </div>
-        <div class="card" style="margin-top:20px;">
+        <%/* ── Director Notes ── */%>
+        <div class="card" style="margin-bottom:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                 <h3 style="margin:0;">Director Notes <span style="font-size:0.75rem; font-weight:400; color:var(--text-muted);">(admin only)</span></h3>
                 <div style="display:flex; gap:8px;">
@@ -101,6 +139,58 @@
             <div id="notesEditor" style="min-height:120px;"><%- directorNotes %></div>
         </div>
 
+        <%/* ── Quick Tasks + System Status ── */%>
+        <div class="quick-tasks">
+            <div class="card">
+                <h3>Quick Tasks</h3>
+                <ul>
+                    <li><a href="/counselor-scheduling">Build Counselor Schedule &rarr;</a></li>
+                    <li><a href="/export-master-schedule">Download Master Schedule CSV &rarr;</a></li>
+                    <li><a href="/settings">Adjust Activity Capacities &rarr;</a></li>
+                    <li><a href="/settings">Upload New CSV Data &rarr;</a></li>
+                    <li><a href="/photo-gallery">View Photo Gallery &rarr;</a></li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>System Status</h3>
+                <table class="sys-status-table">
+                    <tbody>
+                        <tr><td>Database</td><td><span style="color:var(--success);">&#9679; Operational</span></td></tr>
+                        <tr><td>Active Week</td><td><%= sessions.find(s => s.isActive)?.label ?? '—' %></td></tr>
+                        <tr><td>Total Campers</td><td><%= camperTotal %></td></tr>
+                        <tr><td>Activities Running</td><td><%= activityCount %></td></tr>
+                        <tr class="sys-status-divider"><td colspan="2">Group Breakdown</td></tr>
+                        <tr>
+                            <td><span class="group-dot Red"></span>Red</td>
+                            <td><%= groupCounts.Red || 0 %></td>
+                        </tr>
+                        <tr>
+                            <td><span class="group-dot Carolina"></span>Carolina</td>
+                            <td><%= groupCounts.Carolina || 0 %></td>
+                        </tr>
+                        <tr>
+                            <td><span class="group-dot Green"></span>Green</td>
+                            <td><%= groupCounts.Green || 0 %></td>
+                        </tr>
+                        <tr>
+                            <td><span class="group-dot Navy"></span>Navy</td>
+                            <td><%= groupCounts.Navy || 0 %></td>
+                        </tr>
+                        <% if (groupCounts.LilPlace) { %>
+                        <tr><td>Li'l Place</td><td><%= groupCounts.LilPlace %></td></tr>
+                        <% } %>
+                        <% if (groupCounts.KinderPlace) { %>
+                        <tr><td>Kinder Place</td><td><%= groupCounts.KinderPlace %></td></tr>
+                        <% } %>
+                        <% if (groupCounts.SPLIT) { %>
+                        <tr><td>SPLIT</td><td><%= groupCounts.SPLIT %></td></tr>
+                        <% } %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <%/* ── Staff Announcement ── */%>
         <div class="card" style="margin-top:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                 <h3 style="margin:0;">Staff Announcement</h3>
@@ -116,7 +206,6 @@
         const quillNotes    = new Quill('#notesEditor',    { theme: 'snow', modules: { toolbar: TOOLBAR } });
         const quillAnnounce = new Quill('#announceEditor', { theme: 'snow', modules: { toolbar: TOOLBAR } });
 
-        // Director Notes starts read-only with toolbar hidden
         quillNotes.disable();
         document.querySelector('#notesEditor .ql-toolbar').style.display = 'none';
 
