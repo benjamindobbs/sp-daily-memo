@@ -16,6 +16,9 @@
     --green-group: #22c55e;
     --navy-group: #1e3a8a;
     --bus-group: #f59e0b;
+    --lilplace-group: #6ee7b7;
+    --kinderplace-group: #fef08a;
+    --split-group: #fbbf24;
     --shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
     --success: #22c55e;
 }
@@ -160,7 +163,10 @@ body {
 .Carolina { background-color: var(--carolina-group); }
 .Green    { background-color: var(--green-group); }
 .Navy     { background-color: var(--navy-group); }
-.Bus      { background-color: var(--bus-group); }
+.Bus        { background-color: var(--bus-group);        color: #451a03; }
+.LilPlace   { background-color: var(--lilplace-group);   color: #064e3b; }
+.KinderPlace{ background-color: var(--kinderplace-group); color: #713f12; }
+.SPLIT      { background-color: var(--split-group);      color: #451a03; }
 
 /* --- Alert / Banner --- */
 .alert {

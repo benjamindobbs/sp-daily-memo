@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Gallery | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+</head>
+<body>
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/photo-day" class="nav-btn">&#128247; Photo of the Day</a>
+        <a href="/photo-gallery" class="nav-btn primary">&#127775; Gallery</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
+    </nav>
+
+    <div class="container">
+        <header style="margin-bottom:24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+            <div>
+                <h1>&#127775; Photo Gallery</h1>
+                <p style="color:var(--text-muted); margin:0;">Vote for your favorite photo of the day.</p>
+            </div>
+            <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+                <label for="galleryDate" style="font-size:0.85rem; color:var(--text-muted);">Date:</label>
+                <input type="date" id="galleryDate" value="<%= date %>"
+                       onchange="window.location='/photo-gallery?date='+this.value"
+                       style="padding:6px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem;">
+            </div>
+        </header>
+
+        <% if (photos.length === 0) { %>
+        <div class="card" style="text-align:center; padding:48px 24px; color:var(--text-muted);">
+            No photos submitted for this date yet.
+        </div>
+        <% } else { %>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:20px;">
+            <% photos.forEach(p => { %>
+            <div class="card" style="padding:14px;" id="photo-<%= p.id %>">
+                <img src="<%= p.imageUrl %>" alt="Photo by <%= p.counselorName %>"
+                     style="width:100%; border-radius:8px; object-fit:cover; aspect-ratio:4/3; margin-bottom:10px;">
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                    <span style="font-size:0.88rem; font-weight:600;"><%= p.counselorName %></span>
+                    <button onclick="vote(<%= p.id %>)" id="vote-btn-<%= p.id %>"
+                            style="display:flex; align-items:center; gap:6px; padding:5px 12px; border:1px solid var(--border-color); border-radius:20px; background:white; cursor:pointer; font-size:0.82rem; font-weight:600; transition:background 0.15s;">
+                        &#10084;&#65039; <span id="vote-count-<%= p.id %>"><%= p.votes %></span>
+                    </button>
+                </div>
+            </div>
+            <% }); %>
+        </div>
+        <% } %>
+    </div>
+
+    <script>
+        async function vote(id) {
+            const btn = document.getElementById(`vote-btn-${id}`);
+            btn.disabled = true;
+            const res = await fetch(`/photo-vote/${id}`, { method: 'POST' });
+            const data = await res.json();
+            if (data.ok) {
+                document.getElementById(`vote-count-${id}`).textContent = data.votes;
+                btn.style.background = '#fef2f2';
+                btn.style.borderColor = '#fca5a5';
+            }
+            btn.disabled = false;
+        }
+    </script>
+</body>
+</html>

@@ -5,10 +5,22 @@ const csv = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
 const cookieParser = require('cookie-parser');
+const cloudinary = require('cloudinary').v2;
+
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key:    process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 const app = express();
 const db = new Database(process.env.DB_PATH || 'camp_manager.db');
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: 'uploads/', limits: { fileSize: 10 * 1024 * 1024 } });
+
+const HOME_GROUP_LABELS = {
+    Red: 'Red', Carolina: 'Carolina', Green: 'Green', Navy: 'Navy',
+    Bus: 'Bus', LilPlace: "Li'l Place", KinderPlace: 'Kinder Place', SPLIT: 'SPLIT'
+};
 
 // Maps a camper-facing period + activity side to the DB period used for staff/counselor lookups.
 // Sports P3 PM (lower camp, Red/Carolina) → DB P4; sports P4 → DB P5; sports P5 → DB P6.
@@ -46,6 +58,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings',
     '/save-counselor-assignments', '/export-counselor-schedule', '/export-staff-schedule',
     '/export-master-schedule', '/save-counselor-group-assignments',
+    '/hub-content', '/photo-gallery', '/photo-vote',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -195,7 +208,26 @@ db.exec(`
         PersonType   TEXT NOT NULL CHECK(PersonType IN ('Counselor', 'Staff')),
         UNIQUE(PeriodNumber, PersonID, PersonType)
     );
+    CREATE TABLE IF NOT EXISTS HubContent (
+        id TEXT PRIMARY KEY,
+        content TEXT NOT NULL DEFAULT '',
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS PhotoSubmissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        counselorName TEXT NOT NULL,
+        imageUrl TEXT NOT NULL,
+        submittedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS PhotoVotes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        photoId INTEGER NOT NULL REFERENCES PhotoSubmissions(id),
+        votedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
 `);
+db.prepare("INSERT OR IGNORE INTO HubContent (id, content) VALUES ('announcement', '')").run();
+db.prepare("INSERT OR IGNORE INTO HubContent (id, content) VALUES ('director_notes', '')").run();
 
 // Migration: if Campers was created with a CHECK constraint on ExtendedHours, recreate it without one.
 // Safe to run on an empty table (upload couldn't have succeeded with the constraint in place).
@@ -328,8 +360,20 @@ app.get('/logout', (_req, res) => {
     res.redirect('/staff');
 });
 
-app.get('/staff', (_req, res) => {
-    res.render('staff-hub');
+app.get('/staff', (req, res) => {
+    const cid = parseInt(req.cookies.selectedCounselor) || null;
+    const cRow = cid ? db.prepare('SELECT FirstName, LastName FROM Counselors WHERE CounselorID = ?').get(cid) : null;
+    const selectedCounselorName = cRow ? `${cRow.FirstName} ${cRow.LastName}` : null;
+    const announcement = db.prepare("SELECT content FROM HubContent WHERE id='announcement'").get()?.content || '';
+    res.render('staff-hub', { selectedCounselorName, announcement });
+});
+
+app.post('/hub-content/:id', (req, res) => {
+    const allowed = ['announcement', 'director_notes'];
+    if (!allowed.includes(req.params.id)) return res.status(400).json({ error: 'Invalid' });
+    db.prepare("UPDATE HubContent SET content=?, updatedAt=CURRENT_TIMESTAMP WHERE id=?")
+        .run(req.body.content || '', req.params.id);
+    res.json({ ok: true });
 });
 
 // --- DASHBOARD ---
@@ -344,12 +388,16 @@ app.get('/admin', (req, res) => {
         WHERE (SELECT COUNT(*) FROM Schedules WHERE ActivityName = a.Name AND PeriodNumber = w.PeriodNumber) < a.MaxCapacity
     `).get().count;
 
+    const announcement  = db.prepare("SELECT content FROM HubContent WHERE id='announcement'").get()?.content || '';
+    const directorNotes = db.prepare("SELECT content FROM HubContent WHERE id='director_notes'").get()?.content || '';
     res.render('index', {
         camperTotal,
         staffTotal,
         activityCount,
         waitlistCount,
-        alertMessage: req.query.message
+        alertMessage: req.query.message,
+        announcement,
+        directorNotes
     });
 });
 
@@ -429,6 +477,15 @@ app.get('/master-schedule', (req, res) => {
             ORDER BY n.HomeGroupColor, n.LastName
         `);
 
+        const getBusPresence = db.prepare(`
+            SELECT 1 FROM Campers c JOIN Schedules s ON c.CamperID=s.PersonID AND s.PersonType='Camper'
+            WHERE s.PeriodNumber=? AND s.ActivityName=? AND c.BusRoute IS NOT NULL AND c.BusRoute!='' LIMIT 1
+        `);
+        const getExtGroups = db.prepare(`
+            SELECT DISTINCT c.ExtendedHours FROM Campers c JOIN Schedules s ON c.CamperID=s.PersonID AND s.PersonType='Camper'
+            WHERE s.PeriodNumber=? AND s.ActivityName=? AND c.ExtendedHours IS NOT NULL AND c.ExtendedHours!=''
+        `);
+
         // Separate P3 raw classes so they can be enriched with filtered queries
         const p3Raw = classes.filter(cls => cls.periodNumber === 3);
         const otherRaw = classes.filter(cls => cls.periodNumber !== 3);
@@ -442,7 +499,9 @@ app.get('/master-schedule', (req, res) => {
                 enrolled:    getEnrollment.get(cls.periodNumber, cls.activityName).n,
                 colorGroups: getColorGroups.all(cls.periodNumber, cls.activityName).map(r => r.HomeGroupColor),
                 staff:       getStaff.all(dbP, cls.activityName),
-                counselors:  getCounselors.all(dbP, cls.activityName)
+                counselors:  getCounselors.all(dbP, cls.activityName),
+                busPresent:  !!getBusPresence.get(cls.periodNumber, cls.activityName),
+                extGroups:   getExtGroups.all(cls.periodNumber, cls.activityName).map(r => r.ExtendedHours)
             };
         });
 
@@ -455,7 +514,9 @@ app.get('/master-schedule', (req, res) => {
                 enrolled:    getEnrollmentUpper.get(cls.activityName).n,
                 colorGroups: getColorGroupsUpper.all(cls.activityName).map(r => r.HomeGroupColor),
                 staff:       getStaff.all(3, cls.activityName),
-                counselors:  getCounselorsUpper.all(cls.activityName)
+                counselors:  getCounselorsUpper.all(cls.activityName),
+                busPresent:  !!getBusPresence.get(3, cls.activityName),
+                extGroups:   getExtGroups.all(3, cls.activityName).map(r => r.ExtendedHours)
             };
         }).filter(cls => cls.colorGroups.length > 0);
 
@@ -467,7 +528,9 @@ app.get('/master-schedule', (req, res) => {
                 enrolled:    getEnrollmentLower.get(cls.activityName).n,
                 colorGroups: getColorGroupsLower.all(cls.activityName).map(r => r.HomeGroupColor),
                 staff:       getStaff.all(4, cls.activityName),
-                counselors:  getCounselors.all(4, cls.activityName)
+                counselors:  getCounselors.all(4, cls.activityName),
+                busPresent:  !!getBusPresence.get(3, cls.activityName),
+                extGroups:   getExtGroups.all(3, cls.activityName).map(r => r.ExtendedHours)
             };
         }).filter(cls => cls.colorGroups.length > 0);
 
@@ -1305,6 +1368,20 @@ const SHOW_AM_INDICATOR = new Set(['class','homegroup_pm','bus_pm','extended_pm'
 app.get('/attendance', (req, res) => {
     const date = req.query.date || todayStr();
 
+    const isStaff = req.cookies.viewMode !== 'admin';
+    const showAll = req.query.showAll === '1';
+    const filterCid = (isStaff && !showAll) ? (parseInt(req.cookies.selectedCounselor) || null) : null;
+    let selectedCounselorName = null;
+    let allowedClasses = null;
+    if (filterCid) {
+        const cRow = db.prepare('SELECT FirstName, LastName FROM Counselors WHERE CounselorID=?').get(filterCid);
+        if (cRow) selectedCounselorName = `${cRow.FirstName} ${cRow.LastName}`;
+        const assignments = db.prepare(
+            "SELECT PeriodNumber, ActivityName FROM CounselorScheduleAssignments WHERE PersonID=? AND PersonType='Counselor'"
+        ).all(filterCid);
+        allowedClasses = new Set(assignments.map(a => `${a.PeriodNumber}|${a.ActivityName}`));
+    }
+
     // Homegroup sessions — grouped by counselor
     const homegroupCounselors = db.prepare(`
         SELECT co.CounselorID, co.FirstName, co.LastName, co.HomeGroupColor,
@@ -1363,7 +1440,7 @@ app.get('/attendance', (req, res) => {
                 classSessions.push({
                     label: `P3 AM — ${r.ActivityName}`,
                     periodNumber: 3, periodKey: '3am', periodLabel: '3 AM',
-                    activityName: r.ActivityName,
+                    activityName: r.ActivityName, filterPeriod: 3,
                     link: `/attendance/class/3/${encodeURIComponent(r.ActivityName)}?date=${date}&half=am`,
                     submitted: count > 0
                 });
@@ -1373,7 +1450,7 @@ app.get('/attendance', (req, res) => {
                 classSessions.push({
                     label: `P3 PM — ${r.ActivityName}`,
                     periodNumber: 3, periodKey: '3pm', periodLabel: '3 PM',
-                    activityName: r.ActivityName,
+                    activityName: r.ActivityName, filterPeriod: [3, 4],
                     link: `/attendance/class/3/${encodeURIComponent(r.ActivityName)}?date=${date}&half=pm`,
                     submitted: count > 0
                 });
@@ -1385,7 +1462,7 @@ app.get('/attendance', (req, res) => {
             classSessions.push({
                 label: `P${r.PeriodNumber} — ${r.ActivityName}`,
                 periodNumber: r.PeriodNumber, periodKey: String(r.PeriodNumber), periodLabel: String(r.PeriodNumber),
-                activityName: r.ActivityName,
+                activityName: r.ActivityName, filterPeriod: r.PeriodNumber,
                 link: `/attendance/class/${r.PeriodNumber}/${encodeURIComponent(r.ActivityName)}?date=${date}`,
                 submitted: count > 0
             });
@@ -1435,7 +1512,24 @@ app.get('/attendance', (req, res) => {
         "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='absent'"
     ).get(date)?.n || 0;
 
-    res.render('attendance-overview', { date, homegroupSessions, classSessions, busSessions, extSessions, lateCount });
+    let filteredHomegroupSessions = homegroupSessions;
+    let filteredClassSessions = classSessions;
+    if (filterCid) {
+        filteredHomegroupSessions = homegroupSessions.filter(s => s.counselorId === filterCid);
+        filteredClassSessions = classSessions.filter(s => {
+            const periods = Array.isArray(s.filterPeriod) ? s.filterPeriod : [s.filterPeriod];
+            return periods.some(p => allowedClasses.has(`${p}|${s.activityName}`));
+        });
+    }
+
+    res.render('attendance-overview', {
+        date,
+        homegroupSessions: filteredHomegroupSessions,
+        classSessions: filteredClassSessions,
+        busSessions, extSessions, lateCount,
+        counselorFilterActive: !!filterCid,
+        selectedCounselorName
+    });
 });
 
 // --- ATTENDANCE FORM: HOMEGROUP BY COUNSELOR ---
@@ -1798,7 +1892,19 @@ app.get('/counselor-scheduling', (req, res) => {
         else existingAssignments[key].staff.push(a.PersonID);
     });
 
-    res.render('counselor-scheduling', { offerings, counselors, availability, staffAvailability, existingAssignments, alertMessage });
+    const camperCountRows = db.prepare(
+        "SELECT HomeGroupColor, COUNT(*) as n FROM Campers WHERE HomeGroupColor IN ('Red','Carolina','Green','Navy') GROUP BY HomeGroupColor"
+    ).all();
+    const camperCounts = {};
+    for (const r of camperCountRows) camperCounts[r.HomeGroupColor] = r.n;
+
+    const rawPrefs = db.prepare("SELECT * FROM CounselorPreferences").all();
+    const preferences = rawPrefs.map(p => ({
+        ...p,
+        ActivityPreferences: JSON.parse(p.ActivityPreferences || '[]')
+    }));
+
+    res.render('counselor-scheduling', { offerings, counselors, availability, staffAvailability, existingAssignments, alertMessage, camperCounts, preferences });
 });
 
 app.post('/save-counselor-group-assignments', (req, res) => {
@@ -1969,7 +2075,50 @@ app.post('/counselor-preferences', (req, res) => {
             SubmittedAt          = CURRENT_TIMESTAMP
     `).run(counselorID, homeGroupPreference || null, schedulePreference || null, JSON.stringify(activityPreferences));
 
+    res.cookie('selectedCounselor', counselorID, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
     res.redirect('/counselor-preferences?message=Preferences+saved!');
+});
+
+// --- PHOTO OF THE DAY ---
+app.get('/photo-day', (req, res) => {
+    const today = todayStr();
+    const submissions = db.prepare(
+        "SELECT id, counselorName, imageUrl FROM PhotoSubmissions WHERE date=? ORDER BY submittedAt DESC"
+    ).all(today);
+    res.render('photo-day', { submissions, date: today, message: req.query.message, error: req.query.error });
+});
+
+app.post('/photo-day', upload.single('photo'), async (req, res) => {
+    if (!req.file) return res.redirect('/photo-day?error=No+file+selected');
+    const counselorName = (req.body.counselorName || 'Anonymous').trim();
+    try {
+        const result = await cloudinary.uploader.upload(req.file.path, { folder: 'camp-photo-day' });
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        db.prepare("INSERT INTO PhotoSubmissions (date, counselorName, imageUrl) VALUES (?, ?, ?)")
+            .run(todayStr(), counselorName, result.secure_url);
+        res.redirect('/photo-day?message=Photo+submitted!');
+    } catch (err) {
+        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        res.redirect('/photo-day?error=Upload+failed');
+    }
+});
+
+app.get('/photo-gallery', (req, res) => {
+    const date = req.query.date || todayStr();
+    const photos = db.prepare(`
+        SELECT p.id, p.counselorName, p.imageUrl, COUNT(v.id) as votes
+        FROM PhotoSubmissions p LEFT JOIN PhotoVotes v ON v.photoId = p.id
+        WHERE p.date=? GROUP BY p.id ORDER BY votes DESC, p.submittedAt ASC
+    `).all(date);
+    res.render('photo-gallery', { photos, date });
+});
+
+app.post('/photo-vote/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Invalid' });
+    db.prepare("INSERT INTO PhotoVotes (photoId) VALUES (?)").run(id);
+    const votes = db.prepare("SELECT COUNT(*) as n FROM PhotoVotes WHERE photoId=?").get(id).n;
+    res.json({ ok: true, votes });
 });
 
 app.listen(3000, () => console.log('Camp Manager running at http://localhost:3000'));

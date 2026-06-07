@@ -70,6 +70,13 @@
                 <option value="Carolina">Carolina</option>
                 <option value="Green">Green</option>
                 <option value="Navy">Navy</option>
+                <option value="LilPlace">Li'l Place</option>
+                <option value="KinderPlace">Kinder Place</option>
+                <option value="SPLIT">SPLIT</option>
+                <option disabled>──────────</option>
+                <option value="Bus">Bus Riders</option>
+                <option value="AMExtended">AM Extended</option>
+                <option value="PMExtended">PM Extended</option>
             </select>
         </div>
 
@@ -97,7 +104,9 @@
                     <% period.classes.forEach(function(cls) { %>
                     <tr class="class-row"
                         data-side="<%= cls.sideOfCamp || '' %>"
-                        data-groups="<%= cls.colorGroups.join(',') %>">
+                        data-groups="<%= cls.colorGroups.join(',') %>"
+                        data-bus="<%= cls.busPresent ? 'yes' : '' %>"
+                        data-extended="<%= (cls.extGroups || []).join(',') %>">
 
                         <td>
                             <a class="activity-link"
@@ -185,23 +194,27 @@
     </div>
 
     <script>
+        function groupMatches(row, group) {
+            if (group === 'all') return true;
+            if (group === 'Bus') return row.dataset.bus === 'yes';
+            if (group === 'AMExtended') return (row.dataset.extended || '').split(',').some(v => v === 'AM' || v === 'Both');
+            if (group === 'PMExtended') return (row.dataset.extended || '').split(',').some(v => v === 'PM' || v === 'Both');
+            return (row.dataset.groups || '').split(',').includes(group);
+        }
+
         function applyFilters() {
             const period = document.getElementById('periodFilter').value;
             const side   = document.getElementById('sideFilter').value;
             const group  = document.getElementById('groupFilter').value;
 
-            // Show/hide whole period sections
             document.querySelectorAll('.period-section').forEach(section => {
-                const sectionPeriod = section.dataset.period;
-                const periodMatch = period === 'all' || sectionPeriod === period;
+                const periodMatch = period === 'all' || section.dataset.period === period;
                 section.style.display = periodMatch ? '' : 'none';
             });
 
-            // Show/hide individual rows within visible sections
             document.querySelectorAll('.class-row').forEach(row => {
-                const sideMatch  = side  === 'all' || row.dataset.side  === side;
-                const groupMatch = group === 'all' || row.dataset.groups.split(',').includes(group);
-                row.style.display = (sideMatch && groupMatch) ? '' : 'none';
+                const sideMatch = side === 'all' || row.dataset.side === side;
+                row.style.display = (sideMatch && groupMatches(row, group)) ? '' : 'none';
             });
         }
     </script>

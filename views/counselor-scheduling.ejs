@@ -143,6 +143,11 @@
                         <div class="offering-card" data-offer="<%= idx %>">
                             <div class="offering-card-header">
                                 <span class="offering-name"><%= act.ActivityName %></span>
+                                <% if (act.PeriodNumber === 3) { %>
+                                    <span style="font-size:0.68rem;font-weight:700;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;white-space:nowrap;">AM · Green / Navy</span>
+                                <% } else if (act.PeriodNumber === 4) { %>
+                                    <span style="font-size:0.68rem;font-weight:700;background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;white-space:nowrap;">PM · Red / Carolina</span>
+                                <% } %>
                                 <span class="enrollment-pill"><%= act.PreliminaryEnrollment %> expected</span>
                             </div>
                             <div class="slot-group">
@@ -262,6 +267,20 @@
         </details>
         <% } %>
 
+        <!-- Auto-Schedule Builder -->
+        <div class="card" style="margin-top:24px; margin-bottom:4px; padding:18px 20px;">
+            <h3 style="margin:0 0 14px;">Auto-Schedule Builder</h3>
+            <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; margin-bottom:14px;">
+                <div>
+                    <div style="font-size:0.75rem; font-weight:700; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.4px;">Mode</div>
+                    <label style="margin-right:14px; font-size:0.88rem;"><input type="radio" name="autoMode" value="pref" checked> Preference Only</label>
+                    <label style="font-size:0.88rem;"><input type="radio" name="autoMode" value="full"> Full Auto</label>
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="buildSchedule()">Build Schedule</button>
+            <span id="autoStatus" style="font-size:0.82rem; color:var(--text-muted); margin-left:12px;"></span>
+        </div>
+
         <!-- Bottom actions -->
         <div class="sched-actions" style="margin-top:24px;">
             <button class="btn btn-primary" onclick="saveAssignments()">Save Assignments</button>
@@ -293,6 +312,13 @@
                 <span class="text-muted" style="font-size:0.82rem; margin-left:4px;"><%= counselors.length %> counselors</span>
             </summary>
             <div class="period-body">
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+                    <% ['Red','Carolina','Green','Navy'].forEach(color => { %>
+                    <span class="tag <%= color %>" style="font-size:0.78rem; padding:3px 12px;">
+                        <%= color %>: <%= camperCounts[color] || 0 %> campers
+                    </span>
+                    <% }); %>
+                </div>
                 <table class="counselor-assign-table">
                     <thead>
                         <tr>
@@ -309,7 +335,7 @@
                             <td>
                                 <select class="person-select cg-homegroup" data-cid="<%= c.CounselorID %>">
                                     <option value="">— Unassigned —</option>
-                                    <% ['Red','Carolina','Green','Navy'].forEach(color => { %>
+                                    <% ['Red','Carolina','Green','Navy','Bus'].forEach(color => { %>
                                     <option value="<%= color %>"<%= c.HomeGroupColor === color ? ' selected' : '' %>><%= color %></option>
                                     <% }); %>
                                 </select>
@@ -340,11 +366,12 @@
 
     <script>
         // ── Server data ──────────────────────────────────────────────────────────
-        const OFFERINGS   = <%- JSON.stringify(offerings) %>;
-        const COUNSELORS  = <%- JSON.stringify(counselors) %>;
-        const AVAIL       = <%- JSON.stringify(availability) %>;
-        const STAFF_AVAIL = <%- JSON.stringify(staffAvailability) %>;
-        const EXISTING    = <%- JSON.stringify(existingAssignments) %>;
+        const OFFERINGS    = <%- JSON.stringify(offerings) %>;
+        const COUNSELORS   = <%- JSON.stringify(counselors) %>;
+        const AVAIL        = <%- JSON.stringify(availability) %>;
+        const STAFF_AVAIL  = <%- JSON.stringify(staffAvailability) %>;
+        const EXISTING     = <%- JSON.stringify(existingAssignments) %>;
+        const PREFERENCES  = <%- JSON.stringify(preferences) %>;
 
         // ── State: state[offerIdx] = { counselors: [id|null,...], staff: [id|null,...] }
         // Each offering already carries its PeriodNumber, so we don't need a period dimension.
@@ -621,10 +648,106 @@
             }
         }
 
+        // ── Auto-Schedule Builder ────────────────────────────────────────────────
+        function shuffle(arr) {
+            const a = [...arr];
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        }
+
+        function buildSchedule() {
+            const mode = document.querySelector('input[name="autoMode"]:checked').value;
+            const statusEl = document.getElementById('autoStatus');
+            statusEl.textContent = 'Building…';
+
+            const prefMap = {};
+            PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
+
+            // Track which activities a counselor has been placed in per AM/PM block
+            const blockUsed = {};
+            COUNSELORS.forEach(c => { blockUsed[c.CounselorID] = { am: new Set(), pm: new Set() }; });
+
+            // Pre-load existing (manually set) counselor assignments into blockUsed
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber) return;
+                const block = act.PeriodNumber <= 3 ? 'am' : 'pm';
+                state[idx].counselors.forEach(id => {
+                    if (id && blockUsed[id]) blockUsed[id][block].add(act.ActivityName);
+                });
+            });
+
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber || !act.SideOfCamp) return;
+                const { PeriodNumber: period, SideOfCamp: side, ActivityName: name } = act;
+                const block = period <= 3 ? 'am' : 'pm';
+                const avail = AVAIL[period]?.[side] ?? [];
+
+                // Counselors already placed in this period (across all sides)
+                const usedThisPeriod = new Set();
+                OFFERINGS.forEach((a, i) => {
+                    if (a.PeriodNumber === period) {
+                        state[i].counselors.forEach(id => { if (id) usedThisPeriod.add(id); });
+                    }
+                });
+
+                // Ensure at least 1 slot if there are currently none
+                if (state[idx].counselors.length === 0) {
+                    state[idx].counselors.push(null);
+                    const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                    if (card) {
+                        const cInput = card.querySelector('[data-count-type="counselors"]');
+                        if (cInput) cInput.value = 1;
+                    }
+                }
+
+                const eligible = avail.filter(c => {
+                    if (usedThisPeriod.has(c.CounselorID)) return false;
+                    if (blockUsed[c.CounselorID]?.[block].has(name)) return false;
+                    const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                    const sched = sel ? sel.value : (c.ScheduleType || '');
+                    return isCounselorAvailableFor(sched, period, side);
+                });
+
+                const preferred = shuffle(eligible.filter(c => prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
+                const nonPref   = shuffle(eligible.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
+                const pool      = mode === 'pref' ? preferred : [...preferred, ...nonPref];
+
+                let poolIdx = 0;
+                for (let slotIdx = 0; slotIdx < state[idx].counselors.length; slotIdx++) {
+                    if (state[idx].counselors[slotIdx] !== null) continue; // preserve manual
+                    if (poolIdx >= pool.length) break;
+                    const chosen = pool[poolIdx++];
+                    state[idx].counselors[slotIdx] = chosen.CounselorID;
+                    usedThisPeriod.add(chosen.CounselorID);
+                    blockUsed[chosen.CounselorID][block].add(name);
+                }
+            });
+
+            renderAllFromState();
+            updateAllCounters();
+            updateGroupCounters();
+            statusEl.textContent = 'Done! Review and save when ready.';
+        }
+
         // ── Bootstrap ────────────────────────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', () => {
             initState();
             renderAllFromState();
+            // Default staff slot count to 1 for any activity with no existing assignment
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber) return;
+                if (state[idx].staff.length === 0) {
+                    handleCountChange(idx, 'staff', 1);
+                    const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                    if (card) {
+                        const sInput = card.querySelector('[data-count-type="staff"]');
+                        if (sInput) sInput.value = 1;
+                    }
+                }
+            });
             updateAllCounters();
             updateGroupCounters();
             document.querySelectorAll('.cg-schedule').forEach(sel => {

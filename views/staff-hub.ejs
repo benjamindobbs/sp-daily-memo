@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Staff Hub | Camp Hub</title>
     <link rel="stylesheet" href="/css/style.css">
+    <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
     <script src="/js/nav.js" defer></script>
     <style>
         .hub-cards {
@@ -71,7 +72,36 @@
                 <div class="hub-card-icon">&#127381;</div>
                 <div class="hub-card-title">My Preferences</div>
             </a>
+            <a href="/photo-day" class="hub-card">
+                <div class="hub-card-icon">&#128247;</div>
+                <div class="hub-card-title">Photo of the Day</div>
+            </a>
         </div>
+
+        <% if (announcement || viewMode === 'admin') { %>
+        <div class="card" style="margin-top:28px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;">Announcements</h3>
+                <% if (viewMode === 'admin') { %>
+                <button onclick="saveHub()" class="btn btn-primary btn-small">Save</button>
+                <% } %>
+            </div>
+            <% if (viewMode === 'admin') { %>
+                <div id="announceEditor" style="min-height:120px;"><%- announcement %></div>
+            <% } else { %>
+                <div class="hub-rich-content"><%- announcement %></div>
+            <% } %>
+        </div>
+        <% } %>
+
+        <% if (selectedCounselorName) { %>
+        <div style="margin-top:20px; font-size:0.875rem; display:flex; align-items:center; gap:10px;">
+            <span style="background:#f1f5f9; border:1px solid var(--border-color); border-radius:20px; padding:5px 14px;">
+                Attending as: <strong><%= selectedCounselorName %></strong>
+            </span>
+            <a href="/counselor-preferences" style="color:var(--text-muted); font-size:0.78rem;">Change</a>
+        </div>
+        <% } %>
 
         <div class="switch-bar">
             <form action="/choose-view" method="POST" style="display:inline;">
@@ -80,5 +110,24 @@
             </form>
         </div>
     </div>
+    <% if (viewMode === 'admin') { %>
+    <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+    <script>
+        const TOOLBAR = [['bold', 'italic', 'underline'], [{ color: [] }], [{ list: 'bullet' }], ['clean']];
+        const quillAnnounce = new Quill('#announceEditor', { theme: 'snow', modules: { toolbar: TOOLBAR } });
+        async function saveHub() {
+            const btn = event.currentTarget;
+            btn.disabled = true;
+            btn.textContent = 'Saving…';
+            await fetch('/hub-content/announcement', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: quillAnnounce.root.innerHTML })
+            });
+            btn.textContent = 'Saved!';
+            setTimeout(() => { btn.disabled = false; btn.textContent = 'Save'; }, 1500);
+        }
+    </script>
+    <% } %>
 </body>
 </html>

@@ -54,6 +54,13 @@
             <% } %>
         </div>
 
+        <% if (counselorFilterActive) { %>
+        <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 16px; margin-bottom:14px; font-size:0.875rem; display:flex; align-items:center; gap:10px;">
+            Showing sessions for <strong><%= selectedCounselorName %></strong>
+            <a href="/attendance?date=<%= date %>&showAll=1" style="margin-left:auto; white-space:nowrap;">Show All Sessions</a>
+        </div>
+        <% } %>
+
         <%
             // Split sessions by AM/PM
             const hgAM  = homegroupSessions.filter(s => s.session === 'am');
