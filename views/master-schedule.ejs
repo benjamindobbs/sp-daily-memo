@@ -70,13 +70,6 @@
                 <option value="Carolina">Carolina</option>
                 <option value="Green">Green</option>
                 <option value="Navy">Navy</option>
-                <option value="LilPlace">Li'l Place</option>
-                <option value="KinderPlace">Kinder Place</option>
-                <option value="SPLIT">SPLIT</option>
-                <option disabled>──────────</option>
-                <option value="Bus">Bus Riders</option>
-                <option value="AMExtended">AM Extended</option>
-                <option value="PMExtended">PM Extended</option>
             </select>
         </div>
 
@@ -196,9 +189,6 @@
     <script>
         function groupMatches(row, group) {
             if (group === 'all') return true;
-            if (group === 'Bus') return row.dataset.bus === 'yes';
-            if (group === 'AMExtended') return (row.dataset.extended || '').split(',').some(v => v === 'AM' || v === 'Both');
-            if (group === 'PMExtended') return (row.dataset.extended || '').split(',').some(v => v === 'PM' || v === 'Both');
             return (row.dataset.groups || '').split(',').includes(group);
         }
 

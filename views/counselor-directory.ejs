@@ -32,15 +32,18 @@
                     <option value="Carolina">Carolina</option>
                     <option value="Green">Green</option>
                     <option value="Navy">Navy</option>
+                    <option value="__ext_am__">AM Extended</option>
+                    <option value="__ext_pm__">PM Extended</option>
                 </select>
             </div>
         </header>
 
         <div class="directory-grid" id="staffGrid">
             <% counselors.forEach(c => { %>
-                <div class="counselor-card staff-item" 
+                <div class="counselor-card staff-item"
                      data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>"
-                     data-group="<%= c.HomeGroupColor %>">
+                     data-group="<%= c.HomeGroupColor %>"
+                     data-extended="<%= c.ExtendedHours || '' %>">
                     
                     <span class="tag <%= c.HomeGroupColor %>"><%= c.HomeGroupColor %> Group</span>
                     
@@ -75,8 +78,16 @@
 
             items.forEach(item => {
                 const nameMatch = item.dataset.name.includes(query);
-                const groupMatch = group === 'all' || item.dataset.group === group;
-                
+                let groupMatch;
+                if (group === 'all') {
+                    groupMatch = true;
+                } else if (group === '__ext_am__') {
+                    groupMatch = item.dataset.extended === 'AM' || item.dataset.extended === 'Both';
+                } else if (group === '__ext_pm__') {
+                    groupMatch = item.dataset.extended === 'PM' || item.dataset.extended === 'Both';
+                } else {
+                    groupMatch = item.dataset.group === group;
+                }
                 item.style.display = (nameMatch && groupMatch) ? 'flex' : 'none';
             });
         }

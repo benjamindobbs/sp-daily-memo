@@ -45,9 +45,36 @@
 
             <div class="search-bar-container">
                 <input type="text" id="camperSearch" class="search-input"
-                    placeholder="Type a name (e.g. 'Alex' or 'Smith')..." onkeyup="runCamperSearch()">
-                <button class="btn action-btn" onclick="clearSearch()">Clear</button>
+                    placeholder="Type a name (e.g. 'Alex' or 'Smith')..." onkeyup="applyFilters()">
+                <button class="btn action-btn" onclick="clearAllFilters()">Clear</button>
             </div>
+        </div>
+
+        <div class="filter-bar" style="margin-bottom:16px;">
+            <label for="groupFilter">Group:</label>
+            <select id="groupFilter" class="filter-dropdown" onchange="applyFilters()">
+                <option value="all">All Groups</option>
+                <option value="Red">Red</option>
+                <option value="Carolina">Carolina</option>
+                <option value="Green">Green</option>
+                <option value="Navy">Navy</option>
+                <option value="LilPlace">Li'l Place</option>
+                <option value="KinderPlace">Kinder Place</option>
+                <option value="SPLIT">SPLIT</option>
+            </select>
+            <label for="busFilter">Bus:</label>
+            <select id="busFilter" class="filter-dropdown" onchange="applyFilters()">
+                <option value="all">All Buses</option>
+                <option value="__riders__">Bus Riders</option>
+            </select>
+            <label for="extFilter">Extended Hours:</label>
+            <select id="extFilter" class="filter-dropdown" onchange="applyFilters()">
+                <option value="all">All</option>
+                <option value="any">Any Extended</option>
+                <option value="AM">AM Extended</option>
+                <option value="PM">PM Extended</option>
+                <option value="Both">AM + PM</option>
+            </select>
         </div>
 
         <div class="table-scroll">
@@ -66,7 +93,10 @@
             <% if (typeof camper !=='undefined' && camper.length> 0) { %>
                 <% camper.forEach(function(c) { %>
                     <tbody class="camper-group staff-item"
-                        data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>">
+                        data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>"
+                        data-group="<%= c.HomeGroupColor || '' %>"
+                        data-bus="<%= c.BusRoute || '' %>"
+                        data-extended="<%= c.ExtendedHours || '' %>">
                         <tr class="main-info-row">
                             <td>
                                 <div style="font-weight: 700; color: #1e293b;">
@@ -144,21 +174,53 @@
     </div>
 
     <script>
-        // Your existing search logic works perfectly, keeping it as is!
-        function runCamperSearch() {
-            var filter = document.getElementById('camperSearch').value.trim().toLowerCase();
-            var groups = document.querySelectorAll('.camper-group');
-            groups.forEach(function (group) {
-                var name = group.getAttribute('data-name');
-                group.style.display = (filter === "" || name.includes(filter)) ? "" : "none";
+        function populateBusFilter() {
+            const routes = new Set();
+            document.querySelectorAll('.camper-group[data-bus]').forEach(g => {
+                const b = g.dataset.bus;
+                if (b) routes.add(b);
+            });
+            const sel = document.getElementById('busFilter');
+            [...routes].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).forEach(r => {
+                sel.appendChild(new Option('Bus ' + r, r));
             });
         }
 
-        function clearSearch() {
-            document.getElementById('camperSearch').value = "";
-            runCamperSearch();
+        function applyFilters() {
+            const nameVal  = document.getElementById('camperSearch').value.trim().toLowerCase();
+            const groupVal = document.getElementById('groupFilter').value;
+            const busVal   = document.getElementById('busFilter').value;
+            const extVal   = document.getElementById('extFilter').value;
+
+            document.querySelectorAll('.camper-group').forEach(group => {
+                const nameMatch  = !nameVal  || group.dataset.name.includes(nameVal);
+                const groupMatch = groupVal === 'all' || group.dataset.group === groupVal;
+                const bus        = group.dataset.bus || '';
+                const busMatch   = busVal === 'all' || (busVal === '__riders__' ? !!bus : bus === busVal);
+                const ext        = group.dataset.extended || '';
+                let extMatch     = extVal === 'all';
+                if (!extMatch) {
+                    if (extVal === 'any') extMatch = !!ext;
+                    else extMatch = ext === extVal;
+                }
+                group.style.display = (nameMatch && groupMatch && busMatch && extMatch) ? '' : 'none';
+            });
+        }
+
+        function runCamperSearch() { applyFilters(); }
+
+        function clearAllFilters() {
+            document.getElementById('camperSearch').value = '';
+            document.getElementById('groupFilter').value  = 'all';
+            document.getElementById('busFilter').value    = 'all';
+            document.getElementById('extFilter').value    = 'all';
+            applyFilters();
             document.getElementById('camperSearch').focus();
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            populateBusFilter();
+        });
     </script>
 </body>
 

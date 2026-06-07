@@ -6,6 +6,13 @@
     <title>Attendance | Camp Hub</title>
     <link rel="stylesheet" href="/css/style.css">
     <script src="/js/nav.js" defer></script>
+    <style>
+        .att-flat-list { display: flex; flex-direction: column; gap: 8px; }
+        .att-flat-item { display: flex; align-items: center; justify-content: space-between; padding: 13px 18px; background: white; border: 1px solid var(--border-color); border-radius: 10px; text-decoration: none; color: var(--text); transition: background 0.12s, border-color 0.12s; }
+        .att-flat-item:hover { background: #f8fafc; border-color: #94a3b8; }
+        .att-flat-cat { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 2px; }
+        .att-flat-name { font-weight: 600; font-size: 0.92rem; display: flex; align-items: center; gap: 6px; }
+    </style>
 </head>
 <body>
     <% if (viewMode === 'admin') { %>
@@ -91,6 +98,43 @@
                 return { sub, tot, cls };
             }
         %>
+
+        <% if (counselorFilterActive) { %>
+
+        <%/* ── FLAT VIEW: sequential list for identified counselors ── */%>
+        <%
+            const flatItems = [];
+            extAM.forEach(s => flatItems.push({ icon: '⏰', cat: 'Extended AM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
+            busAM.forEach(s => flatItems.push({ icon: '🚌', cat: 'Bus AM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
+            hgAM.forEach(s => flatItems.push({ icon: '🏠', cat: 'Home Group AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
+            classSessions.forEach(s => flatItems.push({ icon: '🏃', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null }));
+            hgPM.forEach(s => flatItems.push({ icon: '🏠', cat: 'Home Group PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
+            busPM.forEach(s => flatItems.push({ icon: '🚌', cat: 'Bus PM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
+            extPM.forEach(s => flatItems.push({ icon: '⏰', cat: 'Extended PM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
+        %>
+        <div class="att-flat-list">
+            <% flatItems.forEach(function(item) { %>
+            <a href="<%= item.link %>" class="att-flat-item">
+                <div>
+                    <div class="att-flat-cat"><%= item.icon %> <%= item.cat %></div>
+                    <div class="att-flat-name">
+                        <% if (item.color) { %>
+                        <span class="tag <%= item.color %>" style="font-size:0.65rem; padding:1px 6px;"><%= item.color %></span>
+                        <% } %>
+                        <%= item.label %>
+                    </div>
+                </div>
+                <span class="<%= item.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= item.submitted ? '✓ Submitted' : 'Pending' %></span>
+            </a>
+            <% }); %>
+            <% if (flatItems.length === 0) { %>
+            <div style="text-align:center; padding:40px 20px; color:var(--text-muted);">No sessions assigned for today.</div>
+            <% } %>
+        </div>
+
+        <% } else { %>
+
+        <%/* ── DROPDOWN VIEW: full overview with collapsible sections ── */%>
 
         <%/* ── Extended AM ── */%>
         <% if (extAM.length > 0) { %>
@@ -262,6 +306,8 @@
                 </div>
             </div>
         </details>
+        <% } %>
+
         <% } %>
 
     </div>

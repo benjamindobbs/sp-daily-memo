@@ -58,7 +58,7 @@
                 <select name="counselorID" required style="width:100%; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.95rem; background:white;">
                     <option value="">— Select your name —</option>
                     <% counselors.forEach(function(c) { %>
-                        <option value="<%= c.CounselorID %>">
+                        <option value="<%= c.CounselorID %>" <%= selectedCounselorId === c.CounselorID ? 'selected' : '' %>>
                             <%= c.FirstName %> <%= c.LastName %> (<%= c.HomeGroupColor %> Group)
                         </option>
                     <% }); %>

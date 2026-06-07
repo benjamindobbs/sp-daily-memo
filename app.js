@@ -1526,9 +1526,22 @@ app.get('/attendance', (req, res) => {
     const filterCid = (isStaff && !showAll) ? (parseInt(req.cookies.selectedCounselor) || null) : null;
     let selectedCounselorName = null;
     let allowedClasses = null;
+    let counselorBusRoute = null;
+    let counselorExtHours = null;
     if (filterCid) {
-        const cRow = db.prepare('SELECT FirstName, LastName FROM Counselors WHERE CounselorID=?').get(filterCid);
-        if (cRow) selectedCounselorName = `${cRow.FirstName} ${cRow.LastName}`;
+        const cRow = db.prepare(`
+            SELECT c.FirstName, c.LastName,
+                   COALESCE(cwa.BusRoute, c.BusRoute) AS BusRoute,
+                   COALESCE(cwa.ExtendedHours, c.ExtendedHours) AS ExtendedHours
+            FROM Counselors c
+            LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
+            WHERE c.CounselorID = ?
+        `).get(getActiveWeek(), filterCid);
+        if (cRow) {
+            selectedCounselorName = `${cRow.FirstName} ${cRow.LastName}`;
+            counselorBusRoute = cRow.BusRoute || null;
+            counselorExtHours = cRow.ExtendedHours || null;
+        }
         const assignments = db.prepare(
             "SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID=? AND WeekNumber=?"
         ).all(filterCid, getActiveWeek());
@@ -1667,11 +1680,21 @@ app.get('/attendance', (req, res) => {
 
     let filteredHomegroupSessions = homegroupSessions;
     let filteredClassSessions = classSessions;
+    let filteredBusSessions = busSessions;
+    let filteredExtSessions = extSessions;
     if (filterCid) {
         filteredHomegroupSessions = homegroupSessions.filter(s => s.counselorId === filterCid);
         filteredClassSessions = classSessions.filter(s => {
             const periods = Array.isArray(s.filterPeriod) ? s.filterPeriod : [s.filterPeriod];
             return periods.some(p => allowedClasses.has(`${p}|${s.activityName}`));
+        });
+        filteredBusSessions = counselorBusRoute
+            ? busSessions.filter(s => s.route === counselorBusRoute)
+            : [];
+        filteredExtSessions = extSessions.filter(s => {
+            if (!counselorExtHours) return false;
+            if (counselorExtHours === 'Both') return true;
+            return s.session.toUpperCase() === counselorExtHours.toUpperCase();
         });
     }
 
@@ -1679,7 +1702,9 @@ app.get('/attendance', (req, res) => {
         date,
         homegroupSessions: filteredHomegroupSessions,
         classSessions: filteredClassSessions,
-        busSessions, extSessions, lateCount,
+        busSessions: filteredBusSessions,
+        extSessions: filteredExtSessions,
+        lateCount,
         counselorFilterActive: !!filterCid,
         selectedCounselorName
     });
@@ -2284,7 +2309,8 @@ app.get('/counselor-preferences', (req, res) => {
     const counselors = db.prepare("SELECT CounselorID, FirstName, LastName, HomeGroupColor FROM Counselors ORDER BY LastName, FirstName").all();
     const activities = db.prepare("SELECT Name, SideOfCamp FROM Activities ORDER BY SideOfCamp, Name").all();
     const alertMessage = req.query.message || null;
-    res.render('counselor-preferences', { counselors, activities, alertMessage });
+    const selectedCounselorId = parseInt(req.cookies.selectedCounselor) || null;
+    res.render('counselor-preferences', { counselors, activities, alertMessage, selectedCounselorId });
 });
 
 app.post('/counselor-preferences', (req, res) => {
