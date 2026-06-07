@@ -33,6 +33,9 @@
                 <h1>Welcome back, Director</h1>
                 <p class="text-muted">Here is what's happening at camp today.</p>
             </div>
+            <span style="font-size:0.78rem; background:#f1f5f9; border:1px solid var(--border-color); border-radius:20px; padding:5px 14px; white-space:nowrap;">
+                Active: <strong><%= sessions.find(s => s.isActive)?.label ?? '—' %></strong>
+            </span>
         </header>
 
         <% if (waitlistCount > 0) { %>
@@ -90,7 +93,10 @@
         <div class="card" style="margin-top:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                 <h3 style="margin:0;">Director Notes <span style="font-size:0.75rem; font-weight:400; color:var(--text-muted);">(admin only)</span></h3>
-                <button onclick="saveNotes(event)" class="btn btn-primary btn-small">Save</button>
+                <div style="display:flex; gap:8px;">
+                    <button id="notesEditBtn" onclick="editNotes()" class="btn btn-small" style="background:#f1f5f9; color:var(--text);">Edit</button>
+                    <button id="notesSaveBtn" onclick="saveNotes(event)" class="btn btn-primary btn-small" style="display:none;">Save</button>
+                </div>
             </div>
             <div id="notesEditor" style="min-height:120px;"><%- directorNotes %></div>
         </div>
@@ -109,6 +115,18 @@
         const TOOLBAR = [['bold', 'italic', 'underline'], [{ color: [] }], [{ list: 'bullet' }], ['clean']];
         const quillNotes    = new Quill('#notesEditor',    { theme: 'snow', modules: { toolbar: TOOLBAR } });
         const quillAnnounce = new Quill('#announceEditor', { theme: 'snow', modules: { toolbar: TOOLBAR } });
+
+        // Director Notes starts read-only with toolbar hidden
+        quillNotes.disable();
+        document.querySelector('#notesEditor .ql-toolbar').style.display = 'none';
+
+        function editNotes() {
+            quillNotes.enable();
+            document.querySelector('#notesEditor .ql-toolbar').style.display = '';
+            document.getElementById('notesEditBtn').style.display = 'none';
+            document.getElementById('notesSaveBtn').style.display = '';
+        }
+
         async function saveHub(id, quillInstance, btn) {
             btn.disabled = true; btn.textContent = 'Saving…';
             await fetch(`/hub-content/${id}`, {
@@ -119,8 +137,16 @@
             btn.textContent = 'Saved!';
             setTimeout(() => { btn.disabled = false; btn.textContent = 'Save'; }, 1500);
         }
-        function saveNotes(e)    { saveHub('director_notes', quillNotes,    e.currentTarget); }
-        function saveAnnounce(e) { saveHub('announcement',   quillAnnounce, e.currentTarget); }
+
+        function saveNotes(e) {
+            saveHub('director_notes', quillNotes, e.currentTarget).then(() => {
+                quillNotes.disable();
+                document.querySelector('#notesEditor .ql-toolbar').style.display = 'none';
+                document.getElementById('notesEditBtn').style.display = '';
+                document.getElementById('notesSaveBtn').style.display = 'none';
+            });
+        }
+        function saveAnnounce(e) { saveHub('announcement', quillAnnounce, e.currentTarget); }
     </script>
 </body>
 </html>

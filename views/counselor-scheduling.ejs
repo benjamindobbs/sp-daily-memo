@@ -56,11 +56,23 @@
 
     <div class="container-xl">
 
-        <div class="page-header" style="margin-bottom: 24px;">
+        <div class="page-header" style="margin-bottom: 16px;">
             <div>
                 <h1 style="margin:0;">Counselor Scheduling</h1>
                 <p class="text-muted" style="margin:4px 0 0;">Upload this week's course offerings, then assign counselors and staff period by period.</p>
             </div>
+        </div>
+
+        <!-- Week selector pill bar -->
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:20px; flex-wrap:wrap;">
+            <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">Planning Week:</span>
+            <% sessions.forEach(s => { %>
+            <a href="/counselor-scheduling?week=<%= s.weekNumber %>"
+               class="btn btn-small"
+               style="<%= s.weekNumber === planWeek ? 'background:var(--primary);color:white;border-color:var(--primary);' : 'background:#f1f5f9;color:var(--text);' %> text-decoration:none; font-size:0.8rem;">
+                <%= s.label %><% if (s.isActive) { %>&nbsp;&#9733;<% } %><% if (s.isReleased) { %>&nbsp;&#128257;<% } %>
+            </a>
+            <% }); %>
         </div>
 
         <% if (alertMessage) { %>
@@ -74,14 +86,20 @@
                 Required CSV headers: <strong>ActivityName, PreliminaryEnrollment, SideOfCamp, PeriodNumber</strong>
             </p>
             <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
-                <form action="/upload-weekly-offerings" method="POST" enctype="multipart/form-data" style="display:flex; gap:8px; align-items:center;">
+                <form action="/upload-weekly-offerings" method="POST" enctype="multipart/form-data" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <select name="weekNumber" style="padding:5px 8px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem;">
+                        <% sessions.forEach(s => { %>
+                        <option value="<%= s.weekNumber %>"<%= s.weekNumber === planWeek ? ' selected' : '' %>><%= s.label %></option>
+                        <% }); %>
+                    </select>
                     <input type="file" name="file" accept=".csv" required style="font-size:0.82rem;">
                     <button type="submit" class="btn primary btn-small">Upload CSV</button>
                 </form>
                 <% if (offerings.length > 0) { %>
                     <form action="/clear-weekly-offerings" method="POST"
-                          onsubmit="return confirm('Clear all offerings and assignments?');">
-                        <button type="submit" class="settings-link-btn">&#128465;&#65039; Clear All</button>
+                          onsubmit="return confirm('Clear offerings for this week?');">
+                        <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                        <button type="submit" class="settings-link-btn">&#128465;&#65039; Clear Week <%= planWeek %></button>
                     </form>
                     <span class="text-muted" style="font-size:0.82rem;"><%= offerings.length %> activities loaded</span>
                 <% } %>
@@ -95,8 +113,9 @@
                 <p style="margin:0;">Upload a CSV above to get started.</p>
             </div>
         <% } else {
-            // Derive sorted unique periods present in the data
-            const periods = [...new Set(offerings.map(o => o.PeriodNumber).filter(p => p != null))].sort((a,b) => a - b);
+            // Derive sorted unique periods present in the data (supports '3AM'/'3PM')
+            const _periodOrder = v => { const s = String(v); if (s === '3AM') return 2.3; if (s === '3PM') return 2.7; const n = parseFloat(s); return isNaN(n) ? 99 : n; };
+            const periods = [...new Set(offerings.map(o => o.PeriodNumber).filter(p => p != null))].sort((a, b) => _periodOrder(a) - _periodOrder(b));
             const unperioded = offerings.filter(o => o.PeriodNumber == null);
         %>
 
@@ -143,9 +162,10 @@
                         <div class="offering-card" data-offer="<%= idx %>">
                             <div class="offering-card-header">
                                 <span class="offering-name"><%= act.ActivityName %></span>
-                                <% if (act.PeriodNumber === 3) { %>
+                                <% const _ps = String(act.PeriodNumber);
+                                   if (_ps === '3AM' || _ps === '3') { %>
                                     <span style="font-size:0.68rem;font-weight:700;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;white-space:nowrap;">AM · Green / Navy</span>
-                                <% } else if (act.PeriodNumber === 4) { %>
+                                <% } else if (_ps === '3PM' || _ps === '4') { %>
                                     <span style="font-size:0.68rem;font-weight:700;background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;white-space:nowrap;">PM · Red / Carolina</span>
                                 <% } %>
                                 <span class="enrollment-pill"><%= act.PreliminaryEnrollment %> expected</span>
@@ -277,8 +297,23 @@
                     <label style="font-size:0.88rem;"><input type="radio" name="autoMode" value="full"> Full Auto</label>
                 </div>
             </div>
-            <button class="btn btn-primary" onclick="buildSchedule()">Build Schedule</button>
-            <span id="autoStatus" style="font-size:0.82rem; color:var(--text-muted); margin-left:12px;"></span>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <button class="btn btn-primary" onclick="buildSchedule()">Build Schedule</button>
+                <span id="autoStatus" style="font-size:0.82rem; color:var(--text-muted); margin-left:4px;"></span>
+            </div>
+            <% if (sessions.filter(s => s.weekNumber !== planWeek).length > 0) { %>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid var(--border-color);">
+                <span style="font-size:0.78rem; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap;">Mirror from:</span>
+                <select id="mirrorSourceWeek" style="padding:4px 8px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem;">
+                    <% sessions.filter(s => s.weekNumber !== planWeek).forEach(s => { %>
+                    <option value="<%= s.weekNumber %>"><%= s.label %></option>
+                    <% }); %>
+                </select>
+                <button class="btn btn-small" style="background:#f1f5f9; color:var(--text);" onclick="mirrorWeek('Sports')">&#9917; Mirror Sports</button>
+                <button class="btn btn-small" style="background:#f1f5f9; color:var(--text);" onclick="mirrorWeek('Enrichment')">&#127912; Mirror Enrichment</button>
+                <span id="mirrorStatus" style="font-size:0.82rem; color:var(--text-muted);"></span>
+            </div>
+            <% } %>
         </div>
 
         <!-- Bottom actions -->
@@ -372,6 +407,8 @@
         const STAFF_AVAIL  = <%- JSON.stringify(staffAvailability) %>;
         const EXISTING     = <%- JSON.stringify(existingAssignments) %>;
         const PREFERENCES  = <%- JSON.stringify(preferences) %>;
+        const PLAN_WEEK    = <%= planWeek %>;
+        const SESSIONS     = <%- JSON.stringify(sessions) %>;
 
         // ── State: state[offerIdx] = { counselors: [id|null,...], staff: [id|null,...] }
         // Each offering already carries its PeriodNumber, so we don't need a period dimension.
@@ -565,7 +602,7 @@
                 const resp = await fetch('/save-counselor-assignments', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ assignments })
+                    body: JSON.stringify({ assignments, weekNumber: PLAN_WEEK })
                 });
                 if (resp.ok) {
                     if (btn) { btn.textContent = '✓ Saved!'; setTimeout(() => { btn.textContent = 'Save Assignments'; btn.disabled = false; }, 2500); }
@@ -656,6 +693,68 @@
                 [a[i], a[j]] = [a[j], a[i]];
             }
             return a;
+        }
+
+        // ── Mirror counselor assignments from another week ───────────────────────
+        async function mirrorWeek(side) {
+            const fromWeek = parseInt(document.getElementById('mirrorSourceWeek').value);
+            const statusEl = document.getElementById('mirrorStatus');
+            statusEl.textContent = 'Loading…';
+
+            let prevRows;
+            try {
+                const resp = await fetch(`/counselor-week-assignments/${fromWeek}`);
+                prevRows = await resp.json();
+            } catch {
+                statusEl.textContent = 'Error fetching source week.';
+                return;
+            }
+
+            // activityName → [counselorIDs] from source week
+            const prevMap = {};
+            prevRows.forEach(r => {
+                if (!prevMap[r.ActivityName]) prevMap[r.ActivityName] = [];
+                prevMap[r.ActivityName].push(r.CounselorID);
+            });
+
+            let mirrored = 0;
+            OFFERINGS.forEach((act, idx) => {
+                if (act.SideOfCamp !== side) return;
+                const prev = prevMap[act.ActivityName];
+                if (!prev || prev.length === 0) return; // class didn't exist or had no assignments
+
+                const avail = AVAIL[act.PeriodNumber]?.[side] ?? [];
+                const availIds = new Set(avail.map(c => c.CounselorID));
+
+                // Only carry over counselors who are available in the planning week
+                let candidates = shuffle(prev.filter(cid => availIds.has(cid)));
+
+                const slotCount = state[idx].counselors.length || 1;
+                // Randomly trim if more candidates than slots
+                if (candidates.length > slotCount) candidates = candidates.slice(0, slotCount);
+
+                // Ensure enough slots exist
+                while (state[idx].counselors.length < slotCount) state[idx].counselors.push(null);
+
+                // Fill from mirrored candidates (don't overwrite slots with values if already set)
+                for (let i = 0; i < slotCount; i++) {
+                    state[idx].counselors[i] = candidates[i] ?? null;
+                }
+
+                // Update count input to match
+                const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                if (card) {
+                    const cInput = card.querySelector('[data-count-type="counselors"]');
+                    if (cInput) cInput.value = slotCount;
+                }
+
+                mirrored++;
+            });
+
+            renderAllFromState();
+            updateAllCounters();
+            updateGroupCounters();
+            statusEl.textContent = `Mirrored ${mirrored} ${side} class${mirrored !== 1 ? 'es' : ''} from ${SESSIONS.find(s => s.weekNumber === fromWeek)?.label ?? `Week ${fromWeek}`}.`;
         }
 
         function buildSchedule() {

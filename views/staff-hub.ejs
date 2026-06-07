@@ -50,10 +50,35 @@
     <div class="container">
         <header class="header-flex" style="margin-bottom: 8px;">
             <div>
-                <h1>Welcome</h1>
-                <p class="text-muted">Select a tool to get started.</p>
+                <h1>Welcome Back<% if (selectedCounselorName) { %>, <%= selectedCounselorName.split(' ')[0] %><%  } %>!</h1>
+                <p class="text-muted">It's a great day to have a great day! Select a tool to get started.</p>
             </div>
         </header>
+
+        <% if (releasedSchedule && releasedSchedule.length > 0) { %>
+        <div class="card" style="margin-bottom:20px; border-left:4px solid var(--primary);">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                <h3 style="margin:0;">Your Upcoming Schedule</h3>
+                <span style="background:var(--primary); color:white; font-size:0.75rem; font-weight:600; padding:3px 10px; border-radius:20px;"><%= releasedSessionLabel %></span>
+            </div>
+            <table style="width:100%; border-collapse:collapse; font-size:0.875rem;">
+                <thead>
+                    <tr>
+                        <th style="text-align:left; padding:4px 8px; color:var(--text-muted); font-weight:600;">Period</th>
+                        <th style="text-align:left; padding:4px 8px; color:var(--text-muted); font-weight:600;">Activity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <% releasedSchedule.forEach(r => { %>
+                    <tr style="border-top:1px solid var(--border-color);">
+                        <td style="padding:6px 8px; color:var(--text-muted);">P<%= r.PeriodNumber %></td>
+                        <td style="padding:6px 8px; font-weight:500;"><%= r.ActivityName %></td>
+                    </tr>
+                <% }); %>
+                </tbody>
+            </table>
+        </div>
+        <% } %>
 
         <div class="hub-cards">
             <a href="/attendance" class="hub-card">
