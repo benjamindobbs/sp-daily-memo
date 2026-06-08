@@ -82,7 +82,7 @@
                             <span class="info-label">Bus Route</span>
                         </div>
                         <div style="margin-bottom: 16px;">
-                            <input type="text" name="busRoute" value="<%= camper.BusRoute || '' %>"
+                            <input type="text" name="busRoute" value="<%= (camper.BusRoute && camper.BusRoute.toLowerCase() !== 'null') ? camper.BusRoute : '' %>"
                                 placeholder="e.g. Route 12"
                                 style="width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.9rem; box-sizing:border-box;">
                         </div>
@@ -92,7 +92,7 @@
                         </div>
                         <div style="margin-bottom: 16px;">
                             <select name="extendedHours" style="width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.9rem; background:white;">
-                                <option value="" <%= !camper.ExtendedHours ? 'selected' : '' %>>No</option>
+                                <option value="" <%= (!camper.ExtendedHours || camper.ExtendedHours.toLowerCase() === 'null') ? 'selected' : '' %>>No</option>
                                 <option value="AM"   <%= camper.ExtendedHours === 'AM'   ? 'selected' : '' %>>AM Only</option>
                                 <option value="PM"   <%= camper.ExtendedHours === 'PM'   ? 'selected' : '' %>>PM Only</option>
                                 <option value="Both" <%= camper.ExtendedHours === 'Both' ? 'selected' : '' %>>AM + PM (Both)</option>

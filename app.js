@@ -594,6 +594,11 @@ db.exec(`INSERT OR IGNORE INTO CounselorWeekSchedules (CounselorID, WeekNumber, 
 db.exec(`INSERT OR IGNORE INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
     SELECT CounselorID, 1, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours FROM Counselors`);
 
+// Normalize literal "null" strings left by CSV imports
+db.exec(`UPDATE Campers    SET BusRoute = NULL WHERE LOWER(TRIM(BusRoute)) = 'null' OR TRIM(BusRoute) = ''`);
+db.exec(`UPDATE Counselors SET BusRoute = NULL WHERE LOWER(TRIM(BusRoute)) = 'null' OR TRIM(BusRoute) = ''`);
+db.exec(`UPDATE Campers    SET ExtendedHours = NULL WHERE LOWER(TRIM(ExtendedHours)) = 'null' OR TRIM(ExtendedHours) = ''`);
+
 // --- WEEK HELPERS ---
 function getActiveWeek() {
     return db.prepare("SELECT weekNumber FROM Sessions WHERE isActive=1 LIMIT 1").get()?.weekNumber ?? 1;
@@ -1318,7 +1323,10 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
             const deleteSched   = db.prepare(`DELETE FROM Schedules WHERE PersonID = ? AND PersonType = 'Camper'`);
             const insertSched   = db.prepare(`INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName) VALUES (?, 'Camper', ?, ?)`);
 
-            const safeTrim = (val) => (val && typeof val === 'string') ? val.trim() : '';
+            const safeTrim = (val) => {
+                const s = (val && typeof val === 'string') ? val.trim() : '';
+                return s.toLowerCase() === 'null' ? '' : s;
+            };
 
             try {
                 db.transaction((data) => {
