@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Log | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+</head>
+<body>
+    <% if (viewMode === 'admin') { %>
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
+        <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
+        <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
+    </nav>
+    <% } else { %>
+    <nav class="nav-bar">
+        <a href="/staff" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="admin">
+            <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
+        </form>
+    </nav>
+    <% } %>
+
+    <div class="container-lg">
+        <header class="page-header">
+            <a href="/attendance/late-arrivals?date=<%= date %>" class="back-link">&#8592; Late Arrivals</a>
+            <span class="pipe-sep">|</span>
+            <div>
+                <h1>&#128203; Daily Arrival &amp; Departure Log</h1>
+                <p>Full record of check-ins and dismissals by date.</p>
+            </div>
+        </header>
+
+        <div class="date-bar">
+            <label for="datePicker">Date:</label>
+            <input type="date" id="datePicker" value="<%= date %>"
+                   onchange="window.location='/attendance/dismissal-archive?date='+this.value">
+        </div>
+
+        <%/* ── Early Dismissals ── */%>
+        <h2 style="font-size:1.05rem; margin:0 0 10px;">&#128663; Early Dismissals</h2>
+        <div class="late-card table-scroll" style="margin-bottom:32px;">
+            <% if (dismissals.length === 0) { %>
+                <div class="empty-state">
+                    <span style="font-size:2rem;">&#10003;</span>
+                    <p style="font-weight:600; margin-top:8px;">No dismissals recorded for this date.</p>
+                </div>
+            <% } else { %>
+            <table class="late-table">
+                <thead>
+                    <tr>
+                        <th>Camper</th>
+                        <th>Group</th>
+                        <th>Dismissal Time</th>
+                        <th>Notes</th>
+                        <th>Dismissed By</th>
+                        <th>Logged At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% dismissals.forEach(function(d) { %>
+                    <tr>
+                        <td><a href="/search?name=<%= encodeURIComponent(d.FirstName+' '+d.LastName) %>" class="camper-name-link"><%= d.FirstName %> <%= d.LastName %></a></td>
+                        <td><span class="tag <%= d.HomeGroupColor %>"><%= d.HomeGroupColor %></span></td>
+                        <td><%= d.DismissalTime || '—' %></td>
+                        <td style="color:var(--text-muted); font-size:0.85rem;"><%= d.Notes || '' %></td>
+                        <td style="font-size:0.85rem;"><%= d.MarkedBy || '—' %></td>
+                        <td style="font-size:0.8rem; color:var(--text-muted);"><%= d.CreatedAt ? new Date(d.CreatedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—' %></td>
+                    </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+            <% } %>
+        </div>
+
+        <%/* ── Late Check-ins ── */%>
+        <h2 style="font-size:1.05rem; margin:0 0 10px;">&#9989; Late Arrivals Checked In</h2>
+        <div class="late-card table-scroll">
+            <% if (checkIns.length === 0) { %>
+                <div class="empty-state">
+                    <span style="font-size:2rem;">&#10003;</span>
+                    <p style="font-weight:600; margin-top:8px;">No late check-ins recorded for this date.</p>
+                </div>
+            <% } else { %>
+            <table class="late-table">
+                <thead>
+                    <tr>
+                        <th>Camper</th>
+                        <th>Group</th>
+                        <th>Checked In At</th>
+                        <th>Checked In By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% checkIns.forEach(function(c) { %>
+                    <tr>
+                        <td><a href="/search?name=<%= encodeURIComponent(c.FirstName+' '+c.LastName) %>" class="camper-name-link"><%= c.FirstName %> <%= c.LastName %></a></td>
+                        <td><span class="tag <%= c.HomeGroupColor %>"><%= c.HomeGroupColor %></span></td>
+                        <td><%= c.MarkedAt ? new Date(c.MarkedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—' %></td>
+                        <td style="font-size:0.85rem;"><%= c.MarkedBy || '—' %></td>
+                    </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+            <% } %>
+        </div>
+    </div>
+</body>
+</html>

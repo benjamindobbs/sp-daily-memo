@@ -44,11 +44,25 @@
             </div>
         </div>
 
+        <% if (typeof staffRows !== 'undefined' && (staffRows.length > 0 || counselorRows.length > 0)) { %>
+        <div style="background:#f8fafc; border:1px solid var(--border-color); border-radius:10px; padding:12px 16px; margin-bottom:14px; font-size:0.875rem; display:flex; gap:24px; flex-wrap:wrap;">
+            <% if (staffRows.length > 0) { %>
+            <div><span style="font-weight:600; color:var(--text-muted);">Instructor<%= staffRows.length > 1 ? 's' : '' %>:</span>
+                 <%= staffRows.map(s => s.FirstName + ' ' + s.LastName).join(', ') %></div>
+            <% } %>
+            <% if (counselorRows.length > 0) { %>
+            <div><span style="font-weight:600; color:var(--text-muted);">Counselors:</span>
+                 <%= counselorRows.map(c => c.FirstName + ' ' + c.LastName).join(', ') %></div>
+            <% } %>
+        </div>
+        <% } %>
+
         <div class="roster-card">
             <div class="roster-card-header">
                 <div>
                     <strong id="presentCount">—</strong> present &nbsp;·&nbsp;
-                    <strong id="absentCount">—</strong> absent
+                    <strong id="absentCount">—</strong> absent &nbsp;·&nbsp;
+                    <strong id="unmarkedCount">—</strong> unmarked
                     <span class="saving-indicator" id="savingIndicator">Saving…</span>
                 </div>
                 <input type="text" id="searchInput" class="search-bar" placeholder="Filter by name…" oninput="filterRows()">
@@ -59,7 +73,7 @@
             <% } else { %>
                 <div id="rosterList">
                 <% roster.forEach(function(c) { %>
-                    <div class="camper-row" data-camperid="<%= c.CamperID %>" data-name="<%= (c.FirstName+' '+c.LastName).toLowerCase() %>" data-status="<%= c.currentStatus %>">
+                    <div class="camper-row" data-camperid="<%= c.CamperID %>" data-name="<%= (c.FirstName+' '+c.LastName).toLowerCase() %>" data-status="<%= c.currentStatus || '' %>">
                         <span class="tag <%= c.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px; flex-shrink:0;"><%= c.HomeGroupColor %></span>
                         <span class="camper-name"><%= c.FirstName %> <%= c.LastName %></span>
                         <div class="camper-badges">
@@ -69,7 +83,7 @@
                             <% if (c.seenEarlier) { %><span class="badge-seen-earlier">&#10003; Seen Earlier</span><% } %>
                         </div>
                         <div class="toggle-wrap">
-                            <button class="btn-present <%= c.currentStatus === 'present' || c.currentStatus === 'late' ? 'active' : '' %>"
+                            <button class="btn-present <%= (c.currentStatus === 'present' || c.currentStatus === 'late') ? 'active' : '' %>"
                                     onclick="mark(<%= c.CamperID %>, this, 'present')">Present</button>
                             <button class="btn-absent <%= c.currentStatus === 'absent' ? 'active' : '' %>"
                                     onclick="mark(<%= c.CamperID %>, this, 'absent')">Absent</button>
@@ -116,15 +130,17 @@
         const DATE = '<%= date %>';
 
         function updateCounts() {
-            const rows = document.querySelectorAll('.camper-row');
-            let present = 0, absent = 0;
-            rows.forEach(r => {
+            let present = 0, absent = 0, unmarked = 0;
+            document.querySelectorAll('.camper-row').forEach(r => {
                 if (r.style.display === 'none') return;
                 const s = r.dataset.status;
-                if (s === 'absent') absent++; else present++;
+                if (s === 'absent') absent++;
+                else if (s === 'present' || s === 'late') present++;
+                else unmarked++;
             });
             document.getElementById('presentCount').textContent = present;
             document.getElementById('absentCount').textContent  = absent;
+            document.getElementById('unmarkedCount').textContent = unmarked;
         }
 
         function mark(camperId, btn, newStatus) {
