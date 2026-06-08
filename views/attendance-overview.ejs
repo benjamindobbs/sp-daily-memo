@@ -50,6 +50,7 @@
             <label for="datePicker">Date:</label>
             <input type="date" id="datePicker" value="<%= date %>" onchange="window.location='/attendance?date='+this.value">
             <input type="text" id="attSearch" class="att-search-input" placeholder="Search counselors or classes…" oninput="filterCards()">
+            <% if (!counselorFilterActive) { %>
             <% if (lateCount > 0) { %>
                 <a href="/attendance/late-arrivals?date=<%= date %>" class="late-warning-link">
                     &#9888; <%= lateCount %> absent this morning &rarr; Late Arrivals
@@ -58,6 +59,7 @@
                 <a href="/attendance/late-arrivals?date=<%= date %>" class="late-arrivals-link">
                     Late Arrivals &rarr;
                 </a>
+            <% } %>
             <% } %>
         </div>
 

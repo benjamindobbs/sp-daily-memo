@@ -126,11 +126,9 @@ function computeHomegroupAttStats(session, today) {
 // Sports P3 is split: upper camp (Green/Navy) → '3AM', lower camp (Red/Carolina) → '3PM'.
 // Sports P4/P5 are offset by 1 to account for the day structure.
 function staffDbPeriod(camperPeriod, sideOfCamp, isLowerCamp = false) {
-    if (sideOfCamp === 'Sports') {
-        if (camperPeriod === 3) return isLowerCamp ? '3PM' : '3AM';
-        if (camperPeriod === 4) return 5;
-        if (camperPeriod === 5) return 6;
-    }
+    if (camperPeriod === 3 && sideOfCamp === 'Sports') return isLowerCamp ? '3PM' : '3AM';
+    if (camperPeriod === 4) return 5; // counselor P4 is free; P5 = camper P4 for all activities
+    if (camperPeriod === 5) return 6; // counselor P6 = camper P5 for all activities
     return camperPeriod;
 }
 
@@ -1679,10 +1677,10 @@ app.get('/attendance', (req, res) => {
             const p = a.PeriodNumber; // TEXT: '1','2','3','3AM','3PM','4','5','6'
             if (p === '3AM' || p === '3PM') {
                 allowedClasses.add(`${p}|${a.ActivityName}`);
-            } else if (a.SideOfCamp === 'Sports' && p === '5') {
-                allowedClasses.add(`4|${a.ActivityName}`); // counselor P5 = camper P4
-            } else if (a.SideOfCamp === 'Sports' && p === '6') {
-                allowedClasses.add(`5|${a.ActivityName}`); // counselor P6 = camper P5
+            } else if (p === '5') {
+                allowedClasses.add(`4|${a.ActivityName}`); // counselor P5 = camper P4 (all activities)
+            } else if (p === '6') {
+                allowedClasses.add(`5|${a.ActivityName}`); // counselor P6 = camper P5 (all activities)
             } else {
                 allowedClasses.add(`${Number(p)}|${a.ActivityName}`);
                 // Legacy P3 entries (pre-split migration): show both P3 halves
@@ -2457,7 +2455,11 @@ app.get('/counselor-preferences', (req, res) => {
     const activities = db.prepare("SELECT Name, SideOfCamp FROM Activities ORDER BY SideOfCamp, Name").all();
     const alertMessage = req.query.message || null;
     const selectedCounselorId = parseInt(req.cookies.selectedCounselor) || null;
-    res.render('counselor-preferences', { counselors, activities, alertMessage, selectedCounselorId });
+    const existingPrefs = selectedCounselorId
+        ? db.prepare("SELECT HomeGroupPreference, SchedulePreference, ActivityPreferences FROM CounselorPreferences WHERE CounselorID = ?").get(selectedCounselorId)
+        : null;
+    const savedActivityPrefs = existingPrefs?.ActivityPreferences ? JSON.parse(existingPrefs.ActivityPreferences) : [];
+    res.render('counselor-preferences', { counselors, activities, alertMessage, selectedCounselorId, existingPrefs, savedActivityPrefs });
 });
 
 app.post('/counselor-preferences', (req, res) => {

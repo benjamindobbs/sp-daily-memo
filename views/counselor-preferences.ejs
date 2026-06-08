@@ -71,7 +71,7 @@
                 <div style="display:flex; flex-wrap:wrap; gap:10px;">
                     <% ['Red', 'Carolina', 'Green', 'Navy', 'No Preference'].forEach(function(grp) { %>
                         <label style="display:flex; align-items:center; gap:8px; padding:10px 16px; border:1px solid var(--border-color); border-radius:8px; cursor:pointer; font-size:0.9rem; background:white; flex:1; min-width:120px;">
-                            <input type="radio" name="homeGroupPreference" value="<%= grp %>" required>
+                            <input type="radio" name="homeGroupPreference" value="<%= grp %>" required <%= existingPrefs && existingPrefs.HomeGroupPreference === grp ? 'checked' : '' %>>
                             <% if (grp !== 'No Preference') { %>
                                 <span class="tag <%= grp %>" style="margin:0;"><%= grp %></span>
                             <% } else { %>
@@ -94,7 +94,7 @@
                         { value: 'No Preference',               label: 'No Preference',               desc: 'No preference — assign wherever needed' }
                     ].forEach(function(opt) { %>
                         <label style="display:flex; align-items:flex-start; gap:12px; padding:12px 16px; border:1px solid var(--border-color); border-radius:8px; cursor:pointer; background:white;">
-                            <input type="radio" name="schedulePreference" value="<%= opt.value %>" required style="margin-top:2px; flex-shrink:0;">
+                            <input type="radio" name="schedulePreference" value="<%= opt.value %>" required style="margin-top:2px; flex-shrink:0;" <%= existingPrefs && existingPrefs.SchedulePreference === opt.value ? 'checked' : '' %>>
                             <div>
                                 <div style="font-weight:600; font-size:0.9rem;"><%= opt.label %></div>
                                 <div class="text-muted" style="font-size:0.78rem;"><%= opt.desc %></div>
@@ -124,7 +124,7 @@
                     <div class="activity-checkbox-grid" id="sportsGrid">
                         <% sports.forEach(function(act) { %>
                             <label class="activity-check-label" data-name="<%= act.Name.toLowerCase() %>">
-                                <input type="checkbox" name="activityPreferences" value="<%= act.Name %>">
+                                <input type="checkbox" name="activityPreferences" value="<%= act.Name %>" <%= savedActivityPrefs.includes(act.Name) ? 'checked' : '' %>>
                                 <span><%= act.Name %></span>
                             </label>
                         <% }); %>
@@ -138,7 +138,7 @@
                     <div class="activity-checkbox-grid" id="enrichmentGrid">
                         <% enrichment.forEach(function(act) { %>
                             <label class="activity-check-label" data-name="<%= act.Name.toLowerCase() %>">
-                                <input type="checkbox" name="activityPreferences" value="<%= act.Name %>">
+                                <input type="checkbox" name="activityPreferences" value="<%= act.Name %>" <%= savedActivityPrefs.includes(act.Name) ? 'checked' : '' %>>
                                 <span><%= act.Name %></span>
                             </label>
                         <% }); %>
@@ -152,7 +152,7 @@
                     <div class="activity-checkbox-grid" id="otherGrid">
                         <% other.forEach(function(act) { %>
                             <label class="activity-check-label" data-name="<%= act.Name.toLowerCase() %>">
-                                <input type="checkbox" name="activityPreferences" value="<%= act.Name %>">
+                                <input type="checkbox" name="activityPreferences" value="<%= act.Name %>" <%= savedActivityPrefs.includes(act.Name) ? 'checked' : '' %>>
                                 <span><%= act.Name %></span>
                             </label>
                         <% }); %>
