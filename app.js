@@ -46,13 +46,19 @@ const CAMP_DAY_START_MINS = 9 * 60;        // 9:00 AM
 const CAMP_DAY_END_MINS   = 16 * 60 + 5;   // 4:05 PM (after Sports 6 ends)
 
 function getESTMins() {
-    const now = new Date();
-    return now.getHours() * 60 + now.getMinutes();
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        hour: 'numeric', minute: 'numeric', hour12: false
+    }).formatToParts(new Date());
+    const h = parseInt(parts.find(p => p.type === 'hour').value);
+    const m = parseInt(parts.find(p => p.type === 'minute').value);
+    return h * 60 + m;
 }
 
 function getTodayEST() {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/New_York'
+    }).format(new Date()); // returns YYYY-MM-DD
 }
 
 // Returns the last period whose start time <= estMins (holds until next period begins).
