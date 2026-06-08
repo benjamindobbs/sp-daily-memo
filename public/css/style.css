@@ -951,6 +951,30 @@ select.filter-dropdown { padding: 7px 12px; border-radius: 6px; border: 1px soli
     /* Schedule row inside camper-group tbody should be hidden on mobile */
     .mc-card tr.schedule-row { display: none !important; }
 
+    /* Master schedule: 2-column info grid inside each card */
+    .class-table .mc-card {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 12px;
+    }
+    .class-table .mc-card td.mc-title {
+        grid-column: 1 / -1;
+        padding-bottom: 10px !important;
+    }
+    .class-table .mc-card td.mc-hide { display: none !important; }
+
+    /* Camper lookup: 2-column info grid inside each card */
+    .search-table .mc-card tr.main-info-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 12px;
+    }
+    .search-table .mc-card tr.main-info-row td.mc-title {
+        grid-column: 1 / -1;
+        padding-bottom: 10px !important;
+    }
+    .search-table .mc-card tr.main-info-row td.mc-hide { display: none !important; }
+
     /* Period pills inside cards wrap naturally */
     .mc-card .mini-sched { flex-wrap: wrap; gap: 6px; margin-top: 4px; }
     .mc-card .period-pill { min-width: 80px; }

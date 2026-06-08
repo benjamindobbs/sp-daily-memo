@@ -40,7 +40,7 @@
             <span class="pipe-sep">|</span>
             <div class="att-title">
                 <h1><%= title %></h1>
-                <p><%= date %></p>
+                <p><%= date.slice(5).replace('-', '/') %><% if (typeof location !== 'undefined' && location) { %> &nbsp;·&nbsp; 📍 <%= location %><% } %></p>
             </div>
         </div>
 

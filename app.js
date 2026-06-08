@@ -2054,10 +2054,15 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
         seenEarlier: seenEarlierSet.has(c.CamperID)
     }));
 
+    const locationRow = db.prepare(
+        "SELECT Location FROM Schedules WHERE PersonType='Staff' AND PeriodNumber=? AND ActivityName=? AND Location IS NOT NULL AND Location!='' LIMIT 1"
+    ).get(period, activityName);
+
     res.render('attendance-form', {
         title: `Block ${period} — ${activityName}`,
         sessionType, date,
         periodNumber: period, activityName,
+        location: locationRow ? locationRow.Location : null,
         backLink: `/attendance?date=${date}`,
         roster
     });
