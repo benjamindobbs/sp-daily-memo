@@ -23,22 +23,23 @@ const HOME_GROUP_LABELS = {
 };
 
 // Period flip schedules — all times EST (UTC-5), 24-hour format.
-// Card flips to the next period when that period's start time is reached.
-// Sports P4/P5 use the counselor-period offset: counselor P5 teaches camper P4, counselor P6 teaches camper P5.
+// clockBlock = universal time-block number (1-6 matching Sports period numbering).
+// Block 3 = Sports only (Green/Navy). Block 4 = S4 (Red/Carolina) + E3 (Green/Navy).
+// Block 6 = Sports only (Red/Carolina). Enrichment runs in blocks 1, 2, 4, 5 only.
 const SPORTS_PERIODS = [
-    { startH: 9,  startM: 0,  label: 'Sports 1', camperPeriod: 1 },
-    { startH: 10, startM: 0,  label: 'Sports 2', camperPeriod: 2 },
-    { startH: 11, startM: 0,  label: 'Sports 3', camperPeriod: 3 },
-    { startH: 14, startM: 20, label: 'Sports 5', camperPeriod: 4 }, // counselor P5 = camper P4
-    { startH: 15, startM: 30, label: 'Sports 6', camperPeriod: 5 }, // counselor P6 = camper P5
+    { startH: 9,  startM: 0,  label: 'Sports 1', clockBlock: 1 },
+    { startH: 10, startM: 0,  label: 'Sports 2', clockBlock: 2 },
+    { startH: 11, startM: 0,  label: 'Sports 3', clockBlock: 3 },
+    { startH: 13, startM: 0,  label: 'Sports 4', clockBlock: 4 },
+    { startH: 14, startM: 20, label: 'Sports 5', clockBlock: 5 },
+    { startH: 15, startM: 30, label: 'Sports 6', clockBlock: 6 },
 ];
 
-// Enrichment P3/P4 use period numbers 3/4 in the Schedules table (running at 1:00 and 2:40 PM).
 const ENRICHMENT_PERIODS = [
-    { startH: 9,  startM: 0,  label: 'Enrichment 1', camperPeriod: 1 },
-    { startH: 10, startM: 35, label: 'Enrichment 2', camperPeriod: 2 },
-    { startH: 13, startM: 0,  label: 'Enrichment 3', camperPeriod: 3 },
-    { startH: 14, startM: 40, label: 'Enrichment 4', camperPeriod: 4 },
+    { startH: 9,  startM: 0,  label: 'Enrichment 1', clockBlock: 1 },
+    { startH: 10, startM: 35, label: 'Enrichment 2', clockBlock: 2 },
+    { startH: 13, startM: 0,  label: 'Enrichment 3', clockBlock: 4 },
+    { startH: 14, startM: 40, label: 'Enrichment 4', clockBlock: 5 },
 ];
 
 const CAMP_DAY_START_MINS = 9 * 60;        // 9:00 AM
@@ -69,20 +70,20 @@ function getHubMode(estMins) {
     return 'classes';
 }
 
-function computeClassAttStats(camperPeriod, side, today) {
+function computeClassAttStats(clockBlock, side, today) {
     const classes = db.prepare(`
         SELECT DISTINCT s.ActivityName
         FROM Schedules s
         JOIN Activities a ON a.Name = s.ActivityName
         WHERE s.PersonType = 'Camper' AND s.PeriodNumber = ? AND a.SideOfCamp = ?
-    `).all(camperPeriod, side);
+    `).all(clockBlock, side);
     if (classes.length === 0) return { total: 0, submitted: 0 };
     const check = db.prepare(
         "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?"
     );
     let submitted = 0;
     for (const c of classes) {
-        if ((check.get(today, camperPeriod, c.ActivityName)?.n || 0) > 0) submitted++;
+        if ((check.get(today, clockBlock, c.ActivityName)?.n || 0) > 0) submitted++;
     }
     return { total: classes.length, submitted };
 }
@@ -122,14 +123,15 @@ function computeHomegroupAttStats(session, today) {
     return { total, submitted };
 }
 
-// Maps a camper-facing period + activity side to the counselor DB period.
-// Sports P3 is split: upper camp (Green/Navy) → '3AM', lower camp (Red/Carolina) → '3PM'.
-// Sports P4/P5 are offset by 1 to account for the day structure.
-function staffDbPeriod(camperPeriod, sideOfCamp, isLowerCamp = false) {
-    if (camperPeriod === 3 && sideOfCamp === 'Sports') return isLowerCamp ? '3PM' : '3AM';
-    if (camperPeriod === 4) return 5; // counselor P4 is free; P5 = camper P4 for all activities
-    if (camperPeriod === 5) return 6; // counselor P6 = camper P5 for all activities
-    return camperPeriod;
+// Camper ordinal period (1-5 from CSV) → clock block (1-6) based on home group.
+// Green/Navy: AM=Sports (blocks 1-3), PM=Enrichment (blocks 4-5). Identity for blocks 1-5.
+// Red/Carolina: AM=Enrichment (blocks 1-2), PM=Sports (blocks 4-6). P3→4, P4→5, P5→6.
+function camperOrdinalToClockBlock(ordinalPeriod, homeGroupColor) {
+    if (['Red', 'Carolina'].includes(homeGroupColor)) {
+        const map = { 1: 1, 2: 2, 3: 4, 4: 5, 5: 6 };
+        return map[ordinalPeriod] ?? ordinalPeriod;
+    }
+    return ordinalPeriod; // Green/Navy: ordinal already equals clock block
 }
 
 app.set('view engine', 'ejs');
@@ -458,28 +460,105 @@ try { db.prepare("SELECT Location FROM WeeklyOfferings LIMIT 1").get(); } catch 
     db.exec("ALTER TABLE WeeklyOfferings ADD COLUMN Location TEXT");
 }
 
-// Migration: promote CounselorWeekSchedules.PeriodNumber from INTEGER to TEXT
-// to support '3AM'/'3PM' split-period notation.
+// Migration: convert CounselorWeekSchedules.PeriodNumber from TEXT ('3AM','3PM', etc.)
+// to INTEGER clock blocks (1-6). Runs only when the column type is still TEXT.
+// '3AM'→3, '3PM'→4, Enrichment P5→4, Enrichment P6→5, free-period P4 rows deleted.
 {
     const _cols = db.prepare("PRAGMA table_info(CounselorWeekSchedules)").all();
     const _col  = _cols.find(c => c.name === 'PeriodNumber');
-    if (_col && _col.type.toUpperCase() === 'INTEGER') {
+    if (_col && _col.type.toUpperCase() === 'TEXT') {
+        db.exec("PRAGMA foreign_keys = OFF;");
+        // Remap split-period labels to clock block numbers
         db.exec(`
-            PRAGMA foreign_keys = OFF;
-            ALTER TABLE CounselorWeekSchedules RENAME TO _CounselorWeekSchedules_v1;
+            UPDATE CounselorWeekSchedules SET PeriodNumber = '3' WHERE PeriodNumber = '3AM';
+            UPDATE CounselorWeekSchedules SET PeriodNumber = '4' WHERE PeriodNumber = '3PM';
+        `);
+        // Enrichment counselors at old '5'/'6' were offset by the free-period hack;
+        // map them to their actual clock blocks (E3=4, E4=5).
+        // Do P5→4 before P6→5 to avoid collisions.
+        db.exec(`
+            UPDATE CounselorWeekSchedules
+            SET PeriodNumber = '4'
+            WHERE PeriodNumber = '5'
+              AND ActivityName IN (SELECT Name FROM Activities WHERE SideOfCamp = 'Enrichment');
+
+            UPDATE CounselorWeekSchedules
+            SET PeriodNumber = '5'
+            WHERE PeriodNumber = '6'
+              AND ActivityName IN (SELECT Name FROM Activities WHERE SideOfCamp = 'Enrichment');
+        `);
+        // Remove any stale free-period placeholder rows (PeriodNumber '4' with no real activity)
+        db.exec(`DELETE FROM CounselorWeekSchedules
+                 WHERE PeriodNumber = '4'
+                   AND ActivityName NOT IN (SELECT Name FROM Activities);`);
+        // Recreate table with INTEGER PeriodNumber
+        db.exec(`
+            ALTER TABLE CounselorWeekSchedules RENAME TO _CounselorWeekSchedules_v2;
             CREATE TABLE CounselorWeekSchedules (
                 CounselorID  INTEGER NOT NULL,
                 WeekNumber   INTEGER NOT NULL CHECK(WeekNumber BETWEEN 1 AND 6),
-                PeriodNumber TEXT    NOT NULL,
+                PeriodNumber INTEGER NOT NULL CHECK(PeriodNumber BETWEEN 1 AND 6),
                 ActivityName TEXT    NOT NULL,
                 PRIMARY KEY (CounselorID, WeekNumber, PeriodNumber),
                 FOREIGN KEY (CounselorID) REFERENCES Counselors(CounselorID) ON DELETE CASCADE
             );
             INSERT OR IGNORE INTO CounselorWeekSchedules
-                SELECT CounselorID, WeekNumber, CAST(PeriodNumber AS TEXT), ActivityName
-                FROM _CounselorWeekSchedules_v1;
-            DROP TABLE _CounselorWeekSchedules_v1;
+                SELECT CounselorID, WeekNumber, CAST(PeriodNumber AS INTEGER), ActivityName
+                FROM _CounselorWeekSchedules_v2;
+            DROP TABLE _CounselorWeekSchedules_v2;
             PRAGMA foreign_keys = ON;
+        `);
+    }
+}
+
+// Migration: remap WeeklyOfferings.PeriodNumber to clock blocks.
+// Enrichment E3 was stored as period 5, E4 as period 6 (offset by free-period hack).
+// '3AM'/'3PM' text values map to blocks 3 and 4.
+{
+    const hasTextPeriod = db.prepare(
+        "SELECT 1 FROM WeeklyOfferings WHERE TYPEOF(PeriodNumber)='text' LIMIT 1"
+    ).get();
+    const hasEnrichP5 = db.prepare(
+        "SELECT 1 FROM WeeklyOfferings WHERE PeriodNumber=5 AND SideOfCamp='Enrichment' LIMIT 1"
+    ).get();
+    if (hasTextPeriod || hasEnrichP5) {
+        db.exec(`
+            UPDATE WeeklyOfferings SET PeriodNumber = 3 WHERE TYPEOF(PeriodNumber)='text' AND PeriodNumber = '3AM';
+            UPDATE WeeklyOfferings SET PeriodNumber = 4 WHERE TYPEOF(PeriodNumber)='text' AND PeriodNumber = '3PM';
+        `);
+        // P5→4 first, then P6→5 (order matters to avoid double-migration)
+        db.exec(`
+            UPDATE WeeklyOfferings SET PeriodNumber = 4 WHERE PeriodNumber = 5 AND SideOfCamp = 'Enrichment';
+            UPDATE WeeklyOfferings SET PeriodNumber = 5 WHERE PeriodNumber = 6 AND SideOfCamp = 'Enrichment';
+        `);
+    }
+}
+
+// Migration: remap camper Schedules to clock blocks for Red/Carolina groups.
+// Their ordinal P3 = clock block 4 (S4), P4 = block 5, P5 = block 6.
+// Green/Navy ordinals already equal clock blocks (no change needed).
+// Executed in reverse order (P5→6, P4→5, P3→4) to avoid value collisions.
+{
+    const needsMigration = db.prepare(`
+        SELECT 1 FROM Schedules s
+        JOIN Campers c ON s.PersonID = c.CamperID
+        WHERE s.PersonType = 'Camper' AND s.PeriodNumber = 3
+          AND c.HomeGroupColor IN ('Red','Carolina')
+        LIMIT 1
+    `).get();
+    if (needsMigration) {
+        db.exec(`
+            UPDATE Schedules SET PeriodNumber = 6
+            WHERE PersonType = 'Camper' AND PeriodNumber = 5
+              AND PersonID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor IN ('Red','Carolina'));
+
+            UPDATE Schedules SET PeriodNumber = 5
+            WHERE PersonType = 'Camper' AND PeriodNumber = 4
+              AND PersonID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor IN ('Red','Carolina'));
+
+            UPDATE Schedules SET PeriodNumber = 4
+            WHERE PersonType = 'Camper' AND PeriodNumber = 3
+              AND PersonID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor IN ('Red','Carolina'));
         `);
     }
 }
@@ -594,8 +673,8 @@ app.get('/admin', (req, res) => {
     if (hubMode === 'classes') {
         const sp = getActivePeriod(SPORTS_PERIODS, estMins);
         const ep = getActivePeriod(ENRICHMENT_PERIODS, estMins);
-        hubStats.sports = sp ? { label: sp.label, camperPeriod: sp.camperPeriod, ...computeClassAttStats(sp.camperPeriod, 'Sports', today) } : null;
-        hubStats.enrich = ep ? { label: ep.label, camperPeriod: ep.camperPeriod, ...computeClassAttStats(ep.camperPeriod, 'Enrichment', today) } : null;
+        hubStats.sports = sp ? { label: sp.label, clockBlock: sp.clockBlock, ...computeClassAttStats(sp.clockBlock, 'Sports', today) } : null;
+        hubStats.enrich = ep ? { label: ep.label, clockBlock: ep.clockBlock, ...computeClassAttStats(ep.clockBlock, 'Enrichment', today) } : null;
     } else {
         hubStats.amExt = computeExtAttStats('am', today);
         hubStats.amBus = computeBusAttStats('am', today);
@@ -635,15 +714,12 @@ app.get('/master-schedule', (req, res) => {
             ORDER BY s.PeriodNumber, s.ActivityName
         `).all();
 
-        // Location stored in Staff Schedules rows (per period, per activity)
         const getLocation = db.prepare(`
             SELECT Location FROM Schedules
             WHERE PersonType = 'Staff' AND PeriodNumber = ? AND ActivityName = ?
               AND Location IS NOT NULL AND Location != ''
             LIMIT 1
         `);
-
-        // Standard queries for all non-P3 periods
         const getColorGroups = db.prepare(`
             SELECT DISTINCT c.HomeGroupColor
             FROM Campers c JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper'
@@ -662,44 +738,11 @@ app.get('/master-schedule', (req, res) => {
             SELECT c.CounselorID, c.FirstName, c.LastName,
                    COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
             FROM Counselors c
-            JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID AND cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ?
+            JOIN CounselorWeekSchedules cws
+                ON cws.CounselorID = c.CounselorID AND cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ?
             LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
             ORDER BY HomeGroupColor, c.LastName
         `);
-
-        // Filtered queries for P3 — upper camp (Green/Navy = AM) and lower camp (Red/Carolina = PM)
-        const getColorGroupsUpper = db.prepare(`
-            SELECT DISTINCT c.HomeGroupColor
-            FROM Campers c JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper'
-            WHERE s.PeriodNumber = 3 AND s.ActivityName = ? AND c.HomeGroupColor IN ('Green', 'Navy')
-            ORDER BY c.HomeGroupColor
-        `);
-        const getColorGroupsLower = db.prepare(`
-            SELECT DISTINCT c.HomeGroupColor
-            FROM Campers c JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper'
-            WHERE s.PeriodNumber = 3 AND s.ActivityName = ? AND c.HomeGroupColor IN ('Red', 'Carolina')
-            ORDER BY c.HomeGroupColor
-        `);
-        const getEnrollmentUpper = db.prepare(`
-            SELECT COUNT(*) as n FROM Schedules s
-            JOIN Campers c ON s.PersonID = c.CamperID AND s.PersonType = 'Camper'
-            WHERE s.PeriodNumber = 3 AND s.ActivityName = ? AND c.HomeGroupColor IN ('Green', 'Navy')
-        `);
-        const getEnrollmentLower = db.prepare(`
-            SELECT COUNT(*) as n FROM Schedules s
-            JOIN Campers c ON s.PersonID = c.CamperID AND s.PersonType = 'Camper'
-            WHERE s.PeriodNumber = 3 AND s.ActivityName = ? AND c.HomeGroupColor IN ('Red', 'Carolina')
-        `);
-        const getCounselorsUpper = db.prepare(`
-            SELECT c.CounselorID, c.FirstName, c.LastName,
-                   COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
-            FROM Counselors c
-            JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID AND cws.WeekNumber = ? AND cws.PeriodNumber = '3AM' AND cws.ActivityName = ?
-            LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
-            WHERE COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) IN ('Green', 'Navy')
-            ORDER BY HomeGroupColor, c.LastName
-        `);
-
         const getBusPresence = db.prepare(`
             SELECT 1 FROM Campers c JOIN Schedules s ON c.CamperID=s.PersonID AND s.PersonType='Camper'
             WHERE s.PeriodNumber=? AND s.ActivityName=? AND c.BusRoute IS NOT NULL AND c.BusRoute!='' LIMIT 1
@@ -709,55 +752,21 @@ app.get('/master-schedule', (req, res) => {
             WHERE s.PeriodNumber=? AND s.ActivityName=? AND c.ExtendedHours IS NOT NULL AND c.ExtendedHours!=''
         `);
 
-        // Separate P3 raw classes so they can be enriched with filtered queries
-        const p3Raw = classes.filter(cls => cls.periodNumber === 3);
-        const otherRaw = classes.filter(cls => cls.periodNumber !== 3);
-
-        const enriched = otherRaw.map(cls => {
-            const dbP = staffDbPeriod(cls.periodNumber, cls.sideOfCamp);
-            const locRow = getLocation.get(dbP, cls.activityName);
+        // Each row in Schedules now uses clock blocks (1-6) — no P3 AM/PM split needed.
+        const enriched = classes.map(cls => {
+            const locRow = getLocation.get(cls.periodNumber, cls.activityName);
             return {
                 ...cls,
                 location:    locRow ? locRow.Location : null,
                 enrolled:    getEnrollment.get(cls.periodNumber, cls.activityName).n,
                 colorGroups: getColorGroups.all(cls.periodNumber, cls.activityName).map(r => r.HomeGroupColor),
-                staff:       getStaff.all(dbP, cls.activityName),
-                counselors:  getCounselors.all(aw, String(dbP), cls.activityName, aw),
+                staff:       getStaff.all(cls.periodNumber, cls.activityName),
+                counselors:  getCounselors.all(aw, cls.periodNumber, cls.activityName, aw),
                 busPresent:  !!getBusPresence.get(cls.periodNumber, cls.activityName),
                 extGroups:   getExtGroups.all(cls.periodNumber, cls.activityName).map(r => r.ExtendedHours)
             };
         });
 
-        // Enrich P3 twice — once per camp half — then drop any that have no campers in that half
-        const p3AM = p3Raw.map(cls => {
-            const locRow = getLocation.get(3, cls.activityName);
-            return {
-                ...cls,
-                location:    locRow ? locRow.Location : null,
-                enrolled:    getEnrollmentUpper.get(cls.activityName).n,
-                colorGroups: getColorGroupsUpper.all(cls.activityName).map(r => r.HomeGroupColor),
-                staff:       getStaff.all(3, cls.activityName),
-                counselors:  getCounselorsUpper.all(aw, cls.activityName, aw),
-                busPresent:  !!getBusPresence.get(3, cls.activityName),
-                extGroups:   getExtGroups.all(3, cls.activityName).map(r => r.ExtendedHours)
-            };
-        }).filter(cls => cls.colorGroups.length > 0);
-
-        const p3PM = p3Raw.map(cls => {
-            const locRow = getLocation.get(4, cls.activityName);
-            return {
-                ...cls,
-                location:    locRow ? locRow.Location : null,
-                enrolled:    getEnrollmentLower.get(cls.activityName).n,
-                colorGroups: getColorGroupsLower.all(cls.activityName).map(r => r.HomeGroupColor),
-                staff:       getStaff.all(4, cls.activityName),
-                counselors:  getCounselors.all(aw, '3PM', cls.activityName, aw),
-                busPresent:  !!getBusPresence.get(3, cls.activityName),
-                extGroups:   getExtGroups.all(3, cls.activityName).map(r => r.ExtendedHours)
-            };
-        }).filter(cls => cls.colorGroups.length > 0);
-
-        // Group non-P3 by period and build schedule in order, inserting P3 AM/PM after period 2
         const periodMap = new Map();
         for (const cls of enriched) {
             if (!periodMap.has(cls.periodNumber)) periodMap.set(cls.periodNumber, []);
@@ -767,10 +776,6 @@ app.get('/master-schedule', (req, res) => {
         const schedule = [];
         for (const periodNumber of [...periodMap.keys()].sort((a, b) => a - b)) {
             schedule.push({ periodNumber, periodLabel: String(periodNumber), classes: periodMap.get(periodNumber) });
-            if (periodNumber === 2) {
-                if (p3AM.length) schedule.push({ periodNumber: 3, periodLabel: '3 AM', classes: p3AM });
-                if (p3PM.length) schedule.push({ periodNumber: 3, periodLabel: '3 PM', classes: p3PM });
-            }
         }
 
         res.render('master-schedule', { schedule });
@@ -801,19 +806,16 @@ app.get('/class-roster/:period/:activity', (req, res) => {
 
         const colorGroups = [...new Set(campers.map(c => c.HomeGroupColor).filter(Boolean))];
 
-        // Determine the DB period for staff/counselor/location lookups.
-        const isLowerCamp = colorGroups.some(g => ['Red', 'Carolina'].includes(g));
-        const dbPeriod = staffDbPeriod(period, activity ? activity.SideOfCamp : null, isLowerCamp);
-
+        // Period is now a clock block (1-6); no translation needed.
         const locRow = db.prepare(
             "SELECT Location FROM Schedules WHERE PersonType = 'Staff' AND ActivityName = ? AND PeriodNumber = ? AND Location IS NOT NULL AND Location != '' LIMIT 1"
-        ).get(activityName, dbPeriod);
+        ).get(activityName, period);
 
         const staff = db.prepare(`
             SELECT st.FirstName, st.LastName, st.StaffType
             FROM Staff st JOIN Schedules s ON st.StaffID = s.PersonID AND s.PersonType = 'Staff'
             WHERE s.PeriodNumber = ? AND s.ActivityName = ?
-        `).all(dbPeriod, activityName);
+        `).all(period, activityName);
 
         const activeWeek = getActiveWeek();
         const counselors = db.prepare(`
@@ -823,11 +825,10 @@ app.get('/class-roster/:period/:activity', (req, res) => {
             JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID AND cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ?
             LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
             ORDER BY HomeGroupColor, c.LastName
-        `).all(activeWeek, String(dbPeriod), activityName, activeWeek);
+        `).all(activeWeek, period, activityName, activeWeek);
 
         res.render('class-roster', {
             periodNumber: period,
-            dbPeriod,
             activityName,
             sideOfCamp:  activity ? activity.SideOfCamp  : null,
             maxCapacity: activity ? activity.MaxCapacity : null,
@@ -844,12 +845,12 @@ app.get('/class-roster/:period/:activity', (req, res) => {
 });
 
 
-// Update location for all staff schedule rows at a given DB period + activity
+// Update location for all staff schedule rows at a given period + activity
 app.post('/update-class-location', (req, res) => {
-    const { activityName, periodNumber, dbPeriod, location } = req.body;
+    const { activityName, periodNumber, location } = req.body;
     db.prepare(
         "UPDATE Schedules SET Location = ? WHERE PersonType = 'Staff' AND PeriodNumber = ? AND ActivityName = ?"
-    ).run(location || null, parseInt(dbPeriod), activityName);
+    ).run(location || null, parseInt(periodNumber), activityName);
     res.redirect(`/class-roster/${periodNumber}/${encodeURIComponent(activityName)}`);
 });
 
@@ -1256,10 +1257,15 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
                             ).lastInsertRowid;
                         }
 
+                        // Convert CSV ordinal position (P1-P5) to clock block using HomeGroupColor.
+                        // Red/Carolina: P3→block4, P4→block5, P5→block6. Green/Navy: identity.
+                        const grpColor = safeTrim(row.HomeGroupColor);
                         deleteSched.run(personId);
                         for (let i = 1; i <= 5; i++) {
                             const act = row[`P${i}`];
-                            if (act && act.trim() !== '') insertSched.run(personId, i, act.trim());
+                            if (act && act.trim() !== '') {
+                                insertSched.run(personId, camperOrdinalToClockBlock(i, grpColor), act.trim());
+                            }
                         }
                     }
                 })(results);
@@ -1317,21 +1323,14 @@ app.post('/upload-counselors', upload.single('file'), (req, res) => {
                     }
                     // Keep Schedules table current (legacy reads)
                     deleteSched.run(personId);
-                    // Write week-specific schedule and attributes
+                    // Write week-specific schedule and attributes.
+                    // CSV columns P1-P6 correspond directly to clock blocks 1-6.
                     insWeekAttr.run(personId, weekNumber, row.HomeGroupColor, row.ScheduleType, row.Bus, row.Extended);
                     for (let i = 1; i <= 6; i++) {
-                        if (i === 3 && (row['P3AM'] || row['P3PM'])) {
-                            // Split-period notation: P3AM and P3PM instead of P3
-                            if (row['P3AM'] && row['P3AM'].trim()) {
-                                insWeekSched.run(personId, weekNumber, '3AM', row['P3AM'].trim());
-                                insSched.run(personId, 3, row['P3AM'].trim()); // legacy table uses integer 3
-                            }
-                            if (row['P3PM'] && row['P3PM'].trim()) {
-                                insWeekSched.run(personId, weekNumber, '3PM', row['P3PM'].trim());
-                            }
-                        } else if (row[`P${i}`] && row[`P${i}`].trim()) {
-                            insSched.run(personId, i, row[`P${i}`].trim());
-                            insWeekSched.run(personId, weekNumber, String(i), row[`P${i}`].trim());
+                        const act = row[`P${i}`];
+                        if (act && act.trim()) {
+                            insWeekSched.run(personId, weekNumber, i, act.trim());
+                            insSched.run(personId, i, act.trim());
                         }
                     }
                 }
@@ -1666,29 +1665,13 @@ app.get('/attendance', (req, res) => {
             counselorBusRoute = cRow.BusRoute || null;
             counselorExtHours = cRow.ExtendedHours || null;
         }
-        const assignments = db.prepare(`
-            SELECT cws.PeriodNumber, cws.ActivityName, COALESCE(a.SideOfCamp, '') AS SideOfCamp
-            FROM CounselorWeekSchedules cws
-            LEFT JOIN Activities a ON a.Name = cws.ActivityName
-            WHERE cws.CounselorID = ? AND cws.WeekNumber = ?
-        `).all(filterCid, getActiveWeek());
+        const assignments = db.prepare(
+            'SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ?'
+        ).all(filterCid, getActiveWeek());
         allowedClasses = new Set();
         for (const a of assignments) {
-            const p = a.PeriodNumber; // TEXT: '1','2','3','3AM','3PM','4','5','6'
-            if (p === '3AM' || p === '3PM') {
-                allowedClasses.add(`${p}|${a.ActivityName}`);
-            } else if (p === '5') {
-                allowedClasses.add(`4|${a.ActivityName}`); // counselor P5 = camper P4 (all activities)
-            } else if (p === '6') {
-                allowedClasses.add(`5|${a.ActivityName}`); // counselor P6 = camper P5 (all activities)
-            } else {
-                allowedClasses.add(`${Number(p)}|${a.ActivityName}`);
-                // Legacy P3 entries (pre-split migration): show both P3 halves
-                if (p === '3') {
-                    allowedClasses.add(`3AM|${a.ActivityName}`);
-                    allowedClasses.add(`3PM|${a.ActivityName}`);
-                }
-            }
+            // PeriodNumber is now an INTEGER clock block (1-6); direct match to Schedules.
+            allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName}`);
         }
     }
 
@@ -1721,7 +1704,7 @@ app.get('/attendance', (req, res) => {
         }
     }
 
-    // Class sessions — pull distinct period+activity combos from Camper schedules
+    // Class sessions — each row is a distinct clock-block + activity (no AM/PM split needed).
     const classRows = db.prepare(`
         SELECT DISTINCT s.PeriodNumber, s.ActivityName
         FROM Schedules s
@@ -1729,54 +1712,20 @@ app.get('/attendance', (req, res) => {
         ORDER BY s.PeriodNumber, s.ActivityName
     `).all();
 
-    const checkP3Half = db.prepare(`
-        SELECT 1 FROM Schedules s
-        JOIN Campers c ON s.PersonID = c.CamperID AND s.PersonType = 'Camper'
-        WHERE s.PeriodNumber = 3 AND s.ActivityName = ? AND c.HomeGroupColor IN (?, ?)
-        LIMIT 1
-    `);
-    const countP3Half = db.prepare(`
-        SELECT COUNT(*) as n FROM Attendance a
-        JOIN Campers c ON a.CamperID = c.CamperID
-        WHERE a.Date=? AND a.SessionType='class' AND a.PeriodNumber=3 AND a.ActivityName=?
-        AND c.HomeGroupColor IN (?, ?)
-    `);
+    const checkAtt = db.prepare(
+        "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?"
+    );
 
     const classSessions = [];
     for (const r of classRows) {
-        if (r.PeriodNumber === 3) {
-            if (checkP3Half.get(r.ActivityName, 'Green', 'Navy')) {
-                const count = countP3Half.get(date, r.ActivityName, 'Green', 'Navy')?.n || 0;
-                classSessions.push({
-                    label: `P3 AM — ${r.ActivityName}`,
-                    periodNumber: 3, periodKey: '3am', periodLabel: '3 AM',
-                    activityName: r.ActivityName, filterPeriod: 3,
-                    link: `/attendance/class/3/${encodeURIComponent(r.ActivityName)}?date=${date}&half=am`,
-                    submitted: count > 0
-                });
-            }
-            if (checkP3Half.get(r.ActivityName, 'Red', 'Carolina')) {
-                const count = countP3Half.get(date, r.ActivityName, 'Red', 'Carolina')?.n || 0;
-                classSessions.push({
-                    label: `P3 PM — ${r.ActivityName}`,
-                    periodNumber: 3, periodKey: '3pm', periodLabel: '3 PM',
-                    activityName: r.ActivityName, filterPeriod: 3,
-                    link: `/attendance/class/3/${encodeURIComponent(r.ActivityName)}?date=${date}&half=pm`,
-                    submitted: count > 0
-                });
-            }
-        } else {
-            const count = db.prepare(
-                "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?"
-            ).get(date, r.PeriodNumber, r.ActivityName)?.n || 0;
-            classSessions.push({
-                label: `P${r.PeriodNumber} — ${r.ActivityName}`,
-                periodNumber: r.PeriodNumber, periodKey: String(r.PeriodNumber), periodLabel: String(r.PeriodNumber),
-                activityName: r.ActivityName, filterPeriod: r.PeriodNumber,
-                link: `/attendance/class/${r.PeriodNumber}/${encodeURIComponent(r.ActivityName)}?date=${date}`,
-                submitted: count > 0
-            });
-        }
+        const count = checkAtt.get(date, r.PeriodNumber, r.ActivityName)?.n || 0;
+        classSessions.push({
+            label: `Block ${r.PeriodNumber} — ${r.ActivityName}`,
+            periodNumber: r.PeriodNumber, periodKey: String(r.PeriodNumber), periodLabel: String(r.PeriodNumber),
+            activityName: r.ActivityName, filterPeriod: r.PeriodNumber,
+            link: `/attendance/class/${r.PeriodNumber}/${encodeURIComponent(r.ActivityName)}?date=${date}`,
+            submitted: count > 0
+        });
     }
 
     // Bus sessions
@@ -1828,11 +1777,9 @@ app.get('/attendance', (req, res) => {
     let filteredExtSessions = extSessions;
     if (filterCid) {
         filteredHomegroupSessions = homegroupSessions.filter(s => s.counselorId === filterCid);
-        filteredClassSessions = classSessions.filter(s => {
-            if (s.periodKey === '3am') return allowedClasses.has(`3AM|${s.activityName}`);
-            if (s.periodKey === '3pm') return allowedClasses.has(`3PM|${s.activityName}`);
-            return allowedClasses.has(`${s.filterPeriod}|${s.activityName}`);
-        });
+        filteredClassSessions = classSessions.filter(s =>
+            allowedClasses.has(`${s.filterPeriod}|${s.activityName}`)
+        );
         filteredBusSessions = counselorBusRoute
             ? busSessions.filter(s => s.route === counselorBusRoute)
             : [];
@@ -1959,18 +1906,15 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
     const period = parseInt(req.params.period);
     const activityName = req.params.activity;
     const date = req.query.date || todayStr();
-    const half = req.query.half || '';
     const sessionType = 'class';
 
-    let campersSql = `
+    // Each clock block + activity is attended by exactly one group, no half filter needed.
+    const campers = db.prepare(`
         SELECT c.* FROM Campers c
         JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper'
-        WHERE s.PeriodNumber = ? AND s.ActivityName = ?`;
-    if (half === 'am') campersSql += ` AND c.HomeGroupColor IN ('Green', 'Navy')`;
-    if (half === 'pm') campersSql += ` AND c.HomeGroupColor IN ('Red', 'Carolina')`;
-    campersSql += ` ORDER BY c.HomeGroupColor, c.LastName, c.FirstName`;
-
-    const campers = db.prepare(campersSql).all(period, activityName);
+        WHERE s.PeriodNumber = ? AND s.ActivityName = ?
+        ORDER BY c.HomeGroupColor, c.LastName, c.FirstName
+    `).all(period, activityName);
 
     const absentAMSet = new Set(
         db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='absent'")
@@ -1998,10 +1942,9 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
         seenEarlier: seenEarlierSet.has(c.CamperID)
     }));
 
-    const pLabel = period === 3 && half ? `3 ${half.toUpperCase()}` : String(period);
     res.render('attendance-form', {
-        title: `P${pLabel} — ${activityName}`,
-        sessionType, date, half,
+        title: `Block ${period} — ${activityName}`,
+        sessionType, date,
         periodNumber: period, activityName,
         backLink: `/attendance?date=${date}`,
         roster
@@ -2230,16 +2173,14 @@ app.get('/counselor-scheduling', (req, res) => {
 
     const offeringPeriods = [...new Set(offerings.map(o => o.PeriodNumber).filter(p => p != null))];
     for (const p of offeringPeriods) {
-        const pStr = String(p);
+        const pInt = parseInt(p);
         availability[p] = {
-            Sports:     availSports.all(planWeek, pStr, planWeek),
-            Enrichment: availEnrich.all(planWeek, pStr, planWeek),
+            Sports:     availSports.all(planWeek, pInt, planWeek),
+            Enrichment: availEnrich.all(planWeek, pInt, planWeek),
         };
-        // Staff use integer periods in Schedules; map '3AM'/'3PM' → 3
-        const staffP = parseInt(pStr) || parseInt(pStr.replace(/[^0-9]/g, '')) || 0;
         staffAvailability[p] = {
-            Sports:     staffSports.all(staffP),
-            Enrichment: staffEnrich.all(staffP),
+            Sports:     staffSports.all(pInt),
+            Enrichment: staffEnrich.all(pInt),
         };
     }
 
@@ -2351,7 +2292,7 @@ app.post('/save-counselor-assignments', (req, res) => {
         for (const a of assignments) {
             if (!a.periodNumber || !a.activityName || !a.personID || !a.personType) continue;
             if (a.personType === 'Counselor') {
-                insCws.run(parseInt(a.personID), w, String(a.periodNumber), a.activityName);
+                insCws.run(parseInt(a.personID), w, parseInt(a.periodNumber), a.activityName);
             } else {
                 insStaff.run(a.periodNumber, a.activityName, a.personID, a.personType);
             }
@@ -2361,20 +2302,24 @@ app.post('/save-counselor-assignments', (req, res) => {
 });
 
 app.get('/export-counselor-schedule', (_req, res) => {
+    const aw = getActiveWeek();
     const counselors = db.prepare(`
-        SELECT c.CounselorID, c.FirstName, c.LastName, c.HomeGroupColor, c.ScheduleType, c.BusRoute, c.ExtendedHours
+        SELECT c.CounselorID, c.FirstName, c.LastName,
+               COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor,
+               COALESCE(cwa.ScheduleType,   c.ScheduleType)   AS ScheduleType,
+               COALESCE(cwa.BusRoute,       c.BusRoute)       AS BusRoute,
+               COALESCE(cwa.ExtendedHours,  c.ExtendedHours)  AS ExtendedHours
         FROM Counselors c
+        LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
         ORDER BY c.LastName, c.FirstName
-    `).all();
-    const assignments = db.prepare(`
-        SELECT PersonID, PeriodNumber, ActivityName
-        FROM CounselorScheduleAssignments
-        WHERE PersonType = 'Counselor'
-    `).all();
+    `).all(aw);
+    const assignments = db.prepare(
+        'SELECT CounselorID, PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE WeekNumber = ?'
+    ).all(aw);
     const periodsByID = {};
     assignments.forEach(a => {
-        if (!periodsByID[a.PersonID]) periodsByID[a.PersonID] = {};
-        periodsByID[a.PersonID][a.PeriodNumber] = a.ActivityName;
+        if (!periodsByID[a.CounselorID]) periodsByID[a.CounselorID] = {};
+        periodsByID[a.CounselorID][a.PeriodNumber] = a.ActivityName;
     });
     const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
     let out = 'FirstName,LastName,HomeGroupColor,ScheduleType,Bus,Extended,P1,P2,P3,P4,P5,P6\n';

@@ -87,7 +87,7 @@
                 <%/* Sports */%>
                 <% if (hubStats.sports && hubStats.sports.total > 0) { %>
                 <% const sPct = Math.round(hubStats.sports.submitted / hubStats.sports.total * 100); %>
-                <a href="/attendance?date=<%= today %>&period=<%= hubStats.sports.camperPeriod %>" class="hub-stat-card" style="border-top:3px solid #3b82f6;">
+                <a href="/attendance?date=<%= today %>&period=<%= hubStats.sports.clockBlock %>" class="hub-stat-card" style="border-top:3px solid #3b82f6;">
                     <span class="hub-stat-num" style="color:#3b82f6;"><%= sPct %>%</span>
                     <span class="hub-stat-label">Sports Attendance In</span>
                     <span class="hub-stat-sub"><%= hubStats.sports.label %> &middot; <%= hubStats.sports.submitted %>/<%= hubStats.sports.total %> classes</span>
@@ -103,7 +103,7 @@
                 <%/* Enrichment */%>
                 <% if (hubStats.enrich && hubStats.enrich.total > 0) { %>
                 <% const ePct = Math.round(hubStats.enrich.submitted / hubStats.enrich.total * 100); %>
-                <a href="/attendance?date=<%= today %>&period=<%= hubStats.enrich.camperPeriod %>" class="hub-stat-card" style="border-top:3px solid #10b981;">
+                <a href="/attendance?date=<%= today %>&period=<%= hubStats.enrich.clockBlock %>" class="hub-stat-card" style="border-top:3px solid #10b981;">
                     <span class="hub-stat-num" style="color:#10b981;"><%= ePct %>%</span>
                     <span class="hub-stat-label">Enrichment Attendance In</span>
                     <span class="hub-stat-sub"><%= hubStats.enrich.label %> &middot; <%= hubStats.enrich.submitted %>/<%= hubStats.enrich.total %> classes</span>

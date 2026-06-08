@@ -212,8 +212,8 @@
         </details>
         <% } %>
 
-        <%/* ── Class Periods (P1, P2, P3-AM, P3-PM, P4, P5) ── */%>
-        <% const periodOrder = ['1','2','3am','3pm','4','5']; %>
+        <%/* ── Class Periods (clock blocks 1-6) ── */%>
+        <% const periodOrder = ['1','2','3','4','5','6']; %>
         <% periodOrder.forEach(function(pk) { %>
         <% if (byPeriod[pk]) { %>
         <% const pStat = secStat(byPeriod[pk].sessions); %>
@@ -367,8 +367,7 @@
         (function() {
             const p = new URLSearchParams(location.search).get('period');
             if (!p) return;
-            // Period 3 opens both 3am and 3pm; others match directly
-            const keys = p === '3' ? ['3am', '3pm'] : [p];
+            const keys = [p];
             let first = null;
             keys.forEach(k => {
                 const el = document.querySelector(`[data-period-key="${k}"]`);

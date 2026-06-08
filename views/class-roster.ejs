@@ -61,7 +61,6 @@
                             <form action="/update-class-location" method="POST" style="display:flex; gap:5px; align-items:center; margin:0;">
                                 <input type="hidden" name="activityName" value="<%= activityName %>">
                                 <input type="hidden" name="periodNumber" value="<%= periodNumber %>">
-                                <input type="hidden" name="dbPeriod" value="<%= dbPeriod %>">
                                 <input type="text" name="location" value="<%= location || '' %>" placeholder="Add location…"
                                     style="width:130px; padding:3px 7px; border:1px solid #cbd5e1; border-radius:5px; font-size:0.82rem; font-family:inherit;">
                                 <button type="submit" title="Save location"

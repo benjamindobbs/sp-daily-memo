@@ -113,9 +113,8 @@
                 <p style="margin:0;">Upload a CSV above to get started.</p>
             </div>
         <% } else {
-            // Derive sorted unique periods present in the data (supports '3AM'/'3PM')
-            const _periodOrder = v => { const s = String(v); if (s === '3AM') return 2.3; if (s === '3PM') return 2.7; const n = parseFloat(s); return isNaN(n) ? 99 : n; };
-            const periods = [...new Set(offerings.map(o => o.PeriodNumber).filter(p => p != null))].sort((a, b) => _periodOrder(a) - _periodOrder(b));
+            // Derive sorted unique periods present in the data (integer clock blocks 1-6)
+            const periods = [...new Set(offerings.map(o => o.PeriodNumber).filter(p => p != null))].sort((a, b) => a - b);
             const unperioded = offerings.filter(o => o.PeriodNumber == null);
         %>
 
@@ -162,10 +161,9 @@
                         <div class="offering-card" data-offer="<%= idx %>">
                             <div class="offering-card-header">
                                 <span class="offering-name"><%= act.ActivityName %></span>
-                                <% const _ps = String(act.PeriodNumber);
-                                   if (_ps === '3AM' || _ps === '3') { %>
+                                <% if (parseInt(act.PeriodNumber) <= 3) { %>
                                     <span style="font-size:0.68rem;font-weight:700;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;white-space:nowrap;">AM · Green / Navy</span>
-                                <% } else if (_ps === '3PM' || _ps === '4') { %>
+                                <% } else { %>
                                     <span style="font-size:0.68rem;font-weight:700;background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;white-space:nowrap;">PM · Red / Carolina</span>
                                 <% } %>
                                 <span class="enrollment-pill"><%= act.PreliminaryEnrollment %> expected</span>
