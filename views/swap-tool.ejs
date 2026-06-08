@@ -87,7 +87,8 @@
             const data = await res.json();
             currentOptions = data.options;
 
-            document.getElementById('side-indicator').innerText = `Options for Period ${period} (${data.colorGroup} Group)`;
+            const side = data.sideOfCamp ? ` · ${data.sideOfCamp}` : '';
+            document.getElementById('side-indicator').innerText = `Options for Period ${period} (${data.colorGroup} Group${side})`;
             renderList();
         }
 

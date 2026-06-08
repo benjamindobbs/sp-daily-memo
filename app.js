@@ -165,8 +165,8 @@ const ADMIN_ONLY_PREFIXES = [
     '/delete-activity-period-group',
     '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings',
     '/save-counselor-assignments', '/export-counselor-schedule', '/export-staff-schedule',
-    '/export-master-schedule', '/save-counselor-group-assignments',
-    '/hub-content', '/photo-gallery', '/photo-vote',
+    '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups',
+    '/hub-content', '/director-notes', '/photo-gallery', '/photo-vote',
     '/set-active-week', '/set-released-week', '/update-session-label',
     '/clear-counselor-week', '/counselor-week-assignments',
     '/audit',
@@ -345,6 +345,13 @@ db.exec(`
 `);
 db.prepare("INSERT OR IGNORE INTO HubContent (id, content) VALUES ('announcement', '')").run();
 db.prepare("INSERT OR IGNORE INTO HubContent (id, content) VALUES ('director_notes', '')").run();
+
+db.exec(`CREATE TABLE IF NOT EXISTS DirectorNotes (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    body      TEXT NOT NULL,
+    author    TEXT NOT NULL DEFAULT 'Admin',
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
 
 // Migration: if Campers was created with a CHECK constraint on ExtendedHours, recreate it without one.
 // Safe to run on an empty table (upload couldn't have succeeded with the constraint in place).
@@ -601,6 +608,10 @@ try {
     const edCols = db.prepare("PRAGMA table_info(EarlyDismissals)").all().map(c => c.name);
     if (!edCols.includes('MarkedBy')) db.exec("ALTER TABLE EarlyDismissals ADD COLUMN MarkedBy TEXT");
 } catch(e) { console.error('[migration] EarlyDismissals.MarkedBy:', e.message); }
+try {
+    const woCols = db.prepare("PRAGMA table_info(WeeklyOfferings)").all().map(c => c.name);
+    if (!woCols.includes('AllowedGroups')) db.exec("ALTER TABLE WeeklyOfferings ADD COLUMN AllowedGroups TEXT");
+} catch(e) { console.error('[migration] WeeklyOfferings.AllowedGroups:', e.message); }
 
 // Seed Sessions 1-6 and migrate existing counselor data into week 1
 for (let w = 1; w <= 6; w++) {
@@ -623,6 +634,31 @@ function getActiveWeek() {
 function getReleasedWeek() {
     return db.prepare("SELECT * FROM Sessions WHERE isReleased=1 LIMIT 1").get() ?? null;
 }
+
+// --- AUTO WEEK ROLLOVER ---
+// Rolls the active week to the next one at 23:59 on the Friday of the active session's start week.
+function checkWeekRollover() {
+    const activeSession = db.prepare("SELECT * FROM Sessions WHERE isActive=1 LIMIT 1").get();
+    if (!activeSession || !activeSession.startDate) return;
+
+    // Parse startDate as local time, find the Friday of that week
+    const start = new Date(activeSession.startDate + 'T00:00:00');
+    const daysToFriday = (5 - start.getDay() + 7) % 7;
+    const friday = new Date(start);
+    friday.setDate(start.getDate() + daysToFriday);
+    friday.setHours(23, 59, 0, 0);
+
+    if (new Date() >= friday) {
+        const nextSession = db.prepare("SELECT * FROM Sessions WHERE weekNumber=?").get(activeSession.weekNumber + 1);
+        if (nextSession) {
+            db.exec('UPDATE Sessions SET isActive = 0');
+            db.prepare('UPDATE Sessions SET isActive = 1 WHERE weekNumber = ?').run(nextSession.weekNumber);
+            console.log(`[auto-rollover] Week ${activeSession.weekNumber} → Week ${nextSession.weekNumber}`);
+        }
+    }
+}
+checkWeekRollover(); // catch any missed rollover on startup
+setInterval(checkWeekRollover, 60 * 1000); // check every minute
 
 // --- VIEW SELECTION & AUTH ---
 app.get('/', (req, res) => {
@@ -696,6 +732,14 @@ app.post('/admin-set-name', (req, res) => {
     res.redirect('/admin');
 });
 
+app.post('/director-notes', (req, res) => {
+    const body = (req.body.body || '').trim();
+    if (!body) return res.redirect('/admin');
+    const author = req.cookies.adminName || 'Admin';
+    db.prepare("INSERT INTO DirectorNotes (body, author) VALUES (?, ?)").run(body, author);
+    res.redirect('/admin');
+});
+
 app.post('/hub-content/:id', (req, res) => {
     const allowed = ['announcement', 'director_notes'];
     if (!allowed.includes(req.params.id)) return res.status(400).json({ error: 'Invalid' });
@@ -745,7 +789,7 @@ app.get('/admin', (req, res) => {
     }
 
     const announcement  = db.prepare("SELECT content FROM HubContent WHERE id='announcement'").get()?.content || '';
-    const directorNotes = db.prepare("SELECT content FROM HubContent WHERE id='director_notes'").get()?.content || '';
+    const directorNotes = db.prepare("SELECT id, body, author, createdAt FROM DirectorNotes ORDER BY createdAt DESC LIMIT 200").all();
     const sessions = db.prepare('SELECT * FROM Sessions ORDER BY weekNumber').all();
 
     const adminName  = req.cookies.adminName || null;
@@ -1264,7 +1308,16 @@ app.get('/promotions', (req, res) => {
         WHERE CurrentEnrollment < a.MaxCapacity
         ORDER BY w.Timestamp ASC
     `).all();
-    res.render('promotions', { potentialPromotions, alertMessage: req.query.message || null });
+    const waitlistQueue = db.prepare(`
+        SELECT w.*, c.FirstName, c.LastName, c.HomeGroupColor, a.MaxCapacity,
+        (SELECT COUNT(*) FROM Schedules s WHERE s.ActivityName = w.RequestedActivity AND s.PeriodNumber = w.PeriodNumber AND s.PersonType = 'Camper') as CurrentEnrollment
+        FROM Waitlists w
+        JOIN Campers c ON w.CamperID = c.CamperID
+        JOIN Activities a ON w.RequestedActivity = a.Name
+        WHERE CurrentEnrollment >= a.MaxCapacity
+        ORDER BY w.Timestamp ASC
+    `).all();
+    res.render('promotions', { potentialPromotions, waitlistQueue, alertMessage: req.query.message || null });
 });
 
 app.post('/promote-waitlist', (req, res) => {
@@ -1608,12 +1661,20 @@ app.get('/swap-tool', (req, res) => {
 app.get('/get-options/:camperId/:period', (req, res) => {
     const { camperId, period } = req.params;
 
-    // Get the camper's home group color for AllowedGroups filtering
+    // Get the camper's home group color
     const camper = db.prepare('SELECT HomeGroupColor FROM Campers WHERE CamperID = ?').get(camperId);
     const color = camper ? camper.HomeGroupColor : null;
 
-    // Resolve effective AllowedGroups: period-specific override takes precedence over activity default.
-    // Only return activities whose effective group permits this camper's color, with enrollment > 0.
+    // Determine the camper's current activity and its side of camp for this period
+    const currentSlot = db.prepare(`
+        SELECT a.SideOfCamp FROM Schedules sc
+        JOIN Activities a ON a.Name = sc.ActivityName
+        WHERE sc.PersonID = ? AND sc.PeriodNumber = ? AND sc.PersonType = 'Camper'
+    `).get(camperId, period);
+    const sideOfCamp = currentSlot ? currentSlot.SideOfCamp : null;
+
+    // Only return activities on the same side of camp, accepting this camper's color.
+    // All matching activities are returned (including full ones) so the UI can show waitlist warnings.
     const options = db.prepare(`
         WITH effective AS (
             SELECT a.Name, a.SideOfCamp, a.MaxCapacity,
@@ -1625,7 +1686,7 @@ app.get('/get-options/:camperId/:period', (req, res) => {
                    ON apg.ActivityName = a.Name AND apg.PeriodNumber = @period
         )
         SELECT * FROM effective
-        WHERE CurrentEnrollment > 0
+        WHERE (@sideOfCamp IS NULL OR SideOfCamp = @sideOfCamp)
           AND (
               EffectiveGroups IS NULL OR
               EffectiveGroups = @color OR
@@ -1633,9 +1694,9 @@ app.get('/get-options/:camperId/:period', (req, res) => {
               (EffectiveGroups = 'Green-Navy'   AND @color IN ('Green', 'Navy'))
           )
         ORDER BY CurrentEnrollment ASC, Name ASC
-    `).all({ period, color });
+    `).all({ period, color, sideOfCamp });
 
-    res.json({ options, colorGroup: color || 'All' });
+    res.json({ options, colorGroup: color || 'All', sideOfCamp: sideOfCamp || null });
 });
 
 // Processes a swap — updates schedule or adds to waitlist if full
@@ -2424,6 +2485,71 @@ app.get('/counselor-scheduling', (req, res) => {
     res.render('counselor-scheduling', { offerings, counselors, availability, staffAvailability, existingAssignments, alertMessage, camperCounts, preferences, sessions, planWeek });
 });
 
+app.post('/auto-assign-homegroups', (req, res) => {
+    const week = parseInt(req.body.weekNumber) || getActiveWeek();
+
+    const camperRows = db.prepare(`
+        SELECT HomeGroupColor, COUNT(*) as n FROM Campers
+        WHERE HomeGroupColor IN ('Red','Carolina','Green','Navy')
+        GROUP BY HomeGroupColor
+    `).all();
+    const camperCounts = Object.fromEntries(camperRows.map(r => [r.HomeGroupColor, r.n]));
+    const totalCampers = Object.values(camperCounts).reduce((a, b) => a + b, 0);
+
+    // All counselors not already designated Bus/Extended/Swim (eligible for homegroup)
+    const counselors = db.prepare(`
+        SELECT c.CounselorID,
+               COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS CurrentColor
+        FROM Counselors c
+        LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
+        WHERE COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) NOT IN ('Bus','Extended','Swim')
+           OR COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) IS NULL
+    `).all(week);
+    const totalCounselors = counselors.length;
+
+    if (totalCounselors === 0 || totalCampers === 0) {
+        return res.redirect(`/counselor-scheduling?week=${week}&message=No+data+to+assign`);
+    }
+
+    // Proportional targets with largest-remainder rounding
+    const colors = ['Red', 'Carolina', 'Green', 'Navy'];
+    const targets = {};
+    let assigned = 0;
+    colors.forEach(color => {
+        targets[color] = Math.floor(((camperCounts[color] || 0) / totalCampers) * totalCounselors);
+        assigned += targets[color];
+    });
+    const remainder = totalCounselors - assigned;
+    colors
+        .map(c => ({ c, frac: ((camperCounts[c] || 0) / totalCampers) * totalCounselors - targets[c] }))
+        .sort((a, b) => b.frac - a.frac)
+        .slice(0, remainder)
+        .forEach(({ c }) => targets[c]++);
+
+    // Shuffle counselors for random distribution, then slice into color buckets
+    const shuffled = [...counselors].sort(() => Math.random() - 0.5);
+    const scheduleFor = color => (['Red','Carolina'].includes(color) ? 'AM Enrichment / PM Sports' : 'AM Sports / PM Enrichment');
+
+    const upsert = db.prepare(`
+        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
+        VALUES (?, ?, ?, ?, NULL, NULL)
+        ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET
+            HomeGroupColor = excluded.HomeGroupColor,
+            ScheduleType   = excluded.ScheduleType
+    `);
+
+    db.transaction(() => {
+        let offset = 0;
+        for (const color of colors) {
+            const slice = shuffled.slice(offset, offset + targets[color]);
+            offset += targets[color];
+            for (const c of slice) upsert.run(c.CounselorID, week, color, scheduleFor(color));
+        }
+    })();
+
+    res.redirect(`/counselor-scheduling?week=${week}&message=Homegroups+auto-assigned`);
+});
+
 app.post('/save-counselor-group-assignments', (req, res) => {
     const { counselors } = req.body;
     if (!Array.isArray(counselors)) return res.status(400).json({ error: 'Invalid payload' });
@@ -2453,19 +2579,20 @@ app.post('/upload-weekly-offerings', upload.single('file'), (req, res) => {
     fs.createReadStream(req.file.path)
         .pipe(csv())
         .on('data', row => {
-            const name       = (row.ActivityName || '').trim();
-            const enrollment = parseInt(row.PreliminaryEnrollment) || 0;
-            const side       = (row.SideOfCamp || '').trim();
-            const rawPeriod  = (row.PeriodNumber || '').trim();
-            const period     = rawPeriod === '' ? null : (/^\d+$/.test(rawPeriod) ? parseInt(rawPeriod) : rawPeriod);
-            const maxCap     = parseInt(row.MaxCapacity) || null;
-            const location   = (row.Location || '').trim() || null;
-            if (name) rows.push([weekNumber, name, enrollment, side, period, maxCap, location]);
+            const name          = (row.ActivityName || '').trim();
+            const enrollment    = parseInt(row.PreliminaryEnrollment) || 0;
+            const side          = (row.SideOfCamp || '').trim();
+            const rawPeriod     = (row.PeriodNumber || '').trim();
+            const period        = rawPeriod === '' ? null : (/^\d+$/.test(rawPeriod) ? parseInt(rawPeriod) : rawPeriod);
+            const maxCap        = parseInt(row.MaxCapacity) || null;
+            const location      = (row.Location || '').trim() || null;
+            const allowedGroups = (row.AllowedGroups || '').trim() || null;
+            if (name) rows.push([weekNumber, name, enrollment, side, period, maxCap, location, allowedGroups]);
         })
         .on('end', () => {
             fs.unlinkSync(req.file.path);
             db.prepare('DELETE FROM WeeklyOfferings WHERE WeekNumber=?').run(weekNumber);
-            const ins = db.prepare('INSERT INTO WeeklyOfferings (WeekNumber, ActivityName, PreliminaryEnrollment, SideOfCamp, PeriodNumber, MaxCapacity, Location) VALUES (?, ?, ?, ?, ?, ?, ?)');
+            const ins = db.prepare('INSERT INTO WeeklyOfferings (WeekNumber, ActivityName, PreliminaryEnrollment, SideOfCamp, PeriodNumber, MaxCapacity, Location, AllowedGroups) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
             db.transaction(items => { for (const item of items) ins.run(...item); })(rows);
             res.redirect(`/counselor-scheduling?week=${weekNumber}&message=Loaded+${rows.length}+offerings+for+Week+${weekNumber}.`);
         })

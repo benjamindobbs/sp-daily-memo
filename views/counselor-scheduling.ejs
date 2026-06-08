@@ -297,6 +297,7 @@
             </div>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn btn-primary" onclick="buildSchedule()">Build Schedule</button>
+                <button class="btn btn-primary" onclick="autoCalculateSlots(); buildSchedule();" style="background:var(--success, #16a34a);">⚡ Full Auto Build</button>
                 <span id="autoStatus" style="font-size:0.82rem; color:var(--text-muted); margin-left:4px;"></span>
             </div>
             <% if (sessions.filter(s => s.weekNumber !== planWeek).length > 0) { %>
@@ -389,8 +390,13 @@
                         <% }); %>
                     </tbody>
                 </table>
-                <div style="margin-top: 14px;">
+                <div style="margin-top: 14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                     <button id="saveCGBtn" class="btn btn-primary" onclick="saveCounselorGroups()">Save Group Assignments</button>
+                    <form action="/auto-assign-homegroups" method="POST" style="margin:0;"
+                          onsubmit="return confirm('This will overwrite all homegroup and schedule type assignments for Week <%= planWeek %>. Continue?')">
+                        <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                        <button type="submit" class="btn btn-secondary">⚡ Auto Assign Homegroups</button>
+                    </form>
                 </div>
             </div>
         </details>
@@ -753,6 +759,30 @@
             updateAllCounters();
             updateGroupCounters();
             statusEl.textContent = `Mirrored ${mirrored} ${side} class${mirrored !== 1 ? 'es' : ''} from ${SESSIONS.find(s => s.weekNumber === fromWeek)?.label ?? `Week ${fromWeek}`}.`;
+        }
+
+        function autoCalculateSlots() {
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber || !act.SideOfCamp) return;
+                let count = 1;
+                if (act.SideOfCamp === 'Sports') {
+                    count = Math.ceil((act.PreliminaryEnrollment || 0) / 10) || 1;
+                } else {
+                    const ag = act.AllowedGroups || '';
+                    if (ag === 'Carolina') count = 1;
+                    else if (ag === 'Red' || ag === 'Red-Carolina') count = 2;
+                    else if (ag === 'Green-Navy') count = Math.ceil((act.PreliminaryEnrollment || 0) / 10) || 1;
+                    else count = 1;
+                }
+                state[idx].counselors = Array(count).fill(null);
+                const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                if (card) {
+                    const inp = card.querySelector('[data-count-type="counselors"]');
+                    if (inp) inp.value = count;
+                }
+            });
+            renderAllFromState();
+            updateAllCounters();
         }
 
         function buildSchedule() {

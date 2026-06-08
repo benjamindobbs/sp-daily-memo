@@ -20,92 +20,127 @@
         <a href="/promotions" class="nav-btn primary">🔔 Promotions</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
     </nav>
+
     <% if (typeof alertMessage !== 'undefined' && alertMessage) { %>
         <div class="alert">
             <%= alertMessage %>
         </div>
     <% } %>
-            <div class="promo-container">
-                <header style="margin-bottom: 30px;">
-                    <h1>Ready for Promotion</h1>
-                    <p style="color: var(--text-muted);">The following campers can be moved from a waitlist into an
-                        active
-                        activity spot.</p>
-                </header>
 
-                <% if (potentialPromotions.length===0) { %>
-                    <div class="empty-state">
-                        <span style="font-size: 3rem;">🎉</span>
-                        <h3>All Clear!</h3>
-                        <p>There are no pending promotions at this time.</p>
-                    </div>
-                    <% } else { %>
-                        <div class="promo-list">
-                            <% potentialPromotions.forEach(promo=> { %>
-                                <div class="promo-card">
-                                    <div class="promo-details">
-                                        <div class="promo-info">
-                                            <span class="tag <%= promo.HomeGroupColor %>">
-                                                <%= promo.HomeGroupColor %>
-                                            </span>
-                                            <span style="color: var(--text-muted); font-weight: 500;">Period <%=
-                                                    promo.PeriodNumber %></span>
-                                        </div>
+    <%/* ── Ready for Promotion ── */%>
+    <div class="promo-container">
+        <header style="margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h1>Ready for Promotion</h1>
+                <p style="color: var(--text-muted);">The following campers can be moved from the waitlist into an available spot.</p>
+            </div>
+            <% if (potentialPromotions.length > 0) { %>
+                <form action="/promote-all" method="POST"
+                    onsubmit="return confirm('Promote all eligible campers at once?')">
+                    <button type="submit" class="btn btn-success">
+                        🚀 Promote All Eligible (<%= potentialPromotions.length %>)
+                    </button>
+                </form>
+            <% } %>
+        </header>
 
-                                        <h2>
-                                            <%= promo.FirstName %>
-                                                <%= promo.LastName %>
-                                        </h2>
+        <% if (potentialPromotions.length === 0) { %>
+            <div class="empty-state">
+                <span style="font-size: 3rem;">🎉</span>
+                <h3>All Clear!</h3>
+                <p>There are no pending promotions at this time.</p>
+            </div>
+        <% } else { %>
+            <div class="promo-list">
+                <% potentialPromotions.forEach(promo => { %>
+                    <div class="promo-card">
+                        <div class="promo-details">
+                            <div class="promo-info">
+                                <span class="tag <%= promo.HomeGroupColor %>">
+                                    <%= promo.HomeGroupColor %>
+                                </span>
+                                <span style="color: var(--text-muted); font-weight: 500;">Period <%= promo.PeriodNumber %></span>
+                            </div>
 
-                                        <p style="margin: 0;">
-                                            Requesting: <strong style="color: var(--primary);">
-                                                <%= promo.RequestedActivity %>
-                                            </strong>
-                                        </p>
+                            <h2><%= promo.FirstName %> <%= promo.LastName %></h2>
 
-                                        <span class="timestamp">
-                                            🕒 Waitlisted on <%= new Date(promo.Timestamp).toLocaleDateString() %>
-                                                at <%= new Date(promo.Timestamp).toLocaleTimeString([], {hour: '2-digit'
-                                                    , minute:'2-digit'}) %>
-                                        </span>
-                                    </div>
+                            <p style="margin: 0;">
+                                Requesting: <strong style="color: var(--primary);"><%= promo.RequestedActivity %></strong>
+                            </p>
 
-                                    <div class="promo-action">
-                                        <div class="capacity-badge" style="margin-bottom: 15px;">
-                                            <%= promo.CurrentEnrollment %> / <%= promo.MaxCapacity %> Filled
-                                            <div class="cap-sub">Spot Available</div>
-                                        </div>
-
-                                        <form action="/promote-waitlist" method="POST">
-                                            <input type="hidden" name="WaitlistID" value="<%= promo.WaitlistID %>">
-                                            <button type="submit" class="btn btn-success" style="width: 100%;">
-                                                Confirm Promotion
-                                            </button>
-                                        </form>
-                                    </div>
-                                </div>
-                                <% }) %>
+                            <span class="timestamp">
+                                🕒 Waitlisted on <%= new Date(promo.Timestamp).toLocaleDateString() %>
+                                    at <%= new Date(promo.Timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) %>
+                            </span>
                         </div>
-                        <% } %>
-            </div>
-            <div class="promo-container">
-                <header style="margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px;">
-                    <div>
-                        <h1>Ready for Promotion</h1>
-                        <p style="color: var(--text-muted);">Process waitlist requests with available spots.</p>
+
+                        <div class="promo-action">
+                            <div class="capacity-badge" style="margin-bottom: 15px;">
+                                <%= promo.CurrentEnrollment %> / <%= promo.MaxCapacity %> Filled
+                                <div class="cap-sub">Spot Available</div>
+                            </div>
+
+                            <form action="/promote-waitlist" method="POST">
+                                <input type="hidden" name="WaitlistID" value="<%= promo.WaitlistID %>">
+                                <button type="submit" class="btn btn-success" style="width: 100%;">
+                                    Confirm Promotion
+                                </button>
+                            </form>
+                        </div>
                     </div>
-
-                    <% if (potentialPromotions.length> 0) { %>
-                        <form action="/promote-all" method="POST"
-                            onsubmit="return confirm('Promote all eligible campers at once?')">
-                            <button type="submit" class="btn btn-success">
-                                🚀 Promote All Eligible (<%= potentialPromotions.length %>)
-                            </button>
-                        </form>
-                        <% } %>
-                </header>
-
+                <% }) %>
             </div>
+        <% } %>
+    </div>
+
+    <%/* ── Waitlist Queue ── */%>
+    <div class="promo-container" style="margin-top: 40px;">
+        <header style="margin-bottom: 30px;">
+            <h1>Waitlist Queue</h1>
+            <p style="color: var(--text-muted);">Campers waiting for a spot to open. They will appear above when space becomes available.</p>
+        </header>
+
+        <% if (waitlistQueue.length === 0) { %>
+            <div class="empty-state">
+                <span style="font-size: 3rem;">✅</span>
+                <p style="font-weight: 600; margin-top: 10px;">No campers currently waiting.</p>
+            </div>
+        <% } else { %>
+            <div class="promo-list">
+                <% waitlistQueue.forEach(promo => { %>
+                    <div class="promo-card" style="opacity: 0.85;">
+                        <div class="promo-details">
+                            <div class="promo-info">
+                                <span class="tag <%= promo.HomeGroupColor %>">
+                                    <%= promo.HomeGroupColor %>
+                                </span>
+                                <span style="color: var(--text-muted); font-weight: 500;">Period <%= promo.PeriodNumber %></span>
+                            </div>
+
+                            <h2><%= promo.FirstName %> <%= promo.LastName %></h2>
+
+                            <p style="margin: 0;">
+                                Requesting: <strong style="color: var(--primary);"><%= promo.RequestedActivity %></strong>
+                            </p>
+
+                            <span class="timestamp">
+                                🕒 Waitlisted on <%= new Date(promo.Timestamp).toLocaleDateString() %>
+                                    at <%= new Date(promo.Timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) %>
+                            </span>
+                        </div>
+
+                        <div class="promo-action">
+                            <div class="capacity-badge" style="margin-bottom: 15px; background: #fee2e2; color: #991b1b;">
+                                <%= promo.CurrentEnrollment %> / <%= promo.MaxCapacity %> Filled
+                                <div class="cap-sub">Class Full</div>
+                            </div>
+                        </div>
+                    </div>
+                <% }) %>
+            </div>
+        <% } %>
+    </div>
+
 </body>
 
 </html>

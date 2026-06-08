@@ -47,12 +47,7 @@
             <select id="periodFilter" class="filter-dropdown" onchange="applyFilters()">
                 <option value="all">All Periods</option>
                 <% for (let p = 1; p <= 6; p++) { %>
-                    <% if (p === 3) { %>
-                        <option value="3 AM">Period 3 AM</option>
-                        <option value="3 PM">Period 3 PM</option>
-                    <% } else { %>
-                        <option value="<%= p %>">Period <%= p %></option>
-                    <% } %>
+                    <option value="<%= p %>">Period <%= p %></option>
                 <% } %>
             </select>
 

@@ -192,12 +192,51 @@
         <div class="card" style="margin-bottom:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                 <h3 style="margin:0;">Director Notes <span style="font-size:0.75rem; font-weight:400; color:var(--text-muted);">(admin only)</span></h3>
-                <div style="display:flex; gap:8px;">
-                    <button id="notesEditBtn" onclick="editNotes()" class="btn btn-small" style="background:#f1f5f9; color:var(--text);">Edit</button>
-                    <button id="notesSaveBtn" onclick="saveNotes(event)" class="btn btn-primary btn-small" style="display:none;">Save</button>
-                </div>
+                <button onclick="toggleAddNote()" class="btn btn-primary btn-small">+ Add Note</button>
             </div>
-            <div id="notesEditor" style="min-height:120px;"></div>
+
+            <div id="addNoteForm" style="display:none; margin-bottom:16px;">
+                <form action="/director-notes" method="POST">
+                    <textarea name="body" rows="3" placeholder="Write a note..."
+                        style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #e2e8f0;
+                               border-radius:6px; font-size:0.9rem; resize:vertical;"
+                        oninput="isEditing=true;"></textarea>
+                    <div style="display:flex; gap:8px; margin-top:8px;">
+                        <button type="submit" class="btn btn-primary btn-small">Post Note</button>
+                        <button type="button" onclick="toggleAddNote()" class="btn btn-small">Cancel</button>
+                    </div>
+                </form>
+            </div>
+
+            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:center;">
+                <div style="display:flex; gap:4px;">
+                    <button class="filter-tab active" onclick="setNotesFilter('all',this)">All</button>
+                    <button class="filter-tab" onclick="setNotesFilter('week',this)">This Week</button>
+                    <button class="filter-tab" onclick="setNotesFilter('today',this)">Today</button>
+                </div>
+                <input type="text" id="notesSearch" placeholder="Search by text, name, or date..."
+                       oninput="applyNotesFilter()"
+                       style="flex:1; min-width:160px; padding:5px 10px; border:1px solid #e2e8f0;
+                              border-radius:6px; font-size:0.85rem;">
+            </div>
+
+            <div id="notesFeed" style="max-height:380px; overflow-y:auto;">
+                <% directorNotes.forEach(function(note) { %>
+                <div class="note-item"
+                     data-author="<%= note.author.toLowerCase() %>"
+                     data-date="<%= note.createdAt %>"
+                     data-body="<%= (note.body || '').replace(/</g,'').replace(/>/g,'').toLowerCase() %>">
+                    <div class="note-meta">
+                        <strong><%= note.author %></strong>
+                        <span class="note-ts"><%= new Date(note.createdAt).toLocaleString() %></span>
+                    </div>
+                    <div class="note-body"><%- note.body %></div>
+                </div>
+                <% }) %>
+                <% if (!directorNotes.length) { %>
+                <p style="color:var(--text-muted); text-align:center; padding:24px 0; font-size:0.9rem;">No notes yet.</p>
+                <% } %>
+            </div>
         </div>
 
         <%/* ── Quick Tasks + System Status ── */%>
@@ -303,10 +342,9 @@
         Font.whitelist = ['serif', 'monospace'];
         Quill.register(Font, true);
 
-        const SAVED_NOTES    = <%- JSON.stringify(directorNotes || '') %>;
-        const SAVED_ANNOUNCE = <%- JSON.stringify(announcement  || '') %>;
+        const SAVED_ANNOUNCE = <%- JSON.stringify(announcement || '') %>;
 
-        let isEditingNotes = false;
+        let isEditing = false;
         const TOOLBAR = [
             [{ font: [] }],
             [{ size: ['small', false, 'large', 'huge'] }],
@@ -316,27 +354,8 @@
             [{ list: 'bullet' }],
             ['clean']
         ];
-        const quillNotes    = new Quill('#notesEditor',    { theme: 'snow', modules: { toolbar: TOOLBAR } });
         const quillAnnounce = new Quill('#announceEditor', { theme: 'snow', modules: { toolbar: TOOLBAR } });
-
-        // Explicitly restore saved content rather than relying on Quill to parse container HTML
-        if (SAVED_NOTES)    quillNotes.root.innerHTML    = SAVED_NOTES;
         if (SAVED_ANNOUNCE) quillAnnounce.root.innerHTML = SAVED_ANNOUNCE;
-
-        const notesToolbar  = quillNotes.getModule('toolbar').container;
-        const notesContainer = quillNotes.container; // .ql-container sibling of toolbar
-        quillNotes.disable();
-        notesToolbar.style.display = 'none';
-        notesContainer.style.borderTop = '1px solid #ccc'; // restore top border hidden by ql-toolbar + ql-container CSS rule
-
-        function editNotes() {
-            quillNotes.enable();
-            notesToolbar.style.display = '';
-            notesContainer.style.borderTop = '';
-            document.getElementById('notesEditBtn').style.display = 'none';
-            document.getElementById('notesSaveBtn').style.display = '';
-            isEditingNotes = true;
-        }
 
         async function saveHub(id, quillInstance, btn) {
             btn.disabled = true; btn.textContent = 'Saving…';
@@ -348,23 +367,46 @@
             btn.textContent = 'Saved!';
             setTimeout(() => { btn.disabled = false; btn.textContent = 'Save'; }, 1500);
         }
-
-        function saveNotes(e) {
-            saveHub('director_notes', quillNotes, e.currentTarget).then(() => {
-                quillNotes.disable();
-                notesToolbar.style.display = 'none';
-                notesContainer.style.borderTop = '1px solid #ccc';
-                document.getElementById('notesEditBtn').style.display = '';
-                document.getElementById('notesSaveBtn').style.display = 'none';
-                isEditingNotes = false;
-            });
-        }
         function saveAnnounce(e) { saveHub('announcement', quillAnnounce, e.currentTarget); }
 
+        // Director Notes feed controls
+        function toggleAddNote() {
+            const f = document.getElementById('addNoteForm');
+            f.style.display = f.style.display === 'none' ? '' : 'none';
+        }
+
+        let _notesFilter = 'all';
+        function setNotesFilter(filter, btn) {
+            _notesFilter = filter;
+            document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            applyNotesFilter();
+        }
+        function applyNotesFilter() {
+            const query = (document.getElementById('notesSearch').value || '').toLowerCase();
+            const now = new Date();
+            const todayStr = now.toISOString().slice(0, 10);
+            const weekStart = new Date(now);
+            weekStart.setDate(now.getDate() - now.getDay());
+            weekStart.setHours(0, 0, 0, 0);
+            document.querySelectorAll('.note-item').forEach(item => {
+                const dateStr = item.dataset.date ? item.dataset.date.slice(0, 10) : '';
+                const itemDate = new Date(item.dataset.date);
+                let dateMatch = true;
+                if (_notesFilter === 'today') dateMatch = dateStr === todayStr;
+                else if (_notesFilter === 'week') dateMatch = itemDate >= weekStart;
+                const textMatch = !query ||
+                    (item.dataset.body || '').includes(query) ||
+                    (item.dataset.author || '').includes(query) ||
+                    dateStr.includes(query);
+                item.style.display = (dateMatch && textMatch) ? '' : 'none';
+            });
+        }
+
         // Auto-refresh stats every 60 seconds when not actively editing
-        quillAnnounce.on('text-change', () => { isEditingNotes = true; });
+        quillAnnounce.on('text-change', () => { isEditing = true; });
         setInterval(() => {
-            if (!isEditingNotes) location.reload();
+            if (!isEditing) location.reload();
         }, 60000);
     </script>
 </body>
