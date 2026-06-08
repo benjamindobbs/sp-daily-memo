@@ -47,11 +47,12 @@ const CAMP_DAY_END_MINS   = 16 * 60 + 5;   // 4:05 PM (after Sports 6 ends)
 
 function getESTMins() {
     const now = new Date();
-    return ((now.getUTCHours() - 5 + 24) % 24) * 60 + now.getUTCMinutes();
+    return now.getHours() * 60 + now.getMinutes();
 }
 
 function getTodayEST() {
-    return new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
 // Returns the last period whose start time <= estMins (holds until next period begins).
