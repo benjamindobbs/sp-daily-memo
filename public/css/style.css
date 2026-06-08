@@ -877,6 +877,9 @@ select.filter-dropdown { padding: 7px 12px; border-radius: 6px; border: 1px soli
     .class-table th, .class-table td { padding: 8px 10px; font-size: 0.8rem; }
 }
 
+/* Field labels inside mobile cards — hidden on desktop */
+.mc-label { display: none; }
+
 /* ── Mobile card table transformation ──────────────────────────────────────
    Tables with class "mc" reflow into counselor-directory-style cards on mobile.
    .mc-card  = the row/tbody that becomes one card
@@ -931,6 +934,17 @@ select.filter-dropdown { padding: 7px 12px; border-radius: 6px; border: 1px soli
         padding: 3px 0 !important;
         border: none !important;
         vertical-align: top;
+    }
+
+    /* Field label shown only inside mobile cards */
+    .mc-label {
+        display: block;
+        font-size: 0.68rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        margin-bottom: 2px;
     }
 
     /* Card title cell — bold header with bottom rule */

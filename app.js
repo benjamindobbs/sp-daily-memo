@@ -858,7 +858,7 @@ app.get('/master-schedule', (req, res) => {
             const locRow = getLocation.get(cls.periodNumber, cls.activityName);
             return {
                 ...cls,
-                location:    locRow ? locRow.Location : null,
+                location:    locRow ? locRow.Location : (cls.location || null),
                 enrolled:    getEnrollment.get(cls.periodNumber, cls.activityName).n,
                 colorGroups: getColorGroups.all(cls.periodNumber, cls.activityName).map(r => r.HomeGroupColor),
                 staff:       getStaff.all(cls.periodNumber, cls.activityName),

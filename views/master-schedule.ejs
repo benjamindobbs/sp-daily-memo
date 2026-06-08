@@ -142,6 +142,7 @@
                         </td>
 
                         <td>
+                            <span class="mc-label">Staff</span>
                             <% if (cls.staff.length > 0) { %>
                                 <% cls.staff.forEach(function(s) { %>
                                     <% if (viewMode === 'admin') { %>
@@ -162,10 +163,12 @@
                         </td>
 
                         <td>
+                            <span class="mc-label">Location</span>
                             <span class="location-text"><%= cls.location || '—' %></span>
                         </td>
 
                         <td>
+                            <span class="mc-label">Counselors</span>
                             <div class="counselor-chips">
                                 <% cls.counselors.forEach(function(c) { %>
                                     <a href="/counselor-profile/<%= c.CounselorID %>"
