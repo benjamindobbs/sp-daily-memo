@@ -44,6 +44,7 @@
         .hub-num-amber  { color: #f59e0b; }
         .hub-num-purple { color: #8b5cf6; }
         .hub-num-muted  { color: #94a3b8; }
+        .hub-num-green  { color: #10b981; }
     </style>
 </head>
 <body>
@@ -57,6 +58,7 @@
         <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/promotions" class="nav-btn">&#128276; Promotions</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/photo-gallery" class="nav-btn">&#128247; Photo of the Day</a>
         <a href="/settings" class="nav-btn">&#9881;&#65039; Data Management</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="staff">
@@ -79,36 +81,91 @@
         <%/* ── Stat Cards ── */%>
         <div class="hub-stat-grid">
 
-            <%/* Sports Attendance */%>
-            <% if (currentPeriod !== null && attStats) { %>
-            <% const sS = attStats.Sports; const sPct = sS.total > 0 ? Math.round(sS.submitted / sS.total * 100) : null; %>
-            <a href="/attendance?date=<%= today %>&period=<%= currentPeriod %>" class="hub-stat-card" style="border-top:3px solid #3b82f6;">
-                <span class="hub-stat-num" style="color:#3b82f6;"><%= sPct !== null ? sPct + '%' : '—' %></span>
-                <span class="hub-stat-label">Sports Attendance In</span>
-                <span class="hub-stat-sub">Period <%= currentPeriod %> &middot; <%= sS.submitted %>/<%= sS.total %> classes</span>
-            </a>
-            <% } else { %>
-            <div class="hub-stat-card hub-stat-inactive" style="border-top:3px solid #3b82f6;">
-                <span class="hub-stat-num" style="color:#3b82f6;">—</span>
-                <span class="hub-stat-label">Sports Attendance In</span>
-                <span class="hub-stat-sub">No active period</span>
-            </div>
-            <% } %>
+            <%/* ── Attendance cards: mode-aware ── */%>
+            <% if (hubStats.mode === 'classes') { %>
 
-            <%/* Enrichment Attendance */%>
-            <% if (currentPeriod !== null && attStats) { %>
-            <% const eS = attStats.Enrichment; const ePct = eS.total > 0 ? Math.round(eS.submitted / eS.total * 100) : null; %>
-            <a href="/attendance?date=<%= today %>&period=<%= currentPeriod %>" class="hub-stat-card" style="border-top:3px solid #10b981;">
-                <span class="hub-stat-num" style="color:#10b981;"><%= ePct !== null ? ePct + '%' : '—' %></span>
-                <span class="hub-stat-label">Enrichment Attendance In</span>
-                <span class="hub-stat-sub">Period <%= currentPeriod %> &middot; <%= eS.submitted %>/<%= eS.total %> classes</span>
-            </a>
+                <%/* Sports */%>
+                <% if (hubStats.sports && hubStats.sports.total > 0) { %>
+                <% const sPct = Math.round(hubStats.sports.submitted / hubStats.sports.total * 100); %>
+                <a href="/attendance?date=<%= today %>&period=<%= hubStats.sports.camperPeriod %>" class="hub-stat-card" style="border-top:3px solid #3b82f6;">
+                    <span class="hub-stat-num" style="color:#3b82f6;"><%= sPct %>%</span>
+                    <span class="hub-stat-label">Sports Attendance In</span>
+                    <span class="hub-stat-sub"><%= hubStats.sports.label %> &middot; <%= hubStats.sports.submitted %>/<%= hubStats.sports.total %> classes</span>
+                </a>
+                <% } else { %>
+                <div class="hub-stat-card hub-stat-inactive" style="border-top:3px solid #3b82f6;">
+                    <span class="hub-stat-num" style="color:#3b82f6;">—</span>
+                    <span class="hub-stat-label">Sports Attendance In</span>
+                    <span class="hub-stat-sub"><%= hubStats.sports ? hubStats.sports.label + ' · no classes found' : 'No active period' %></span>
+                </div>
+                <% } %>
+
+                <%/* Enrichment */%>
+                <% if (hubStats.enrich && hubStats.enrich.total > 0) { %>
+                <% const ePct = Math.round(hubStats.enrich.submitted / hubStats.enrich.total * 100); %>
+                <a href="/attendance?date=<%= today %>&period=<%= hubStats.enrich.camperPeriod %>" class="hub-stat-card" style="border-top:3px solid #10b981;">
+                    <span class="hub-stat-num" style="color:#10b981;"><%= ePct %>%</span>
+                    <span class="hub-stat-label">Enrichment Attendance In</span>
+                    <span class="hub-stat-sub"><%= hubStats.enrich.label %> &middot; <%= hubStats.enrich.submitted %>/<%= hubStats.enrich.total %> classes</span>
+                </a>
+                <% } else { %>
+                <div class="hub-stat-card hub-stat-inactive" style="border-top:3px solid #10b981;">
+                    <span class="hub-stat-num" style="color:#10b981;">—</span>
+                    <span class="hub-stat-label">Enrichment Attendance In</span>
+                    <span class="hub-stat-sub"><%= hubStats.enrich ? hubStats.enrich.label + ' · no classes found' : 'No active period' %></span>
+                </div>
+                <% } %>
+
+            <% } else if (hubStats.mode === 'precamp') { %>
+
+                <%/* AM Extended */%>
+                <a href="/attendance?date=<%= today %>" class="hub-stat-card" style="border-top:3px solid #6366f1;">
+                    <span class="hub-stat-num <%= hubStats.amExt.submitted ? 'hub-num-green' : 'hub-num-muted' %>"><%= hubStats.amExt.submitted ? '✓' : '—' %></span>
+                    <span class="hub-stat-label">AM Extended</span>
+                    <span class="hub-stat-sub"><%= hubStats.amExt.submitted ? 'Submitted' : 'Pending' %></span>
+                </a>
+
+                <%/* AM Bus */%>
+                <% const amBusDone = hubStats.amBus.total > 0 && hubStats.amBus.submitted === hubStats.amBus.total; %>
+                <a href="/attendance?date=<%= today %>" class="hub-stat-card" style="border-top:3px solid #0ea5e9;">
+                    <span class="hub-stat-num <%= amBusDone ? 'hub-num-green' : 'hub-num-muted' %>"><%= hubStats.amBus.submitted %>/<%= hubStats.amBus.total %></span>
+                    <span class="hub-stat-label">AM Buses</span>
+                    <span class="hub-stat-sub">Routes with attendance in</span>
+                </a>
+
+                <%/* AM Home Groups */%>
+                <% const amHgDone = hubStats.amHg.total > 0 && hubStats.amHg.submitted === hubStats.amHg.total; %>
+                <a href="/attendance?date=<%= today %>" class="hub-stat-card" style="border-top:3px solid #f97316;">
+                    <span class="hub-stat-num <%= amHgDone ? 'hub-num-green' : 'hub-num-muted' %>"><%= hubStats.amHg.submitted %>/<%= hubStats.amHg.total %></span>
+                    <span class="hub-stat-label">AM Home Groups</span>
+                    <span class="hub-stat-sub">Counselors with attendance in</span>
+                </a>
+
             <% } else { %>
-            <div class="hub-stat-card hub-stat-inactive" style="border-top:3px solid #10b981;">
-                <span class="hub-stat-num" style="color:#10b981;">—</span>
-                <span class="hub-stat-label">Enrichment Attendance In</span>
-                <span class="hub-stat-sub">No active period</span>
-            </div>
+
+                <%/* PM Home Groups */%>
+                <% const pmHgDone = hubStats.pmHg.total > 0 && hubStats.pmHg.submitted === hubStats.pmHg.total; %>
+                <a href="/attendance?date=<%= today %>" class="hub-stat-card" style="border-top:3px solid #f97316;">
+                    <span class="hub-stat-num <%= pmHgDone ? 'hub-num-green' : 'hub-num-muted' %>"><%= hubStats.pmHg.submitted %>/<%= hubStats.pmHg.total %></span>
+                    <span class="hub-stat-label">PM Home Groups</span>
+                    <span class="hub-stat-sub">Counselors with attendance in</span>
+                </a>
+
+                <%/* PM Bus */%>
+                <% const pmBusDone = hubStats.pmBus.total > 0 && hubStats.pmBus.submitted === hubStats.pmBus.total; %>
+                <a href="/attendance?date=<%= today %>" class="hub-stat-card" style="border-top:3px solid #0ea5e9;">
+                    <span class="hub-stat-num <%= pmBusDone ? 'hub-num-green' : 'hub-num-muted' %>"><%= hubStats.pmBus.submitted %>/<%= hubStats.pmBus.total %></span>
+                    <span class="hub-stat-label">PM Buses</span>
+                    <span class="hub-stat-sub">Routes with attendance in</span>
+                </a>
+
+                <%/* PM Extended */%>
+                <a href="/attendance?date=<%= today %>" class="hub-stat-card" style="border-top:3px solid #6366f1;">
+                    <span class="hub-stat-num <%= hubStats.pmExt.submitted ? 'hub-num-green' : 'hub-num-muted' %>"><%= hubStats.pmExt.submitted ? '✓' : '—' %></span>
+                    <span class="hub-stat-label">PM Extended</span>
+                    <span class="hub-stat-sub"><%= hubStats.pmExt.submitted ? 'Submitted' : 'Pending' %></span>
+                </a>
+
             <% } %>
 
             <%/* CampBrain Pending */%>
@@ -206,12 +263,13 @@
         const quillNotes    = new Quill('#notesEditor',    { theme: 'snow', modules: { toolbar: TOOLBAR } });
         const quillAnnounce = new Quill('#announceEditor', { theme: 'snow', modules: { toolbar: TOOLBAR } });
 
+        const notesToolbar = quillNotes.getModule('toolbar').container;
         quillNotes.disable();
-        document.querySelector('#notesEditor .ql-toolbar').style.display = 'none';
+        notesToolbar.style.display = 'none';
 
         function editNotes() {
             quillNotes.enable();
-            document.querySelector('#notesEditor .ql-toolbar').style.display = '';
+            notesToolbar.style.display = '';
             document.getElementById('notesEditBtn').style.display = 'none';
             document.getElementById('notesSaveBtn').style.display = '';
         }
@@ -230,7 +288,7 @@
         function saveNotes(e) {
             saveHub('director_notes', quillNotes, e.currentTarget).then(() => {
                 quillNotes.disable();
-                document.querySelector('#notesEditor .ql-toolbar').style.display = 'none';
+                notesToolbar.style.display = 'none';
                 document.getElementById('notesEditBtn').style.display = '';
                 document.getElementById('notesSaveBtn').style.display = 'none';
             });

@@ -22,26 +22,104 @@ const HOME_GROUP_LABELS = {
     Bus: 'Bus', LilPlace: "Li'l Place", KinderPlace: 'Kinder Place', SPLIT: 'SPLIT'
 };
 
-// Adjust start/end times (24-hour, EDT = UTC-4) to match the actual camp day
-const PERIOD_SCHEDULE = [
-    { period: 1, startH: 9,  startM: 0,  endH: 10, endM: 0 },
-    { period: 2, startH: 10, startM: 0,  endH: 11, endM: 0 },
-    { period: 3, startH: 11, startM: 0,  endH: 12, endM: 0 },
-    { period: 4, startH: 13, startM: 0,  endH: 14, endM: 0 },
-    { period: 5, startH: 14, startM: 0,  endH: 15, endM: 0 },
+// Period flip schedules — all times EST (UTC-5), 24-hour format.
+// Card flips to the next period when that period's start time is reached.
+// Sports P4/P5 use the counselor-period offset: counselor P5 teaches camper P4, counselor P6 teaches camper P5.
+const SPORTS_PERIODS = [
+    { startH: 9,  startM: 0,  label: 'Sports 1', camperPeriod: 1 },
+    { startH: 10, startM: 0,  label: 'Sports 2', camperPeriod: 2 },
+    { startH: 11, startM: 0,  label: 'Sports 3', camperPeriod: 3 },
+    { startH: 14, startM: 20, label: 'Sports 5', camperPeriod: 4 }, // counselor P5 = camper P4
+    { startH: 15, startM: 30, label: 'Sports 6', camperPeriod: 5 }, // counselor P6 = camper P5
 ];
 
-function getCurrentPeriod() {
+// Enrichment P3/P4 use period numbers 3/4 in the Schedules table (running at 1:00 and 2:40 PM).
+const ENRICHMENT_PERIODS = [
+    { startH: 9,  startM: 0,  label: 'Enrichment 1', camperPeriod: 1 },
+    { startH: 10, startM: 35, label: 'Enrichment 2', camperPeriod: 2 },
+    { startH: 13, startM: 0,  label: 'Enrichment 3', camperPeriod: 3 },
+    { startH: 14, startM: 40, label: 'Enrichment 4', camperPeriod: 4 },
+];
+
+const CAMP_DAY_START_MINS = 9 * 60;        // 9:00 AM
+const CAMP_DAY_END_MINS   = 16 * 60 + 5;   // 4:05 PM (after Sports 6 ends)
+
+function getESTMins() {
     const now = new Date();
-    const etMins = ((now.getUTCHours() - 4 + 24) % 24) * 60 + now.getUTCMinutes();
-    for (const s of PERIOD_SCHEDULE) {
-        if (etMins >= s.startH * 60 + s.startM && etMins < s.endH * 60 + s.endM) return s.period;
-    }
-    return null;
+    return ((now.getUTCHours() - 5 + 24) % 24) * 60 + now.getUTCMinutes();
 }
 
-function getTodayEDT() {
-    return new Date(Date.now() - 4 * 3600 * 1000).toISOString().slice(0, 10);
+function getTodayEST() {
+    return new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+// Returns the last period whose start time <= estMins (holds until next period begins).
+function getActivePeriod(schedule, estMins) {
+    let active = null;
+    for (const p of schedule) {
+        if (estMins >= p.startH * 60 + p.startM) active = p;
+        else break;
+    }
+    return active;
+}
+
+function getHubMode(estMins) {
+    if (estMins < CAMP_DAY_START_MINS) return 'precamp';
+    if (estMins >= CAMP_DAY_END_MINS)  return 'postcamp';
+    return 'classes';
+}
+
+function computeClassAttStats(camperPeriod, side, today) {
+    const classes = db.prepare(`
+        SELECT DISTINCT s.ActivityName
+        FROM Schedules s
+        JOIN Activities a ON a.Name = s.ActivityName
+        WHERE s.PersonType = 'Camper' AND s.PeriodNumber = ? AND a.SideOfCamp = ?
+    `).all(camperPeriod, side);
+    if (classes.length === 0) return { total: 0, submitted: 0 };
+    const check = db.prepare(
+        "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?"
+    );
+    let submitted = 0;
+    for (const c of classes) {
+        if ((check.get(today, camperPeriod, c.ActivityName)?.n || 0) > 0) submitted++;
+    }
+    return { total: classes.length, submitted };
+}
+
+function computeExtAttStats(session, today) {
+    const n = db.prepare(
+        "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType=?"
+    ).get(today, `extended_${session}`)?.n || 0;
+    return { total: 1, submitted: n > 0 ? 1 : 0 };
+}
+
+function computeBusAttStats(session, today) {
+    const total = db.prepare(
+        "SELECT COUNT(DISTINCT BusRoute) as n FROM Campers WHERE BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null'"
+    ).get().n || 0;
+    const submitted = db.prepare(`
+        SELECT COUNT(DISTINCT c.BusRoute) as n
+        FROM Attendance att
+        JOIN Campers c ON c.CamperID = att.CamperID
+        WHERE att.Date=? AND att.SessionType=?
+    `).get(today, `bus_${session}`)?.n || 0;
+    return { total, submitted };
+}
+
+function computeHomegroupAttStats(session, today) {
+    const total = db.prepare(`
+        SELECT COUNT(DISTINCT co.CounselorID) as n
+        FROM Counselors co
+        JOIN Campers ca ON ca.HomeGroupCounselorID = co.CounselorID
+    `).get().n || 0;
+    const submitted = db.prepare(`
+        SELECT COUNT(DISTINCT c.HomeGroupCounselorID) as n
+        FROM Attendance att
+        JOIN Campers c ON c.CamperID = att.CamperID
+        WHERE att.Date=? AND att.SessionType=?
+    `).get(today, `homegroup_${session}`)?.n || 0;
+    return { total, submitted };
 }
 
 // Maps a camper-facing period + activity side to the counselor DB period.
@@ -510,26 +588,23 @@ app.get('/admin', (req, res) => {
         WHERE (SELECT COUNT(*) FROM Schedules WHERE ActivityName = a.Name AND PeriodNumber = w.PeriodNumber) < a.MaxCapacity
     `).get().count;
 
-    const today = getTodayEDT();
-    const currentPeriod = getCurrentPeriod();
-    let attStats = null;
-    if (currentPeriod !== null) {
-        const classes = db.prepare(`
-            SELECT DISTINCT s.ActivityName, COALESCE(a.SideOfCamp, 'Other') AS SideOfCamp
-            FROM Schedules s
-            LEFT JOIN Activities a ON a.Name = s.ActivityName
-            WHERE s.PersonType='Camper' AND s.PeriodNumber=?
-        `).all(currentPeriod);
-        const checkAtt = db.prepare(
-            "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?"
-        );
-        const stats = { Sports: { total: 0, submitted: 0 }, Enrichment: { total: 0, submitted: 0 } };
-        for (const cls of classes) {
-            const side = cls.SideOfCamp === 'Sports' ? 'Sports' : 'Enrichment';
-            stats[side].total++;
-            if ((checkAtt.get(today, currentPeriod, cls.ActivityName)?.n || 0) > 0) stats[side].submitted++;
-        }
-        attStats = stats;
+    const estMins = getESTMins();
+    const today   = getTodayEST();
+    const hubMode = getHubMode(estMins);
+
+    const hubStats = { mode: hubMode };
+    if (hubMode === 'classes') {
+        const sp = getActivePeriod(SPORTS_PERIODS, estMins);
+        const ep = getActivePeriod(ENRICHMENT_PERIODS, estMins);
+        hubStats.sports = sp ? { label: sp.label, camperPeriod: sp.camperPeriod, ...computeClassAttStats(sp.camperPeriod, 'Sports', today) } : null;
+        hubStats.enrich = ep ? { label: ep.label, camperPeriod: ep.camperPeriod, ...computeClassAttStats(ep.camperPeriod, 'Enrichment', today) } : null;
+    } else {
+        hubStats.amExt = computeExtAttStats('am', today);
+        hubStats.amBus = computeBusAttStats('am', today);
+        hubStats.amHg  = computeHomegroupAttStats('am', today);
+        hubStats.pmBus = computeBusAttStats('pm', today);
+        hubStats.pmExt = computeExtAttStats('pm', today);
+        hubStats.pmHg  = computeHomegroupAttStats('pm', today);
     }
 
     const announcement  = db.prepare("SELECT content FROM HubContent WHERE id='announcement'").get()?.content || '';
@@ -539,7 +614,7 @@ app.get('/admin', (req, res) => {
     res.render('index', {
         camperTotal, activityCount, groupCounts,
         pendingChanges, waitlistCount,
-        currentPeriod, attStats, today,
+        hubStats, today,
         alertMessage: req.query.message,
         announcement, directorNotes, sessions
     });
@@ -1593,10 +1668,30 @@ app.get('/attendance', (req, res) => {
             counselorBusRoute = cRow.BusRoute || null;
             counselorExtHours = cRow.ExtendedHours || null;
         }
-        const assignments = db.prepare(
-            "SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID=? AND WeekNumber=?"
-        ).all(filterCid, getActiveWeek());
-        allowedClasses = new Set(assignments.map(a => `${a.PeriodNumber}|${a.ActivityName}`));
+        const assignments = db.prepare(`
+            SELECT cws.PeriodNumber, cws.ActivityName, COALESCE(a.SideOfCamp, '') AS SideOfCamp
+            FROM CounselorWeekSchedules cws
+            LEFT JOIN Activities a ON a.Name = cws.ActivityName
+            WHERE cws.CounselorID = ? AND cws.WeekNumber = ?
+        `).all(filterCid, getActiveWeek());
+        allowedClasses = new Set();
+        for (const a of assignments) {
+            const p = a.PeriodNumber; // TEXT: '1','2','3','3AM','3PM','4','5','6'
+            if (p === '3AM' || p === '3PM') {
+                allowedClasses.add(`${p}|${a.ActivityName}`);
+            } else if (a.SideOfCamp === 'Sports' && p === '5') {
+                allowedClasses.add(`4|${a.ActivityName}`); // counselor P5 = camper P4
+            } else if (a.SideOfCamp === 'Sports' && p === '6') {
+                allowedClasses.add(`5|${a.ActivityName}`); // counselor P6 = camper P5
+            } else {
+                allowedClasses.add(`${Number(p)}|${a.ActivityName}`);
+                // Legacy P3 entries (pre-split migration): show both P3 halves
+                if (p === '3') {
+                    allowedClasses.add(`3AM|${a.ActivityName}`);
+                    allowedClasses.add(`3PM|${a.ActivityName}`);
+                }
+            }
+        }
     }
 
     // Homegroup sessions — grouped by counselor
@@ -1667,7 +1762,7 @@ app.get('/attendance', (req, res) => {
                 classSessions.push({
                     label: `P3 PM — ${r.ActivityName}`,
                     periodNumber: 3, periodKey: '3pm', periodLabel: '3 PM',
-                    activityName: r.ActivityName, filterPeriod: [3, 4],
+                    activityName: r.ActivityName, filterPeriod: 3,
                     link: `/attendance/class/3/${encodeURIComponent(r.ActivityName)}?date=${date}&half=pm`,
                     submitted: count > 0
                 });
@@ -1736,8 +1831,9 @@ app.get('/attendance', (req, res) => {
     if (filterCid) {
         filteredHomegroupSessions = homegroupSessions.filter(s => s.counselorId === filterCid);
         filteredClassSessions = classSessions.filter(s => {
-            const periods = Array.isArray(s.filterPeriod) ? s.filterPeriod : [s.filterPeriod];
-            return periods.some(p => allowedClasses.has(`${p}|${s.activityName}`));
+            if (s.periodKey === '3am') return allowedClasses.has(`3AM|${s.activityName}`);
+            if (s.periodKey === '3pm') return allowedClasses.has(`3PM|${s.activityName}`);
+            return allowedClasses.has(`${s.filterPeriod}|${s.activityName}`);
         });
         filteredBusSessions = counselorBusRoute
             ? busSessions.filter(s => s.route === counselorBusRoute)
@@ -2370,7 +2466,10 @@ app.post('/counselor-preferences', (req, res) => {
         ? req.body.activityPreferences
         : req.body.activityPreferences ? [req.body.activityPreferences] : [];
 
-    if (!counselorID) return res.redirect('/counselor-preferences?message=Please+select+a+counselor.');
+    const parsedId = parseInt(counselorID, 10);
+    if (!parsedId) return res.redirect('/counselor-preferences?message=Please+select+a+counselor.');
+    const counselorExists = db.prepare("SELECT 1 FROM Counselors WHERE CounselorID = ?").get(parsedId);
+    if (!counselorExists) return res.redirect('/counselor-preferences?message=Counselor+not+found.+Please+re-select+your+name.');
 
     db.prepare(`
         INSERT INTO CounselorPreferences (CounselorID, HomeGroupPreference, SchedulePreference, ActivityPreferences, SubmittedAt)
@@ -2380,9 +2479,9 @@ app.post('/counselor-preferences', (req, res) => {
             SchedulePreference   = excluded.SchedulePreference,
             ActivityPreferences  = excluded.ActivityPreferences,
             SubmittedAt          = CURRENT_TIMESTAMP
-    `).run(counselorID, homeGroupPreference || null, schedulePreference || null, JSON.stringify(activityPreferences));
+    `).run(parsedId, homeGroupPreference || null, schedulePreference || null, JSON.stringify(activityPreferences));
 
-    res.cookie('selectedCounselor', counselorID, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+    res.cookie('selectedCounselor', parsedId, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
     res.redirect('/counselor-preferences?message=Preferences+saved!');
 });
 
