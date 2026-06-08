@@ -21,7 +21,8 @@
     <% } else { %>
     <nav class="nav-bar">
         <a href="/staff" class="nav-btn">&#127968; Hub</a>
-        <a href="/photo-day" class="nav-btn primary">&#128247; Photo of the Day</a>
+        <a href="/photo-day" class="nav-btn primary">&#128247; Submit Photo</a>
+        <a href="/photo-gallery" class="nav-btn">&#127775; Gallery</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="admin">
             <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
@@ -48,19 +49,40 @@
 
         <div class="card" style="max-width:520px; margin-bottom:32px;">
             <h3 style="margin:0 0 16px;">Submit a Photo</h3>
-            <form action="/photo-day" method="POST" enctype="multipart/form-data">
+            <% if (!viewerName) { %>
+            <div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:12px 16px; margin-bottom:16px; color:#92400e; font-size:0.875rem;">
+                <% if (viewMode === 'admin') { %>
+                &#9888; Please set your name on the <a href="/admin" style="color:#92400e; font-weight:600;">admin hub</a> before submitting a photo.
+                <% } else { %>
+                &#9888; Please select your name in <a href="/counselor-preferences" style="color:#92400e; font-weight:600;">Preferences</a> before submitting a photo.
+                <% } %>
+            </div>
+            <form style="opacity:0.5; pointer-events:none;">
                 <div style="margin-bottom:14px;">
-                    <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:6px;">Your Name</label>
-                    <input type="text" name="counselorName" placeholder="First Last" required
-                           style="width:100%; padding:8px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.9rem; box-sizing:border-box;">
+                    <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:6px;">Submitting as</label>
+                    <div style="padding:8px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.9rem; background:#f8fafc; color:var(--text-muted);">—</div>
                 </div>
                 <div style="margin-bottom:18px;">
                     <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:6px;">Photo</label>
-                    <input type="file" name="photo" accept="image/*" required
-                           style="font-size:0.9rem;">
+                    <input type="file" name="photo" accept="image/*" disabled style="font-size:0.9rem;">
+                </div>
+                <button type="button" disabled class="btn btn-primary">Upload Photo</button>
+            </form>
+            <% } else { %>
+            <form action="/photo-day" method="POST" enctype="multipart/form-data">
+                <div style="margin-bottom:14px;">
+                    <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:6px;">Submitting as</label>
+                    <div style="padding:8px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.9rem; background:#f8fafc; font-weight:500;">
+                        <%= viewerName %>
+                    </div>
+                </div>
+                <div style="margin-bottom:18px;">
+                    <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:6px;">Photo</label>
+                    <input type="file" name="photo" accept="image/*" required style="font-size:0.9rem;">
                 </div>
                 <button type="submit" class="btn btn-primary">Upload Photo</button>
             </form>
+            <% } %>
         </div>
 
         <% if (submissions.length > 0) { %>

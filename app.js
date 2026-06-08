@@ -326,7 +326,13 @@ db.exec(`
     CREATE TABLE IF NOT EXISTS PhotoVotes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         photoId INTEGER NOT NULL REFERENCES PhotoSubmissions(id),
+        voterName TEXT,
+        voteDate TEXT,
         votedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS AdminUsers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE
     );
 `);
 db.prepare("INSERT OR IGNORE INTO HubContent (id, content) VALUES ('announcement', '')").run();
@@ -463,26 +469,28 @@ try { db.prepare("SELECT Location FROM WeeklyOfferings LIMIT 1").get(); } catch 
 // Migration: convert CounselorWeekSchedules.PeriodNumber from TEXT ('3AM','3PM', etc.)
 // to INTEGER clock blocks (1-6). Runs only when the column type is still TEXT.
 // '3AM'→3, '3PM'→4, Enrichment P5→4, Enrichment P6→5, free-period P4 rows deleted.
-{
+try {
     const _cols = db.prepare("PRAGMA table_info(CounselorWeekSchedules)").all();
     const _col  = _cols.find(c => c.name === 'PeriodNumber');
     if (_col && _col.type.toUpperCase() === 'TEXT') {
         db.exec("PRAGMA foreign_keys = OFF;");
         // Remap split-period labels to clock block numbers
         db.exec(`
-            UPDATE CounselorWeekSchedules SET PeriodNumber = '3' WHERE PeriodNumber = '3AM';
-            UPDATE CounselorWeekSchedules SET PeriodNumber = '4' WHERE PeriodNumber = '3PM';
+            UPDATE OR IGNORE CounselorWeekSchedules SET PeriodNumber = '3' WHERE PeriodNumber = '3AM';
+            UPDATE OR IGNORE CounselorWeekSchedules SET PeriodNumber = '4' WHERE PeriodNumber = '3PM';
         `);
         // Enrichment counselors at old '5'/'6' were offset by the free-period hack;
         // map them to their actual clock blocks (E3=4, E4=5).
         // Do P5→4 before P6→5 to avoid collisions.
+        // UPDATE OR IGNORE skips rows where the target period is already taken (e.g. counselor
+        // has both a '3PM' Sports entry that became '4' and a P5 Enrichment entry).
         db.exec(`
-            UPDATE CounselorWeekSchedules
+            UPDATE OR IGNORE CounselorWeekSchedules
             SET PeriodNumber = '4'
             WHERE PeriodNumber = '5'
               AND ActivityName IN (SELECT Name FROM Activities WHERE SideOfCamp = 'Enrichment');
 
-            UPDATE CounselorWeekSchedules
+            UPDATE OR IGNORE CounselorWeekSchedules
             SET PeriodNumber = '5'
             WHERE PeriodNumber = '6'
               AND ActivityName IN (SELECT Name FROM Activities WHERE SideOfCamp = 'Enrichment');
@@ -509,12 +517,14 @@ try { db.prepare("SELECT Location FROM WeeklyOfferings LIMIT 1").get(); } catch 
             PRAGMA foreign_keys = ON;
         `);
     }
+} catch (e) {
+    console.error('[migration] CounselorWeekSchedules period migration failed:', e.message);
 }
 
 // Migration: remap WeeklyOfferings.PeriodNumber to clock blocks.
 // Enrichment E3 was stored as period 5, E4 as period 6 (offset by free-period hack).
 // '3AM'/'3PM' text values map to blocks 3 and 4.
-{
+try {
     const hasTextPeriod = db.prepare(
         "SELECT 1 FROM WeeklyOfferings WHERE TYPEOF(PeriodNumber)='text' LIMIT 1"
     ).get();
@@ -532,13 +542,15 @@ try { db.prepare("SELECT Location FROM WeeklyOfferings LIMIT 1").get(); } catch 
             UPDATE WeeklyOfferings SET PeriodNumber = 5 WHERE PeriodNumber = 6 AND SideOfCamp = 'Enrichment';
         `);
     }
+} catch (e) {
+    console.error('[migration] WeeklyOfferings period migration failed:', e.message);
 }
 
 // Migration: remap camper Schedules to clock blocks for Red/Carolina groups.
 // Their ordinal P3 = clock block 4 (S4), P4 = block 5, P5 = block 6.
 // Green/Navy ordinals already equal clock blocks (no change needed).
 // Executed in reverse order (P5→6, P4→5, P3→4) to avoid value collisions.
-{
+try {
     const needsMigration = db.prepare(`
         SELECT 1 FROM Schedules s
         JOIN Campers c ON s.PersonID = c.CamperID
@@ -561,7 +573,16 @@ try { db.prepare("SELECT Location FROM WeeklyOfferings LIMIT 1").get(); } catch 
               AND PersonID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor IN ('Red','Carolina'));
         `);
     }
+} catch (e) {
+    console.error('[migration] Camper Schedules clock block migration failed:', e.message);
 }
+
+// Migration: add voterName / voteDate to PhotoVotes if missing
+try {
+    const pvCols = db.prepare("PRAGMA table_info(PhotoVotes)").all().map(c => c.name);
+    if (!pvCols.includes('voterName')) db.exec("ALTER TABLE PhotoVotes ADD COLUMN voterName TEXT");
+    if (!pvCols.includes('voteDate'))  db.exec("ALTER TABLE PhotoVotes ADD COLUMN voteDate TEXT");
+} catch(e) { console.error('[migration] PhotoVotes columns:', e.message); }
 
 // Seed Sessions 1-6 and migrate existing counselor data into week 1
 for (let w = 1; w <= 6; w++) {
@@ -633,7 +654,23 @@ app.get('/staff', (req, res) => {
         ? db.prepare('SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID=? AND WeekNumber=? ORDER BY PeriodNumber').all(cid, released.weekNumber)
         : null;
     const releasedSessionLabel = released?.label ?? null;
-    res.render('staff-hub', { selectedCounselorName, announcement, releasedSchedule, releasedSessionLabel });
+    const yesterdayWinner = db.prepare(`
+        SELECT p.counselorName, p.imageUrl, COUNT(v.id) as votes
+        FROM PhotoSubmissions p
+        LEFT JOIN PhotoVotes v ON v.photoId = p.id
+        WHERE p.date = ?
+        GROUP BY p.id ORDER BY votes DESC, p.submittedAt ASC LIMIT 1
+    `).get(yesterdayStr()) || null;
+    res.render('staff-hub', { selectedCounselorName, announcement, releasedSchedule, releasedSessionLabel, yesterdayWinner });
+});
+
+app.post('/admin-set-name', (req, res) => {
+    const { existingName, newName } = req.body;
+    const name = (existingName === '__new__' ? newName : existingName || '').trim();
+    if (!name) return res.redirect('/admin');
+    db.prepare("INSERT OR IGNORE INTO AdminUsers (name) VALUES (?)").run(name);
+    res.cookie('adminName', name, { maxAge: 365 * 24 * 60 * 60 * 1000 });
+    res.redirect('/admin');
 });
 
 app.post('/hub-content/:id', (req, res) => {
@@ -688,12 +725,16 @@ app.get('/admin', (req, res) => {
     const directorNotes = db.prepare("SELECT content FROM HubContent WHERE id='director_notes'").get()?.content || '';
     const sessions = db.prepare('SELECT * FROM Sessions ORDER BY weekNumber').all();
 
+    const adminName  = req.cookies.adminName || null;
+    const adminUsers = db.prepare("SELECT name FROM AdminUsers ORDER BY name").all().map(r => r.name);
+
     res.render('index', {
         camperTotal, activityCount, groupCounts,
         pendingChanges, waitlistCount,
         hubStats, today,
         alertMessage: req.query.message,
-        announcement, directorNotes, sessions
+        announcement, directorNotes, sessions,
+        adminName, adminUsers
     });
 });
 
@@ -1636,6 +1677,11 @@ function todayStr() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+function yesterdayStr() {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 
 // Sessions that should show the "absent AM" indicator (i.e. everything after homegroup_am)
 const SHOW_AM_INDICATOR = new Set(['class','homegroup_pm','bus_pm','extended_pm']);
@@ -1730,13 +1776,16 @@ app.get('/attendance', (req, res) => {
 
     // Bus sessions
     const busRoutes = db.prepare("SELECT DISTINCT BusRoute FROM Campers WHERE BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null' ORDER BY BusRoute").all().map(r => r.BusRoute);
+    const checkBusSubmitted = db.prepare(`
+        SELECT COUNT(*) as n FROM Attendance att
+        JOIN Campers c ON c.CamperID = att.CamperID
+        WHERE att.Date=? AND att.SessionType=? AND c.BusRoute=?
+    `);
     const busSessions = [];
     for (const route of busRoutes) {
         for (const session of ['am', 'pm']) {
             const sessionType = `bus_${session}`;
-            const count = db.prepare(
-                "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType=?"
-            ).get(date, sessionType)?.n || 0;
+            const count = checkBusSubmitted.get(date, sessionType, route)?.n || 0;
             busSessions.push({
                 label: `Bus ${route} — ${session.toUpperCase()}`,
                 route,
@@ -2435,15 +2484,38 @@ app.post('/counselor-preferences', (req, res) => {
 // --- PHOTO OF THE DAY ---
 app.get('/photo-day', (req, res) => {
     const today = todayStr();
+    const isAdmin = req.cookies.viewMode === 'admin';
+    const viewerName = isAdmin
+        ? (req.cookies.adminName || null)
+        : (() => {
+            const cid = parseInt(req.cookies.selectedCounselor) || null;
+            if (!cid) return null;
+            const row = db.prepare("SELECT FirstName, LastName FROM Counselors WHERE CounselorID=?").get(cid);
+            return row ? `${row.FirstName} ${row.LastName}` : null;
+        })();
     const submissions = db.prepare(
         "SELECT id, counselorName, imageUrl FROM PhotoSubmissions WHERE date=? ORDER BY submittedAt DESC"
     ).all(today);
-    res.render('photo-day', { submissions, date: today, message: req.query.message, error: req.query.error });
+    res.render('photo-day', { submissions, date: today, message: req.query.message, error: req.query.error, viewerName });
 });
 
 app.post('/photo-day', upload.single('photo'), async (req, res) => {
     if (!req.file) return res.redirect('/photo-day?error=No+file+selected');
-    const counselorName = (req.body.counselorName || 'Anonymous').trim();
+    const isAdmin = req.cookies.viewMode === 'admin';
+    let counselorName = null;
+    if (isAdmin) {
+        counselorName = (req.cookies.adminName || '').trim();
+    } else {
+        const cid = parseInt(req.cookies.selectedCounselor) || null;
+        if (cid) {
+            const row = db.prepare("SELECT FirstName, LastName FROM Counselors WHERE CounselorID=?").get(cid);
+            if (row) counselorName = `${row.FirstName} ${row.LastName}`;
+        }
+    }
+    if (!counselorName) {
+        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.redirect('/photo-day?error=' + encodeURIComponent(isAdmin ? 'Please set your admin name first.' : 'Please select your name in Preferences first.'));
+    }
     try {
         const result = await cloudinary.uploader.upload(req.file.path, { folder: 'camp-photo-day' });
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
@@ -2458,20 +2530,44 @@ app.post('/photo-day', upload.single('photo'), async (req, res) => {
 
 app.get('/photo-gallery', (req, res) => {
     const date = req.query.date || todayStr();
+    const isAdmin = req.cookies.viewMode === 'admin';
+    const viewerName = isAdmin
+        ? (req.cookies.adminName || null)
+        : (() => {
+            const cid = parseInt(req.cookies.selectedCounselor) || null;
+            if (!cid) return null;
+            const row = db.prepare("SELECT FirstName, LastName FROM Counselors WHERE CounselorID=?").get(cid);
+            return row ? `${row.FirstName} ${row.LastName}` : null;
+        })();
+    const voteLimit = isAdmin ? 3 : 1;
+    const sentinel = viewerName || '__none__';
     const photos = db.prepare(`
-        SELECT p.id, p.counselorName, p.imageUrl, COUNT(v.id) as votes
+        SELECT p.id, p.counselorName, p.imageUrl, COUNT(v.id) as votes,
+               SUM(CASE WHEN v.voterName = ? THEN 1 ELSE 0 END) as viewerVoted
         FROM PhotoSubmissions p LEFT JOIN PhotoVotes v ON v.photoId = p.id
         WHERE p.date=? GROUP BY p.id ORDER BY votes DESC, p.submittedAt ASC
-    `).all(date);
-    res.render('photo-gallery', { photos, date });
+    `).all(sentinel, date);
+    const viewerVoteCount = viewerName
+        ? (db.prepare("SELECT COUNT(*) as n FROM PhotoVotes WHERE voterName=? AND voteDate=?").get(viewerName, date)?.n || 0)
+        : 0;
+    res.render('photo-gallery', { photos, date, viewerName, viewerVoteCount, voteLimit });
 });
 
 app.post('/photo-vote/:id', (req, res) => {
     const id = parseInt(req.params.id);
     if (!id) return res.status(400).json({ error: 'Invalid' });
-    db.prepare("INSERT INTO PhotoVotes (photoId) VALUES (?)").run(id);
+    const { voterName } = req.body;
+    if (!voterName) return res.status(400).json({ error: 'No name set' });
+    const today = todayStr();
+    const isAdmin = req.cookies.viewMode === 'admin';
+    const voteLimit = isAdmin ? 3 : 1;
+    const alreadyVoted = db.prepare("SELECT 1 FROM PhotoVotes WHERE voterName=? AND photoId=?").get(voterName, id);
+    if (alreadyVoted) return res.json({ ok: false, error: 'Already voted on this photo' });
+    const todayCount = db.prepare("SELECT COUNT(*) as n FROM PhotoVotes WHERE voterName=? AND voteDate=?").get(voterName, today).n;
+    if (todayCount >= voteLimit) return res.json({ ok: false, error: 'Daily vote limit reached', limit: voteLimit });
+    db.prepare("INSERT INTO PhotoVotes (photoId, voterName, voteDate) VALUES (?, ?, ?)").run(id, voterName, today);
     const votes = db.prepare("SELECT COUNT(*) as n FROM PhotoVotes WHERE photoId=?").get(id).n;
-    res.json({ ok: true, votes });
+    res.json({ ok: true, votes, voterVoteCount: todayCount + 1, voteLimit, remaining: voteLimit - todayCount - 1 });
 });
 
 // --- SESSION MANAGEMENT ---

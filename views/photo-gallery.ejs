@@ -8,6 +8,7 @@
     <script src="/js/nav.js" defer></script>
 </head>
 <body>
+    <% if (viewMode === 'admin') { %>
     <nav class="nav-bar">
         <a href="/admin" class="nav-btn">&#127968; Hub</a>
         <a href="/photo-day" class="nav-btn">&#128247; Photo of the Day</a>
@@ -17,6 +18,17 @@
             <button class="nav-btn" style="cursor:pointer;">Staff View</button>
         </form>
     </nav>
+    <% } else { %>
+    <nav class="nav-bar">
+        <a href="/staff" class="nav-btn">&#127968; Hub</a>
+        <a href="/photo-day" class="nav-btn">&#128247; Submit Photo</a>
+        <a href="/photo-gallery" class="nav-btn primary">&#127775; Gallery</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="admin">
+            <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
+        </form>
+    </nav>
+    <% } %>
 
     <div class="container">
         <header style="margin-bottom:24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
@@ -24,11 +36,27 @@
                 <h1>&#127775; Photo Gallery</h1>
                 <p style="color:var(--text-muted); margin:0;">Vote for your favorite photo of the day.</p>
             </div>
-            <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
-                <label for="galleryDate" style="font-size:0.85rem; color:var(--text-muted);">Date:</label>
-                <input type="date" id="galleryDate" value="<%= date %>"
-                       onchange="window.location='/photo-gallery?date='+this.value"
-                       style="padding:6px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem;">
+            <div style="margin-left:auto; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                <% if (viewerName) { %>
+                <% const remaining = voteLimit - viewerVoteCount; %>
+                <span data-votes-badge style="font-size:0.8rem; background:#f1f5f9; border:1px solid var(--border-color); border-radius:20px; padding:4px 12px; white-space:nowrap;">
+                    &#10084;&#65039; <strong><%= remaining %></strong> vote<%= remaining !== 1 ? 's' : '' %> remaining today
+                </span>
+                <% } else { %>
+                <span style="font-size:0.8rem; color:#f59e0b; background:#fffbeb; border:1px solid #fcd34d; border-radius:20px; padding:4px 12px; white-space:nowrap;">
+                    <% if (viewMode === 'admin') { %>
+                    &#9888; Set your name on the hub to vote
+                    <% } else { %>
+                    &#9888; Set your name in Preferences to vote
+                    <% } %>
+                </span>
+                <% } %>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label for="galleryDate" style="font-size:0.85rem; color:var(--text-muted);">Date:</label>
+                    <input type="date" id="galleryDate" value="<%= date %>"
+                           onchange="window.location='/photo-gallery?date='+this.value"
+                           style="padding:6px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem;">
+                </div>
             </div>
         </header>
 
@@ -39,15 +67,30 @@
         <% } else { %>
         <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:20px;">
             <% photos.forEach(p => { %>
+            <% const alreadyVoted = p.viewerVoted > 0; %>
+            <% const noVotesLeft = viewerVoteCount >= voteLimit; %>
             <div class="card" style="padding:14px;" id="photo-<%= p.id %>">
                 <img src="<%= p.imageUrl %>" alt="Photo by <%= p.counselorName %>"
                      style="width:100%; border-radius:8px; object-fit:cover; aspect-ratio:4/3; margin-bottom:10px;">
                 <div style="display:flex; align-items:center; justify-content:space-between;">
                     <span style="font-size:0.88rem; font-weight:600;"><%= p.counselorName %></span>
-                    <button onclick="vote(<%= p.id %>)" id="vote-btn-<%= p.id %>"
-                            style="display:flex; align-items:center; gap:6px; padding:5px 12px; border:1px solid var(--border-color); border-radius:20px; background:white; cursor:pointer; font-size:0.82rem; font-weight:600; transition:background 0.15s;">
+                    <% if (!viewerName) { %>
+                    <button disabled title="Set your name to vote"
+                            style="display:flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid #e2e8f0;border-radius:20px;background:#f8fafc;cursor:not-allowed;font-size:0.82rem;font-weight:600;color:#94a3b8;">
+                        &#10084;&#65039; <span><%= p.votes %></span>
+                    </button>
+                    <% } else if (alreadyVoted) { %>
+                    <button disabled id="vote-btn-<%= p.id %>"
+                            style="display:flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid #fca5a5;border-radius:20px;background:#fef2f2;cursor:not-allowed;font-size:0.82rem;font-weight:600;color:#dc2626;">
                         &#10084;&#65039; <span id="vote-count-<%= p.id %>"><%= p.votes %></span>
                     </button>
+                    <% } else { %>
+                    <button onclick="vote(<%= p.id %>)" id="vote-btn-<%= p.id %>"
+                            <%= noVotesLeft ? 'disabled' : '' %>
+                            style="display:flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid var(--border-color);border-radius:20px;background:white;cursor:<%= noVotesLeft ? 'not-allowed' : 'pointer' %>;font-size:0.82rem;font-weight:600;transition:background 0.15s;<%= noVotesLeft ? 'opacity:0.45;' : '' %>">
+                        &#10084;&#65039; <span id="vote-count-<%= p.id %>"><%= p.votes %></span>
+                    </button>
+                    <% } %>
                 </div>
             </div>
             <% }); %>
@@ -56,17 +99,38 @@
     </div>
 
     <script>
+        const VOTER_NAME  = <%- JSON.stringify(viewerName || '') %>;
+        let remaining     = <%= voteLimit - viewerVoteCount %>;
+
         async function vote(id) {
+            if (!VOTER_NAME || remaining <= 0) return;
             const btn = document.getElementById(`vote-btn-${id}`);
             btn.disabled = true;
-            const res = await fetch(`/photo-vote/${id}`, { method: 'POST' });
+            const res = await fetch(`/photo-vote/${id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ voterName: VOTER_NAME })
+            });
             const data = await res.json();
             if (data.ok) {
                 document.getElementById(`vote-count-${id}`).textContent = data.votes;
                 btn.style.background = '#fef2f2';
                 btn.style.borderColor = '#fca5a5';
+                btn.style.color = '#dc2626';
+                btn.style.cursor = 'not-allowed';
+                remaining = data.remaining;
+                // Update remaining badge
+                const badge = document.querySelector('[data-votes-badge]');
+                if (badge) badge.innerHTML = '&#10084;&#65039; <strong>' + remaining + '</strong> vote' + (remaining !== 1 ? 's' : '') + ' remaining today';
+                // Disable all remaining unvoted buttons if quota exhausted
+                if (remaining <= 0) {
+                    document.querySelectorAll('[id^="vote-btn-"]').forEach(b => {
+                        if (!b.disabled) { b.disabled = true; b.style.opacity = '0.45'; b.style.cursor = 'not-allowed'; }
+                    });
+                }
+            } else {
+                btn.disabled = false;
             }
-            btn.disabled = false;
         }
     </script>
 </body>

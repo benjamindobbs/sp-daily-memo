@@ -12,6 +12,14 @@
         .att-flat-item:hover { background: #f8fafc; border-color: #94a3b8; }
         .att-flat-cat { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 2px; }
         .att-flat-name { font-weight: 600; font-size: 0.92rem; display: flex; align-items: center; gap: 6px; }
+        .period-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; align-items: center; }
+        .period-pill { padding: 5px 14px; border-radius: 20px; border: 1px solid #cbd5e1; background: #f8fafc; font-size: 0.8rem; font-weight: 600; cursor: pointer; color: var(--text-muted); transition: all 0.12s; white-space: nowrap; }
+        .period-pill:hover { border-color: var(--primary); color: var(--primary); }
+        .period-pill.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .sub-filter-bar { display: flex; gap: 6px; margin-bottom: 10px; }
+        .sub-pill { padding: 3px 10px; border-radius: 12px; border: 1px solid #cbd5e1; background: #f8fafc; font-size: 0.72rem; font-weight: 600; cursor: pointer; color: var(--text-muted); transition: all 0.12s; white-space: nowrap; }
+        .sub-pill:hover { border-color: var(--primary); color: var(--primary); }
+        .sub-pill.active { background: var(--primary); color: white; border-color: var(--primary); }
     </style>
 </head>
 <body>
@@ -99,6 +107,12 @@
                 const cls = sub === tot ? 'sec-count-done' : sub > 0 ? 'sec-count-partial' : 'sec-count-none';
                 return { sub, tot, cls };
             }
+
+            // Period filter bar helpers
+            const periodOrder = ['1','2','3','4','5','6'];
+            const hasAMServices = extAM.length > 0 || busAM.length > 0 || hgAM.length > 0;
+            const hasPMServices = extPM.length > 0 || busPM.length > 0 || hgPM.length > 0;
+            const activePeriodKeys = periodOrder.filter(pk => byPeriod[pk]);
         %>
 
         <% if (counselorFilterActive) { %>
@@ -136,20 +150,41 @@
 
         <% } else { %>
 
+        <%/* ── PERIOD FILTER BAR ── */%>
+        <% if (hasAMServices || activePeriodKeys.length > 0 || hasPMServices) { %>
+        <div class="period-filter-bar" id="periodFilterBar">
+            <button class="period-pill active" data-filter="all" onclick="setPeriodFilter('all',this)">All</button>
+            <% if (hasAMServices) { %>
+            <button class="period-pill" data-filter="am-services" onclick="setPeriodFilter('am-services',this)">AM Services</button>
+            <% } %>
+            <% activePeriodKeys.forEach(function(pk) { %>
+            <button class="period-pill" data-filter="period-<%= pk %>" onclick="setPeriodFilter('period-<%= pk %>',this)">Period <%= pk %></button>
+            <% }); %>
+            <% if (hasPMServices) { %>
+            <button class="period-pill" data-filter="pm-services" onclick="setPeriodFilter('pm-services',this)">PM Services</button>
+            <% } %>
+        </div>
+        <% } %>
+
         <%/* ── DROPDOWN VIEW: full overview with collapsible sections ── */%>
 
         <%/* ── Extended AM ── */%>
         <% if (extAM.length > 0) { %>
         <% const extAMStat = secStat(extAM); %>
-        <details class="att-section">
+        <details class="att-section" id="section-ext-am" data-section="am-services">
             <summary>
                 &#9200; Extended AM
                 <% if (extAMStat) { %><span class="sec-count <%= extAMStat.cls %>"><%= extAMStat.sub %>/<%= extAMStat.tot %></span><% } %>
             </summary>
             <div class="att-section-body">
+                <div class="sub-filter-bar">
+                    <button class="sub-pill active" onclick="setSubFilter('section-ext-am','all',this)">All</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-ext-am','pending',this)">Pending</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-ext-am','submitted',this)">Submitted</button>
+                </div>
                 <div class="att-grid">
                     <% extAM.forEach(function(s) { %>
-                    <a href="<%= s.link %>" class="att-card">
+                    <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>">
                         <div class="att-card-label"><%= s.label %></div>
                         <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
                     </a>
@@ -162,15 +197,20 @@
         <%/* ── Busses AM ── */%>
         <% if (busAM.length > 0) { %>
         <% const busAMStat = secStat(busAM); %>
-        <details class="att-section">
+        <details class="att-section" id="section-bus-am" data-section="am-services">
             <summary>
                 &#128652; Busses AM
                 <% if (busAMStat) { %><span class="sec-count <%= busAMStat.cls %>"><%= busAMStat.sub %>/<%= busAMStat.tot %></span><% } %>
             </summary>
             <div class="att-section-body">
+                <div class="sub-filter-bar">
+                    <button class="sub-pill active" onclick="setSubFilter('section-bus-am','all',this)">All</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-bus-am','pending',this)">Pending</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-bus-am','submitted',this)">Submitted</button>
+                </div>
                 <div class="att-grid">
                     <% busAM.forEach(function(s) { %>
-                    <a href="<%= s.link %>" class="att-card" data-search="<%= ('bus ' + s.route).toLowerCase() %>">
+                    <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>" data-search="<%= ('bus ' + s.route).toLowerCase() %>">
                         <div class="att-card-label"><%= s.label %></div>
                         <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
                     </a>
@@ -183,12 +223,17 @@
         <%/* ── Home Groups AM ── */%>
         <% if (hgAM.length > 0) { %>
         <% const hgAMStat = secStat(hgAM); %>
-        <details class="att-section">
+        <details class="att-section" id="section-hg-am" data-section="am-services">
             <summary>
                 &#127968; Home Groups AM
                 <% if (hgAMStat) { %><span class="sec-count <%= hgAMStat.cls %>"><%= hgAMStat.sub %>/<%= hgAMStat.tot %></span><% } %>
             </summary>
             <div class="att-section-body">
+                <div class="sub-filter-bar">
+                    <button class="sub-pill active" onclick="setSubFilter('section-hg-am','all',this)">All</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-hg-am','pending',this)">Pending</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-hg-am','submitted',this)">Submitted</button>
+                </div>
                 <% if (hgAMColors.length > 1) { %>
                 <div class="color-filter-bar">
                     <button class="pill pill-all active" onclick="setColorFilter('hg-am','all',this)">All</button>
@@ -199,7 +244,7 @@
                 <% } %>
                 <div class="att-grid" data-grid-id="hg-am">
                     <% hgAM.forEach(function(s) { %>
-                    <a href="<%= s.link %>" class="att-card" data-search="<%= s.label.toLowerCase() %>" data-color="<%= s.color %>">
+                    <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>" data-search="<%= s.label.toLowerCase() %>" data-color="<%= s.color %>">
                         <div class="att-card-label">
                             <span class="tag <%= s.color %>" style="font-size:0.68rem; padding:1px 7px; margin-right:6px;"><%= s.color %></span>
                             <%= s.label.split('—')[0].trim() %>
@@ -213,19 +258,23 @@
         <% } %>
 
         <%/* ── Class Periods (clock blocks 1-6) ── */%>
-        <% const periodOrder = ['1','2','3','4','5','6']; %>
         <% periodOrder.forEach(function(pk) { %>
         <% if (byPeriod[pk]) { %>
         <% const pStat = secStat(byPeriod[pk].sessions); %>
-        <details class="att-section" data-period-key="<%= pk %>">
+        <details class="att-section" id="section-period-<%= pk %>" data-section="period-<%= pk %>" data-period-key="<%= pk %>">
             <summary>
                 &#127947; Period <%= byPeriod[pk].label %>
                 <% if (pStat) { %><span class="sec-count <%= pStat.cls %>"><%= pStat.sub %>/<%= pStat.tot %></span><% } %>
             </summary>
             <div class="att-section-body">
+                <div class="sub-filter-bar">
+                    <button class="sub-pill active" onclick="setSubFilter('section-period-<%= pk %>','all',this)">All</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-period-<%= pk %>','pending',this)">Pending</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-period-<%= pk %>','submitted',this)">Submitted</button>
+                </div>
                 <div class="att-grid">
                     <% byPeriod[pk].sessions.forEach(function(s) { %>
-                    <a href="<%= s.link %>" class="att-card" data-search="<%= s.activityName.toLowerCase() %>">
+                    <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>" data-search="<%= s.activityName.toLowerCase() %>">
                         <div class="att-card-label" style="font-size:0.82rem;"><%= s.activityName %></div>
                         <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
                     </a>
@@ -239,12 +288,17 @@
         <%/* ── Home Groups PM ── */%>
         <% if (hgPM.length > 0) { %>
         <% const hgPMStat = secStat(hgPM); %>
-        <details class="att-section">
+        <details class="att-section" id="section-hg-pm" data-section="pm-services">
             <summary>
                 &#127968; Home Groups PM
                 <% if (hgPMStat) { %><span class="sec-count <%= hgPMStat.cls %>"><%= hgPMStat.sub %>/<%= hgPMStat.tot %></span><% } %>
             </summary>
             <div class="att-section-body">
+                <div class="sub-filter-bar">
+                    <button class="sub-pill active" onclick="setSubFilter('section-hg-pm','all',this)">All</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-hg-pm','pending',this)">Pending</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-hg-pm','submitted',this)">Submitted</button>
+                </div>
                 <% if (hgPMColors.length > 1) { %>
                 <div class="color-filter-bar">
                     <button class="pill pill-all active" onclick="setColorFilter('hg-pm','all',this)">All</button>
@@ -255,7 +309,7 @@
                 <% } %>
                 <div class="att-grid" data-grid-id="hg-pm">
                     <% hgPM.forEach(function(s) { %>
-                    <a href="<%= s.link %>" class="att-card" data-search="<%= s.label.toLowerCase() %>" data-color="<%= s.color %>">
+                    <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>" data-search="<%= s.label.toLowerCase() %>" data-color="<%= s.color %>">
                         <div class="att-card-label">
                             <span class="tag <%= s.color %>" style="font-size:0.68rem; padding:1px 7px; margin-right:6px;"><%= s.color %></span>
                             <%= s.label.split('—')[0].trim() %>
@@ -271,15 +325,20 @@
         <%/* ── Busses PM ── */%>
         <% if (busPM.length > 0) { %>
         <% const busPMStat = secStat(busPM); %>
-        <details class="att-section">
+        <details class="att-section" id="section-bus-pm" data-section="pm-services">
             <summary>
                 &#128652; Busses PM
                 <% if (busPMStat) { %><span class="sec-count <%= busPMStat.cls %>"><%= busPMStat.sub %>/<%= busPMStat.tot %></span><% } %>
             </summary>
             <div class="att-section-body">
+                <div class="sub-filter-bar">
+                    <button class="sub-pill active" onclick="setSubFilter('section-bus-pm','all',this)">All</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-bus-pm','pending',this)">Pending</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-bus-pm','submitted',this)">Submitted</button>
+                </div>
                 <div class="att-grid">
                     <% busPM.forEach(function(s) { %>
-                    <a href="<%= s.link %>" class="att-card" data-search="<%= ('bus ' + s.route).toLowerCase() %>">
+                    <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>" data-search="<%= ('bus ' + s.route).toLowerCase() %>">
                         <div class="att-card-label"><%= s.label %></div>
                         <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
                     </a>
@@ -292,15 +351,20 @@
         <%/* ── Extended PM ── */%>
         <% if (extPM.length > 0) { %>
         <% const extPMStat = secStat(extPM); %>
-        <details class="att-section">
+        <details class="att-section" id="section-ext-pm" data-section="pm-services">
             <summary>
                 &#9200; Extended PM
                 <% if (extPMStat) { %><span class="sec-count <%= extPMStat.cls %>"><%= extPMStat.sub %>/<%= extPMStat.tot %></span><% } %>
             </summary>
             <div class="att-section-body">
+                <div class="sub-filter-bar">
+                    <button class="sub-pill active" onclick="setSubFilter('section-ext-pm','all',this)">All</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-ext-pm','pending',this)">Pending</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-ext-pm','submitted',this)">Submitted</button>
+                </div>
                 <div class="att-grid">
                     <% extPM.forEach(function(s) { %>
-                    <a href="<%= s.link %>" class="att-card">
+                    <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>">
                         <div class="att-card-label"><%= s.label %></div>
                         <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
                     </a>
@@ -316,33 +380,58 @@
 
     <script>
         const activeColorFilters = { 'hg-am': 'all', 'hg-pm': 'all' };
+        const sectionSubFilter = {};
+
+        function setPeriodFilter(filter, btn) {
+            document.getElementById('periodFilterBar').querySelectorAll('.period-pill').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            document.querySelectorAll('.att-section[data-section]').forEach(section => {
+                section.style.display = (filter === 'all' || section.dataset.section === filter) ? '' : 'none';
+            });
+            document.getElementById('attSearch').value = '';
+        }
+
+        function setSubFilter(sectionId, filter, btn) {
+            sectionSubFilter[sectionId] = filter;
+            btn.closest('.sub-filter-bar').querySelectorAll('.sub-pill').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            const section = document.getElementById(sectionId);
+            section.querySelectorAll('.att-card').forEach(card => {
+                const subOk = filter === 'all' || card.dataset.submitted === (filter === 'submitted' ? 'true' : 'false');
+                const grid = card.closest('[data-grid-id]');
+                const gridId = grid ? grid.dataset.gridId : null;
+                const colorFilter = gridId ? (activeColorFilters[gridId] || 'all') : 'all';
+                const colorOk = colorFilter === 'all' || card.dataset.color === colorFilter;
+                card.style.display = (subOk && colorOk) ? '' : 'none';
+            });
+        }
 
         function filterCards() {
             const term = document.getElementById('attSearch').value.toLowerCase().trim();
-
             if (term) {
-                // Search mode: show all matching cards; ignore color filters
                 document.querySelectorAll('.att-card[data-search]').forEach(card => {
+                    const section = card.closest('.att-section');
+                    if (section && section.style.display === 'none') return;
                     card.style.display = card.dataset.search.includes(term) ? '' : 'none';
                 });
-                // Auto-expand sections that have at least one visible result
                 document.querySelectorAll('.att-section').forEach(section => {
-                    const hasVisible = [...section.querySelectorAll('.att-card[data-search]')]
-                        .some(c => c.style.display !== 'none');
+                    if (section.style.display === 'none') return;
+                    const hasVisible = [...section.querySelectorAll('.att-card[data-search]')].some(c => c.style.display !== 'none');
                     if (hasVisible) section.open = true;
                 });
             } else {
-                // Clear search: show everything, then re-apply color filters
-                document.querySelectorAll('.att-card[data-search]').forEach(card => {
-                    card.style.display = '';
-                });
-                ['hg-am', 'hg-pm'].forEach(gridId => {
-                    const color = activeColorFilters[gridId];
-                    if (color !== 'all') {
-                        document.querySelectorAll(`[data-grid-id="${gridId}"] .att-card`).forEach(card => {
-                            card.style.display = card.dataset.color === color ? '' : 'none';
-                        });
-                    }
+                document.querySelectorAll('.att-section').forEach(section => {
+                    if (section.style.display === 'none') return;
+                    const sectionId = section.id;
+                    const subFilter = sectionSubFilter[sectionId] || 'all';
+                    section.querySelectorAll('.att-card').forEach(card => {
+                        const grid = card.closest('[data-grid-id]');
+                        const gridId = grid ? grid.dataset.gridId : null;
+                        const colorFilter = gridId ? (activeColorFilters[gridId] || 'all') : 'all';
+                        const subOk = subFilter === 'all' || card.dataset.submitted === (subFilter === 'submitted' ? 'true' : 'false');
+                        const colorOk = colorFilter === 'all' || card.dataset.color === colorFilter;
+                        card.style.display = (subOk && colorOk) ? '' : 'none';
+                    });
                 });
             }
         }
@@ -351,8 +440,13 @@
             activeColorFilters[gridId] = color;
             btn.closest('.color-filter-bar').querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
             btn.classList.add('active');
+            const section = btn.closest('.att-section');
+            const sectionId = section ? section.id : null;
+            const subFilter = sectionId ? (sectionSubFilter[sectionId] || 'all') : 'all';
             document.querySelectorAll(`[data-grid-id="${gridId}"] .att-card`).forEach(card => {
-                card.style.display = (color === 'all' || card.dataset.color === color) ? '' : 'none';
+                const colorOk = (color === 'all' || card.dataset.color === color);
+                const subOk = subFilter === 'all' || card.dataset.submitted === (subFilter === 'submitted' ? 'true' : 'false');
+                card.style.display = (colorOk && subOk) ? '' : 'none';
             });
         }
 
@@ -363,17 +457,19 @@
             this.style.borderColor = '#cbd5e1';
         });
 
-        // Auto-open the period section when navigated from the admin hub stat card
+        // Pre-select period filter when navigated from admin hub stat card (?period=N)
         (function() {
             const p = new URLSearchParams(location.search).get('period');
             if (!p) return;
-            const keys = [p];
-            let first = null;
-            keys.forEach(k => {
-                const el = document.querySelector(`[data-period-key="${k}"]`);
-                if (el) { el.open = true; if (!first) first = el; }
-            });
-            if (first) setTimeout(() => first.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+            const filterVal = 'period-' + p;
+            const btn = document.querySelector(`[data-filter="${filterVal}"]`);
+            if (!btn) return;
+            setPeriodFilter(filterVal, btn);
+            const section = document.getElementById('section-period-' + p);
+            if (section) {
+                section.open = true;
+                setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+            }
         })();
     </script>
 </body>
