@@ -54,7 +54,7 @@
         %>
 
         <div class="table-scroll">
-        <table class="staff-table" id="staffTable">
+        <table class="staff-table mc" id="staffTable">
             <thead>
                 <tr>
                     <th style="width: 180px;">Name</th>
@@ -68,8 +68,8 @@
                     <td colspan="3"><%= group.type %></td>
                 </tr>
                 <% group.members.forEach(function(s) { %>
-                <tr class="staff-row" data-name="<%= (s.FirstName + ' ' + s.LastName).toLowerCase() %>">
-                    <td>
+                <tr class="staff-row mc-card" data-name="<%= (s.FirstName + ' ' + s.LastName).toLowerCase() %>">
+                    <td class="mc-title">
                         <div class="staff-name"><%= s.FirstName %> <%= s.LastName %></div>
                     </td>
                     <td>

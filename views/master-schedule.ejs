@@ -81,7 +81,7 @@
                 <span style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;"><%= period.classes.length %> classes</span>
             </div>
 
-            <table class="class-table">
+            <table class="class-table mc">
                 <thead>
                     <tr>
                         <th style="width: 22%;">Class</th>
@@ -95,13 +95,13 @@
                 </thead>
                 <tbody>
                     <% period.classes.forEach(function(cls) { %>
-                    <tr class="class-row"
+                    <tr class="class-row mc-card"
                         data-side="<%= cls.sideOfCamp || '' %>"
                         data-groups="<%= cls.colorGroups.join(',') %>"
                         data-bus="<%= cls.busPresent ? 'yes' : '' %>"
                         data-extended="<%= (cls.extGroups || []).join(',') %>">
 
-                        <td>
+                        <td class="mc-title">
                             <a class="activity-link"
                                href="/class-roster/<%= period.periodNumber %>/<%= encodeURIComponent(cls.activityName) %>">
                                 <%= cls.activityName %>
@@ -118,7 +118,7 @@
                             <% } %>
                         </td>
 
-                        <td>
+                        <td class="mc-hide">
                             <%
                                 const pct = cls.maxCapacity ? cls.enrolled / cls.maxCapacity : 0;
                                 let enrollClass = '';
@@ -130,7 +130,7 @@
                             </span>
                         </td>
 
-                        <td>
+                        <td class="mc-hide">
                             <div class="group-dots">
                                 <% cls.colorGroups.forEach(function(color) { %>
                                     <span class="tag <%= color %>"><%= color %></span>

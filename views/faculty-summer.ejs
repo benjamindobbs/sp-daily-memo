@@ -163,7 +163,7 @@
             %>
 
             <div style="border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow);">
-                <table class="summer-table" id="summerTable">
+                <table class="summer-table mc" id="summerTable">
                     <thead>
                         <tr>
                             <th style="width: 180px;">Name</th>
@@ -177,8 +177,8 @@
                             <td colspan="3"><%= group.type %></td>
                         </tr>
                         <% group.members.forEach(function(s) { %>
-                        <tr class="summer-staff-row" data-name="<%= (s.FirstName + ' ' + s.LastName).toLowerCase() %>">
-                            <td>
+                        <tr class="summer-staff-row mc-card" data-name="<%= (s.FirstName + ' ' + s.LastName).toLowerCase() %>">
+                            <td class="mc-title">
                                 <div class="staff-name"><%= s.FirstName %> <%= s.LastName %></div>
                             </td>
                             <td>
