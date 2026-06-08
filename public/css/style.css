@@ -876,3 +876,11 @@ select.filter-dropdown { padding: 7px 12px; border-radius: 6px; border: 1px soli
     .counselor-header { padding: 20px 16px; }
     .class-table th, .class-table td { padding: 8px 10px; font-size: 0.8rem; }
 }
+
+/* Quill formatting classes scoped to .ql-editor don't apply outside the editor */
+.hub-rich-content .ql-align-center  { text-align: center; }
+.hub-rich-content .ql-align-right   { text-align: right; }
+.hub-rich-content .ql-align-justify { text-align: justify; }
+.hub-rich-content .ql-size-small    { font-size: 0.75em; }
+.hub-rich-content .ql-size-large    { font-size: 1.5em; }
+.hub-rich-content .ql-size-huge     { font-size: 2.5em; }

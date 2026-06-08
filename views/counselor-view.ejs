@@ -31,7 +31,7 @@
                 <div class="duty-box">
                     <small>🚌 Bus Route</small>
                     <strong>
-                        <%= counselor.BusRoute || 'None' %>
+                        <%= counselor.BusRoute || 'Parent' %>
                     </strong>
                 </div>
                 <div class="duty-box">
@@ -104,7 +104,7 @@
                                         <%= camper.Age %>
                                     </td>
                                     <td><small>
-                                            <%= camper.BusRoute ? '🚌 ' + camper.BusRoute : '—' %>
+                                            <%= camper.BusRoute ? '🚌 ' + camper.BusRoute : 'Parent' %>
                                         </small></td>
                                     <td>
                                         <% if (camper.ExtendedHours==='Both' ) { %>

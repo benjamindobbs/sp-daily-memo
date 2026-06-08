@@ -162,6 +162,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/hub-content', '/photo-gallery', '/photo-vote',
     '/set-active-week', '/set-released-week', '/update-session-label',
     '/clear-counselor-week', '/counselor-week-assignments',
+    '/audit',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -736,6 +737,53 @@ app.get('/admin', (req, res) => {
         announcement, directorNotes, sessions,
         adminName, adminUsers
     });
+});
+
+// --- AUDIT ROSTER ---
+app.get('/audit', (req, res) => {
+    const activeWeek = getActiveWeek();
+    const activeSession = db.prepare('SELECT * FROM Sessions WHERE weekNumber=?').get(activeWeek);
+
+    const noCounselor = db.prepare(`
+        SELECT CamperID, FirstName, LastName, HomeGroupColor
+        FROM Campers
+        WHERE HomeGroupCounselorID IS NULL
+          AND HomeGroupColor NOT IN ('LilPlace', 'KinderPlace', 'SPLIT')
+          AND HomeGroupColor IS NOT NULL AND HomeGroupColor != ''
+        ORDER BY HomeGroupColor, LastName
+    `).all();
+
+    const missingSchedule = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
+               COUNT(s.PeriodNumber) AS classCount
+        FROM Campers c
+        LEFT JOIN Schedules s ON s.PersonID = c.CamperID AND s.PersonType = 'Camper'
+        WHERE c.HomeGroupColor NOT IN ('LilPlace', 'KinderPlace', 'SPLIT')
+          AND c.HomeGroupColor IS NOT NULL AND c.HomeGroupColor != ''
+        GROUP BY c.CamperID
+        HAVING classCount < 5
+        ORDER BY c.HomeGroupColor, c.LastName
+    `).all();
+
+    const EXPECTED = { 'All Sports': 6, 'All Enrichment': 4, 'AM Sports / PM Enrichment': 5, 'AM Enrichment / PM Sports': 5 };
+
+    const allCounselors = db.prepare(`
+        SELECT c.CounselorID, c.FirstName, c.LastName,
+               COALESCE(cwa.ScheduleType, c.ScheduleType) AS ScheduleType,
+               COUNT(cws.PeriodNumber) AS classCount
+        FROM Counselors c
+        LEFT JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID AND cws.WeekNumber = ?
+        LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
+        GROUP BY c.CounselorID
+        ORDER BY c.LastName
+    `).all(activeWeek, activeWeek);
+
+    const counselorMismatch = allCounselors.filter(c => {
+        const expected = EXPECTED[c.ScheduleType];
+        return expected != null && c.classCount !== expected;
+    });
+
+    res.render('audit', { activeSession, noCounselor, missingSchedule, counselorMismatch, EXPECTED });
 });
 
 // --- MASTER SCHEDULE ---

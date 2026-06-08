@@ -50,7 +50,7 @@
             </div>
         </div>
 
-        <div class="filter-bar" style="margin-bottom:16px;">
+        <div class="filter-bar" style="margin-bottom:8px;">
             <label for="groupFilter">Group:</label>
             <select id="groupFilter" class="filter-dropdown" onchange="applyFilters()">
                 <option value="all">All Groups</option>
@@ -62,6 +62,12 @@
                 <option value="KinderPlace">Kinder Place</option>
                 <option value="SPLIT">SPLIT</option>
             </select>
+            <button type="button" id="moreFiltersBtn" onclick="toggleMoreFilters()"
+                style="margin-left:8px; padding:6px 12px; border:1px solid var(--border); background:transparent; border-radius:6px; cursor:pointer; font-size:0.85rem; color:var(--text-muted);">
+                + More Filters
+            </button>
+        </div>
+        <div id="moreFiltersRow" style="display:none; margin-bottom:16px;" class="filter-bar">
             <label for="busFilter">Bus:</label>
             <select id="busFilter" class="filter-dropdown" onchange="applyFilters()">
                 <option value="all">All Buses</option>
@@ -118,7 +124,7 @@
                             </td>
                             <td>
                                 <div style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 2px;">
-                                    <span>🚌 <%= c.BusRoute || 'None' %></span>
+                                    <span>🚌 <%= c.BusRoute || 'Parent' %></span>
                                     <span class="text-muted" style="font-size: 0.75rem;">⏰ Ext: <%= c.ExtendedHours || 'No' %></span>
                                 </div>
                             </td>
@@ -186,11 +192,28 @@
             });
         }
 
+        function toggleMoreFilters() {
+            const row = document.getElementById('moreFiltersRow');
+            const btn = document.getElementById('moreFiltersBtn');
+            const showing = row.style.display !== 'none';
+            if (showing) {
+                row.style.display = 'none';
+                btn.textContent = '+ More Filters';
+                document.getElementById('busFilter').value = 'all';
+                document.getElementById('extFilter').value = 'all';
+                applyFilters();
+            } else {
+                row.style.display = '';
+                btn.textContent = '− Fewer Filters';
+            }
+        }
+
         function applyFilters() {
             const nameVal  = document.getElementById('camperSearch').value.trim().toLowerCase();
             const groupVal = document.getElementById('groupFilter').value;
-            const busVal   = document.getElementById('busFilter').value;
-            const extVal   = document.getElementById('extFilter').value;
+            const moreOpen = document.getElementById('moreFiltersRow').style.display !== 'none';
+            const busVal   = moreOpen ? document.getElementById('busFilter').value : 'all';
+            const extVal   = moreOpen ? document.getElementById('extFilter').value : 'all';
 
             document.querySelectorAll('.camper-group').forEach(group => {
                 const nameMatch  = !nameVal  || group.dataset.name.includes(nameVal);
@@ -214,6 +237,10 @@
             document.getElementById('groupFilter').value  = 'all';
             document.getElementById('busFilter').value    = 'all';
             document.getElementById('extFilter').value    = 'all';
+            const row = document.getElementById('moreFiltersRow');
+            const btn = document.getElementById('moreFiltersBtn');
+            row.style.display = 'none';
+            btn.textContent = '+ More Filters';
             applyFilters();
             document.getElementById('camperSearch').focus();
         }
