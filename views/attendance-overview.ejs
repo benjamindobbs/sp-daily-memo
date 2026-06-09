@@ -86,6 +86,8 @@
             const busPM = busSessions.filter(s => s.session === 'pm');
             const extAM = extSessions.filter(s => s.session === 'am');
             const extPM = extSessions.filter(s => s.session === 'pm');
+            const spAM  = specialtySessions.filter(s => s.session === 'am');
+            const spPM  = specialtySessions.filter(s => s.session === 'pm');
 
             // Period map for class sections
             const byPeriod = {};
@@ -110,8 +112,8 @@
 
             // Period filter bar helpers
             const periodOrder = ['1','2','3','4','5','6'];
-            const hasAMServices = extAM.length > 0 || busAM.length > 0 || hgAM.length > 0;
-            const hasPMServices = extPM.length > 0 || busPM.length > 0 || hgPM.length > 0;
+            const hasAMServices = extAM.length > 0 || busAM.length > 0 || hgAM.length > 0 || spAM.length > 0;
+            const hasPMServices = extPM.length > 0 || busPM.length > 0 || hgPM.length > 0 || spPM.length > 0;
             const activePeriodKeys = periodOrder.filter(pk => byPeriod[pk]);
         %>
 
@@ -123,7 +125,9 @@
             extAM.forEach(s => flatItems.push({ icon: '⏰', cat: 'Extended AM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
             busAM.forEach(s => flatItems.push({ icon: '🚌', cat: 'Bus AM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
             hgAM.forEach(s => flatItems.push({ icon: '🏠', cat: 'Home Group AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
+            spAM.forEach(s => flatItems.push({ icon: '⭐', cat: 'Specialty AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             classSessions.forEach(s => flatItems.push({ icon: '🏃', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null }));
+            spPM.forEach(s => flatItems.push({ icon: '⭐', cat: 'Specialty PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             hgPM.forEach(s => flatItems.push({ icon: '🏠', cat: 'Home Group PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             busPM.forEach(s => flatItems.push({ icon: '🚌', cat: 'Bus PM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
             extPM.forEach(s => flatItems.push({ icon: '⏰', cat: 'Extended PM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
@@ -257,6 +261,34 @@
         </details>
         <% } %>
 
+        <%/* ── Specialty Camps AM ── */%>
+        <% if (spAM.length > 0) { %>
+        <% const spAMStat = secStat(spAM); %>
+        <details class="att-section" id="section-sp-am" data-section="am-services">
+            <summary>
+                &#11088; Specialty Camps AM
+                <% if (spAMStat) { %><span class="sec-count <%= spAMStat.cls %>"><%= spAMStat.sub %>/<%= spAMStat.tot %></span><% } %>
+            </summary>
+            <div class="att-section-body">
+                <div class="sub-filter-bar">
+                    <button class="sub-pill active" onclick="setSubFilter('section-sp-am','all',this)">All</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-sp-am','pending',this)">Pending</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-sp-am','submitted',this)">Submitted</button>
+                </div>
+                <div class="att-grid">
+                    <% spAM.forEach(function(s) { %>
+                    <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>" data-search="<%= s.label.toLowerCase() %>">
+                        <div class="att-card-label">
+                            <span class="tag <%= s.color %>" style="font-size:0.68rem; padding:1px 7px; margin-right:6px;"><%= s.label.split('—')[0].trim() %></span>
+                        </div>
+                        <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
+                    </a>
+                    <% }); %>
+                </div>
+            </div>
+        </details>
+        <% } %>
+
         <%/* ── Class Periods (clock blocks 1-6) ── */%>
         <% periodOrder.forEach(function(pk) { %>
         <% if (byPeriod[pk]) { %>
@@ -313,6 +345,34 @@
                         <div class="att-card-label">
                             <span class="tag <%= s.color %>" style="font-size:0.68rem; padding:1px 7px; margin-right:6px;"><%= s.color %></span>
                             <%= s.label.split('—')[0].trim() %>
+                        </div>
+                        <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
+                    </a>
+                    <% }); %>
+                </div>
+            </div>
+        </details>
+        <% } %>
+
+        <%/* ── Specialty Camps PM ── */%>
+        <% if (spPM.length > 0) { %>
+        <% const spPMStat = secStat(spPM); %>
+        <details class="att-section" id="section-sp-pm" data-section="pm-services">
+            <summary>
+                &#11088; Specialty Camps PM
+                <% if (spPMStat) { %><span class="sec-count <%= spPMStat.cls %>"><%= spPMStat.sub %>/<%= spPMStat.tot %></span><% } %>
+            </summary>
+            <div class="att-section-body">
+                <div class="sub-filter-bar">
+                    <button class="sub-pill active" onclick="setSubFilter('section-sp-pm','all',this)">All</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-sp-pm','pending',this)">Pending</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-sp-pm','submitted',this)">Submitted</button>
+                </div>
+                <div class="att-grid">
+                    <% spPM.forEach(function(s) { %>
+                    <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>" data-search="<%= s.label.toLowerCase() %>">
+                        <div class="att-card-label">
+                            <span class="tag <%= s.color %>" style="font-size:0.68rem; padding:1px 7px; margin-right:6px;"><%= s.label.split('—')[0].trim() %></span>
                         </div>
                         <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
                     </a>

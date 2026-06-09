@@ -19,8 +19,10 @@ const upload = multer({ dest: 'uploads/', limits: { fileSize: 10 * 1024 * 1024 }
 
 const HOME_GROUP_LABELS = {
     Red: 'Red', Carolina: 'Carolina', Green: 'Green', Navy: 'Navy',
-    Bus: 'Bus', LilPlace: "Li'l Place", KinderPlace: 'Kinder Place', SPLIT: 'SPLIT'
+    Bus: 'Bus', LilPlace: "Li'l Place", KinderPlace: 'Kinder Place', SPLIT: 'SPLIT',
+    SPRC: 'SPRC', Swim: 'Swim Staff'
 };
+const SPECIALTY_CAMP_COLORS = ['LilPlace', 'KinderPlace', 'SPLIT', 'SPRC'];
 
 // Period flip schedules — all times EST (UTC-5), 24-hour format.
 // clockBlock = universal time-block number (1-6 matching Sports period numbering).
@@ -814,7 +816,7 @@ app.get('/audit', (req, res) => {
         SELECT CamperID, FirstName, LastName, HomeGroupColor
         FROM Campers
         WHERE HomeGroupCounselorID IS NULL
-          AND HomeGroupColor NOT IN ('LilPlace', 'KinderPlace', 'SPLIT')
+          AND HomeGroupColor NOT IN ('LilPlace', 'KinderPlace', 'SPLIT', 'SPRC')
           AND HomeGroupColor IS NOT NULL AND HomeGroupColor != ''
         ORDER BY HomeGroupColor, LastName
     `).all();
@@ -1825,7 +1827,7 @@ function getViewerName(req) {
 }
 
 // Sessions that should show the "absent AM" indicator (i.e. everything after homegroup_am)
-const SHOW_AM_INDICATOR = new Set(['class','homegroup_pm','bus_pm','extended_pm']);
+const SHOW_AM_INDICATOR = new Set(['class','homegroup_pm','bus_pm','extended_pm','specialty_pm']);
 
 // --- ATTENDANCE OVERVIEW ---
 app.get('/attendance', (req, res) => {
@@ -1838,11 +1840,13 @@ app.get('/attendance', (req, res) => {
     let allowedClasses = null;
     let counselorBusRoute = null;
     let counselorExtHours = null;
+    let counselorGroupColor = null;
     if (filterCid) {
         const cRow = db.prepare(`
             SELECT c.FirstName, c.LastName,
                    COALESCE(cwa.BusRoute, c.BusRoute) AS BusRoute,
-                   COALESCE(cwa.ExtendedHours, c.ExtendedHours) AS ExtendedHours
+                   COALESCE(cwa.ExtendedHours, c.ExtendedHours) AS ExtendedHours,
+                   COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
             FROM Counselors c
             LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
             WHERE c.CounselorID = ?
@@ -1851,6 +1855,7 @@ app.get('/attendance', (req, res) => {
             selectedCounselorName = `${cRow.FirstName} ${cRow.LastName}`;
             counselorBusRoute = cRow.BusRoute || null;
             counselorExtHours = cRow.ExtendedHours || null;
+            counselorGroupColor = cRow.HomeGroupColor || null;
         }
         const assignments = db.prepare(
             'SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ?'
@@ -1985,6 +1990,35 @@ app.get('/attendance', (req, res) => {
         }
     }
 
+    // Specialty camp sessions — color-based shared view
+    const specialtySessions = [];
+    for (const color of SPECIALTY_CAMP_COLORS) {
+        const total = db.prepare(
+            "SELECT COUNT(*) as n FROM Campers WHERE HomeGroupColor=?"
+        ).get(color)?.n || 0;
+        if (total === 0) continue;
+        const checkSpHandled = db.prepare(`
+            SELECT COUNT(*) as n FROM (
+                SELECT CamperID FROM Attendance
+                WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
+                  AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor=?)
+                UNION
+                SELECT CamperID FROM EarlyDismissals WHERE Date=?
+                  AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor=?)
+            )
+        `);
+        for (const session of ['am', 'pm']) {
+            const sessionType = `specialty_${session}`;
+            const handled = checkSpHandled.get(date, sessionType, color, date, color)?.n || 0;
+            specialtySessions.push({
+                label: `${HOME_GROUP_LABELS[color] || color} — ${session.toUpperCase()}`,
+                color, session,
+                link: `/attendance/specialty/${color}/${session}?date=${date}`,
+                submitted: total > 0 && handled >= total
+            });
+        }
+    }
+
     // Late arrivals count
     const lateCount = db.prepare(
         "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='absent'"
@@ -1994,6 +2028,7 @@ app.get('/attendance', (req, res) => {
     let filteredClassSessions = classSessions;
     let filteredBusSessions = busSessions;
     let filteredExtSessions = extSessions;
+    let filteredSpecialtySessions = specialtySessions;
     if (filterCid) {
         filteredHomegroupSessions = homegroupSessions.filter(s => s.counselorId === filterCid);
         filteredClassSessions = classSessions.filter(s =>
@@ -2007,6 +2042,9 @@ app.get('/attendance', (req, res) => {
             if (counselorExtHours === 'Both') return true;
             return s.session.toUpperCase() === counselorExtHours.toUpperCase();
         });
+        filteredSpecialtySessions = SPECIALTY_CAMP_COLORS.includes(counselorGroupColor)
+            ? specialtySessions.filter(s => s.color === counselorGroupColor)
+            : [];
     }
 
     res.render('attendance-overview', {
@@ -2015,6 +2053,7 @@ app.get('/attendance', (req, res) => {
         classSessions: filteredClassSessions,
         busSessions: filteredBusSessions,
         extSessions: filteredExtSessions,
+        specialtySessions: filteredSpecialtySessions,
         lateCount,
         counselorFilterActive: !!filterCid,
         selectedCounselorName
@@ -2113,6 +2152,53 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
 
     res.render('attendance-form', {
         title: `${color} Group — ${session.toUpperCase()}`,
+        sessionType, date,
+        periodNumber: 0, activityName: '',
+        backLink: `/attendance?date=${date}`,
+        roster
+    });
+});
+
+// --- ATTENDANCE FORM: SPECIALTY CAMP (color-based, shared view) ---
+app.get('/attendance/specialty/:color/:session', (req, res) => {
+    const { color, session } = req.params;
+    const date = req.query.date || todayStr();
+    const sessionType = `specialty_${session}`;
+    const showAmIndicator = SHOW_AM_INDICATOR.has(sessionType);
+
+    const campers = db.prepare(
+        "SELECT * FROM Campers WHERE HomeGroupColor=? ORDER BY LastName, FirstName"
+    ).all(color);
+
+    const absentAMSet = new Set();
+    if (showAmIndicator) {
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='specialty_am' AND Status='absent'")
+            .all(date).forEach(r => absentAMSet.add(r.CamperID));
+    }
+    const dismissedSet = new Set(
+        db.prepare("SELECT CamperID FROM EarlyDismissals WHERE Date=?").all(date).map(r => r.CamperID)
+    );
+    const statusMap = {};
+    db.prepare("SELECT CamperID, Status FROM Attendance WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''")
+        .all(date, sessionType).forEach(r => { statusMap[r.CamperID] = r.Status; });
+
+    const seenEarlierSet = new Set(
+        db.prepare(`SELECT DISTINCT CamperID FROM Attendance
+                    WHERE Date = ? AND Status IN ('present','late')
+                      AND NOT (SessionType = ? AND PeriodNumber = 0 AND ActivityName = '')`)
+            .all(date, sessionType).map(r => r.CamperID)
+    );
+
+    const roster = campers.map(c => ({
+        ...c,
+        currentStatus: statusMap[c.CamperID] || null,
+        absentAM: absentAMSet.has(c.CamperID),
+        dismissed: dismissedSet.has(c.CamperID),
+        seenEarlier: seenEarlierSet.has(c.CamperID)
+    }));
+
+    res.render('attendance-form', {
+        title: `${HOME_GROUP_LABELS[color] || color} — ${session.toUpperCase()}`,
         sessionType, date,
         periodNumber: 0, activityName: '',
         backLink: `/attendance?date=${date}`,
@@ -2502,7 +2588,7 @@ app.post('/auto-assign-homegroups', (req, res) => {
                COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS CurrentColor
         FROM Counselors c
         LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
-        WHERE COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) NOT IN ('Bus','Extended','Swim')
+        WHERE COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) NOT IN ('Bus','Extended','Swim','LilPlace','KinderPlace','SPLIT','SPRC')
            OR COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) IS NULL
     `).all(week);
     const totalCounselors = counselors.length;

@@ -21,7 +21,7 @@ db.exec(`
     CounselorID INTEGER PRIMARY KEY AUTOINCREMENT,
     FirstName TEXT NOT NULL,
     LastName TEXT NOT NULL,
-    HomeGroupColor TEXT CHECK(HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy','Bus','Extended','Swim')),
+    HomeGroupColor TEXT CHECK(HomeGroupColor IN ('Red','Carolina','Green','Navy','Bus','Extended','Swim','LilPlace','KinderPlace','SPLIT','SPRC')),
     ScheduleType TEXT,
     BusRoute TEXT,
     ExtendedHours TEXT CHECK(ExtendedHours IN ('AM', 'PM', 'Both', NULL))
@@ -43,7 +43,7 @@ db.exec(`
     LastName TEXT NOT NULL,
     Age INTEGER,
     -- Fixed typo constraint
-    HomeGroupColor TEXT CHECK(HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')),
+    HomeGroupColor TEXT CHECK(HomeGroupColor IN ('Red','Carolina','Green','Navy','LilPlace','KinderPlace','SPLIT','SPRC')),
     HomeGroupCounselorID INTEGER,
     BusRoute INTEGER,
     ExtendedHours TEXT CHECK(ExtendedHours IN ('AM', 'PM', 'Both', NULL)),

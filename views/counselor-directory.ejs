@@ -28,12 +28,24 @@
                 <input type="text" id="staffSearch" placeholder="Filter by name..." onkeyup="filterStaff()">
                 <select id="groupFilter" onchange="filterStaff()">
                     <option value="all">All Groups</option>
-                    <option value="Red">Red</option>
-                    <option value="Carolina">Carolina</option>
-                    <option value="Green">Green</option>
-                    <option value="Navy">Navy</option>
-                    <option value="__ext_am__">AM Extended</option>
-                    <option value="__ext_pm__">PM Extended</option>
+                    <optgroup label="Home Groups">
+                        <option value="Red">Red</option>
+                        <option value="Carolina">Carolina</option>
+                        <option value="Green">Green</option>
+                        <option value="Navy">Navy</option>
+                    </optgroup>
+                    <optgroup label="Specialty Camps">
+                        <option value="LilPlace">Li'l Place</option>
+                        <option value="KinderPlace">Kinder Place</option>
+                        <option value="SPLIT">SPLIT</option>
+                        <option value="SPRC">SPRC</option>
+                    </optgroup>
+                    <optgroup label="Support Roles">
+                        <option value="Bus">Bus</option>
+                        <option value="Swim">Swim Staff</option>
+                        <option value="__ext_am__">AM Extended</option>
+                        <option value="__ext_pm__">PM Extended</option>
+                    </optgroup>
                 </select>
             </div>
         </header>
