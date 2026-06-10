@@ -640,6 +640,12 @@ try {
     if (!cwaCols.includes('SpecialtyGroup')) db.exec("ALTER TABLE CounselorWeekAttributes ADD COLUMN SpecialtyGroup TEXT");
 } catch(e) { console.error('[migration] CounselorWeekAttributes.SpecialtyGroup:', e.message); }
 
+try {
+    const cCols = db.prepare("PRAGMA table_info(Counselors)").all().map(c => c.name);
+    if (!cCols.includes('Phone')) db.exec("ALTER TABLE Counselors ADD COLUMN Phone TEXT");
+    if (!cCols.includes('Email')) db.exec("ALTER TABLE Counselors ADD COLUMN Email TEXT");
+} catch(e) { console.error('[migration] Counselors.Phone/Email:', e.message); }
+
 // Migrate Staff rows into Counselors (one-time; skips if already present by name)
 try {
     const staffRows = db.prepare("SELECT * FROM Staff").all();
@@ -1035,7 +1041,7 @@ app.get('/master-schedule', (req, res) => {
             "SELECT COUNT(*) as n FROM Schedules WHERE PersonType = 'Camper' AND PeriodNumber = ? AND ActivityName = ?"
         );
         const getStaff = db.prepare(`
-            SELECT st.FirstName, st.LastName, st.StaffRole AS StaffType
+            SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
             FROM Counselors st JOIN Schedules s ON st.CounselorID = s.PersonID AND s.PersonType = 'Instructor'
             WHERE s.PeriodNumber = ? AND s.ActivityName = ?
         `);
@@ -1118,7 +1124,7 @@ app.get('/class-roster/:period/:activity', (req, res) => {
         ).get(activityName, period);
 
         const staff = db.prepare(`
-            SELECT st.FirstName, st.LastName, st.StaffRole AS StaffType
+            SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
             FROM Counselors st JOIN Schedules s ON st.CounselorID = s.PersonID AND s.PersonType = 'Instructor'
             WHERE s.PeriodNumber = ? AND s.ActivityName = ?
         `).all(period, activityName);
@@ -1199,29 +1205,7 @@ app.get('/counselor-directory', (req, res) => {
     res.render('counselor-directory', { counselors });
 });
 
-app.get('/staff-lookup', (req, res) => {
-    const query = req.query.name || '';
-    const staff = db.prepare(`
-        SELECT st.CounselorID AS StaffID, st.FirstName, st.LastName, st.StaffRole AS StaffType, st.HomeGroupColor,
-            s1.ActivityName AS P1, s1.Location AS L1,
-            s2.ActivityName AS P2, s2.Location AS L2,
-            s3.ActivityName AS P3, s3.Location AS L3,
-            s4.ActivityName AS P4, s4.Location AS L4,
-            s5.ActivityName AS P5, s5.Location AS L5,
-            s6.ActivityName AS P6, s6.Location AS L6
-        FROM Counselors st
-        LEFT JOIN Schedules s1 ON st.CounselorID = s1.PersonID AND s1.PersonType = 'Instructor' AND s1.PeriodNumber = 1
-        LEFT JOIN Schedules s2 ON st.CounselorID = s2.PersonID AND s2.PersonType = 'Instructor' AND s2.PeriodNumber = 2
-        LEFT JOIN Schedules s3 ON st.CounselorID = s3.PersonID AND s3.PersonType = 'Instructor' AND s3.PeriodNumber = 3
-        LEFT JOIN Schedules s4 ON st.CounselorID = s4.PersonID AND s4.PersonType = 'Instructor' AND s4.PeriodNumber = 4
-        LEFT JOIN Schedules s5 ON st.CounselorID = s5.PersonID AND s5.PersonType = 'Instructor' AND s5.PeriodNumber = 5
-        LEFT JOIN Schedules s6 ON st.CounselorID = s6.PersonID AND s6.PersonType = 'Instructor' AND s6.PeriodNumber = 6
-        WHERE st.StaffRole IN ('Instructor','Unit Leader','Sports Leader')
-          AND ((st.FirstName || ' ' || st.LastName LIKE ?) OR (? = ''))
-        ORDER BY st.StaffRole, st.LastName, st.FirstName
-    `).all(`%${query}%`, query);
-    res.render('staff-lookup', { staff, query });
-});
+app.get('/staff-lookup', (req, res) => res.redirect('/counselor-directory'));
 
 app.get('/faculty-summer', (req, res) => {
     const allStaff = db.prepare(`
@@ -1269,15 +1253,26 @@ app.get('/faculty-summer', (req, res) => {
 app.get('/counselor-profile/:id', (req, res) => {
     const aw = getActiveWeek();
     const counselor = db.prepare(`
-        SELECT c.*, COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor,
-               COALESCE(cwa.ScheduleType, c.ScheduleType) AS ScheduleType
+        SELECT c.*,
+               COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor,
+               COALESCE(cwa.ScheduleType,   c.ScheduleType)   AS ScheduleType,
+               COALESCE(cwa.BusRoute,       c.BusRoute)       AS BusRoute,
+               COALESCE(cwa.ExtendedHours,  c.ExtendedHours)  AS ExtendedHours
         FROM Counselors c
         LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
         WHERE c.CounselorID = ?
     `).get(aw, req.params.id);
-    const schedule = db.prepare("SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ? ORDER BY PeriodNumber ASC").all(req.params.id, aw);
-    const campers = getWeekCampersForCounselor(parseInt(req.params.id), aw);
-    res.render('counselor-view', { counselor, schedule, campers });
+    if (!counselor) return res.status(404).send('Staff member not found');
+    const isCounselor = counselor.StaffRole === 'Counselor' || counselor.StaffRole === 'Swim Counselor';
+    const isInstructor = ['Instructor','Unit Leader','Sports Leader'].includes(counselor.StaffRole);
+    const schedule = isCounselor
+        ? db.prepare("SELECT PeriodNumber, ActivityName, NULL AS Location FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ? ORDER BY PeriodNumber ASC").all(req.params.id, aw)
+        : [];
+    const instructorSchedule = isInstructor
+        ? db.prepare("SELECT PeriodNumber, ActivityName, Location FROM Schedules WHERE PersonID = ? AND PersonType = 'Instructor' ORDER BY PeriodNumber ASC").all(req.params.id)
+        : [];
+    const campers = isCounselor ? getWeekCampersForCounselor(parseInt(req.params.id), aw) : [];
+    res.render('counselor-view', { counselor, schedule, instructorSchedule, campers });
 });
 
 app.get('/camper/:id', (req, res) => {

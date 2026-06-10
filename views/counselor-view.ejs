@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Counselor: <%= counselor.FirstName %> <%= counselor.LastName %> | Camp Hub</title>
+    <title>Staff Profile: <%= counselor.FirstName %> <%= counselor.LastName %> | Camp Hub</title>
     <link rel="stylesheet" href="/css/style.css">
     <script src="/js/nav.js" defer></script>
 </head>
@@ -12,66 +12,85 @@
 <body>
 
     <nav class="nav-bar">
-        <a href="/counselor-directory" class="nav-btn">⬅ Back to Counselor Directory</a>
+        <a href="/counselor-directory" class="nav-btn">&#8592; Back to Staff Directory</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
     </nav>
 
+    <%
+        const COUNSELOR_ROLES = ['Counselor', 'Swim Counselor'];
+        const INSTRUCTOR_ROLES = ['Instructor', 'Unit Leader', 'Sports Leader'];
+        const CONTACT_ROLES = ['Director', 'Nurse', 'Equipment Manager'];
+        const MAIN_CAMP_COLORS = ['Red', 'Carolina', 'Green', 'Navy'];
+        const isCounselor   = COUNSELOR_ROLES.includes(counselor.StaffRole);
+        const isInstructor  = INSTRUCTOR_ROLES.includes(counselor.StaffRole);
+        const isContactRole = CONTACT_ROLES.includes(counselor.StaffRole);
+        const isMainCamp    = MAIN_CAMP_COLORS.includes(counselor.HomeGroupColor);
+    %>
+
     <div class="profile-container">
         <header class="counselor-header">
-            <span class="tag <%= counselor.HomeGroupColor %>"
-                style="background: white; color: var(--primary); font-weight: 800;">
-                <%= counselor.HomeGroupColor %> Group
-            </span>
-            <h1 style="margin: 15px 0 5px 0; font-size: 2.5rem;">
-                <%= counselor.FirstName %>
-                    <%= counselor.LastName %>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">
+                <% if (counselor.HomeGroupColor) { %>
+                <span class="tag <%= counselor.HomeGroupColor %>"
+                    style="background: white; color: var(--primary); font-weight: 800;">
+                    <%= counselor.HomeGroupColor %> Group
+                </span>
+                <% } %>
+                <span style="font-size:0.78rem; background:#e2e8f0; color:#475569; padding:3px 10px; border-radius:10px; font-weight:600;">
+                    <%= counselor.StaffRole || 'Staff' %>
+                </span>
+            </div>
+            <h1 style="margin: 8px 0 5px 0; font-size: 2.5rem;">
+                <%= counselor.FirstName %> <%= counselor.LastName %>
             </h1>
 
+            <% if (isCounselor) { %>
             <div class="duty-strip">
                 <div class="duty-box">
-                    <small>🚌 Bus Route</small>
-                    <strong>
-                        <%= counselor.BusRoute || 'Parent' %>
-                    </strong>
+                    <small>&#128652; Bus Route</small>
+                    <strong><%= counselor.BusRoute || 'Parent' %></strong>
                 </div>
                 <div class="duty-box">
-                    <small>⏰ Extended Care</small>
-                    <strong>
-                        <%= counselor.ExtendedHours || 'None' %>
-                    </strong>
+                    <small>&#9200; Extended Care</small>
+                    <strong><%= counselor.ExtendedHours || 'None' %></strong>
                 </div>
+                <% if (isMainCamp) { %>
                 <div class="duty-box">
-                    <small>📋 Schedule Type</small>
-                    <strong>
-                        <%= counselor.ScheduleType %>
-                    </strong>
+                    <small>&#128203; Schedule Type</small>
+                    <strong><%= counselor.ScheduleType || '—' %></strong>
                 </div>
+                <% } %>
             </div>
+            <% } %>
         </header>
 
         <div class="dashboard-layout">
+
+            <%# Daily Assignments — Counselors use CounselorWeekSchedules; Instructors use Schedules table %>
+            <% if (isCounselor || isInstructor) { %>
             <section>
                 <h3 style="margin-bottom: 20px;">Daily Assignments</h3>
                 <div class="schedule-list">
-                    <% if (schedule.length> 0) { %>
-                        <% schedule.forEach(s=> { %>
+                    <%
+                        const displaySchedule = isCounselor ? schedule : instructorSchedule;
+                    %>
+                    <% if (displaySchedule.length > 0) { %>
+                        <% displaySchedule.forEach(s => { %>
                             <div class="schedule-card">
-                                <small style="color: var(--primary); font-weight: 700;">PERIOD <%= s.PeriodNumber %>
-                                        </small>
-                                <div style="font-weight: 600; margin: 4px 0;">
-                                    <%= s.ActivityName %>
-                                </div>
-                                <div style="font-size: 0.85rem; color: #64748b;">📍 <%= s.Location || 'Main Field' %>
-                                </div>
+                                <small style="color: var(--primary); font-weight: 700;">PERIOD <%= s.PeriodNumber %></small>
+                                <div style="font-weight: 600; margin: 4px 0;"><%= s.ActivityName %></div>
+                                <div style="font-size: 0.85rem; color: #64748b;">&#128205; <%= s.Location || 'Main Field' %></div>
                             </div>
-                            <% }) %>
-                                <% } else { %>
-                                    <p class="card" style="text-align: center; color: var(--text-muted);">No assigned
-                                        classes.</p>
-                                    <% } %>
+                        <% }) %>
+                    <% } else { %>
+                        <p class="card" style="text-align: center; color: var(--text-muted);">No assigned classes.</p>
+                    <% } %>
                 </div>
             </section>
+            <% } %>
 
+            <%# Group Roster — Counselors only %>
+            <% if (isCounselor) { %>
             <section class="roster-card-cv">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h3 style="margin: 0;">Group Roster</h3>
@@ -90,49 +109,61 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <% if (campers.length> 0) { %>
-                            <% campers.forEach(camper=> { %>
+                        <% if (campers.length > 0) { %>
+                            <% campers.forEach(camper => { %>
                                 <tr>
                                     <td>
                                         <a href="/search?name=<%= encodeURIComponent(camper.FirstName + ' ' + camper.LastName) %>"
                                            style="text-decoration: none; color: var(--primary); font-weight: 500;">
-                                            <%= camper.FirstName %>
-                                            <%= camper.LastName %>
+                                            <%= camper.FirstName %> <%= camper.LastName %>
                                         </a>
                                     </td>
+                                    <td><%= camper.Grade %></td>
+                                    <td><small><%= camper.BusRoute ? '&#128652; ' + camper.BusRoute : 'Parent' %></small></td>
                                     <td>
-                                        <%= camper.Grade %>
-                                    </td>
-                                    <td><small>
-                                            <%= camper.BusRoute ? '🚌 ' + camper.BusRoute : 'Parent' %>
-                                        </small></td>
-                                    <td>
-                                        <% if (camper.ExtendedHours==='Both' ) { %>
-                                            <span class="tag"
-                                                style="background: #dcfce7; color: #166534; font-size: 0.7rem;">AM &
-                                                PM</span>
-                                            <% } else if (camper.ExtendedHours) { %>
-                                                <span class="tag"
-                                                    style="background: #fef9c3; color: #854d0e; font-size: 0.7rem;">
-                                                    <%= camper.ExtendedHours %>
-                                                </span>
-                                                <% } else { %>
-                                                    <span style="color: #cbd5e1; font-size: 0.8rem;">None</span>
-                                                    <% } %>
+                                        <% if (camper.ExtendedHours === 'Both') { %>
+                                            <span class="tag" style="background: #dcfce7; color: #166534; font-size: 0.7rem;">AM &amp; PM</span>
+                                        <% } else if (camper.ExtendedHours) { %>
+                                            <span class="tag" style="background: #fef9c3; color: #854d0e; font-size: 0.7rem;"><%= camper.ExtendedHours %></span>
+                                        <% } else { %>
+                                            <span style="color: #cbd5e1; font-size: 0.8rem;">None</span>
+                                        <% } %>
                                     </td>
                                 </tr>
-                                <% }) %>
-                                    <% } else { %>
-                                        <tr>
-                                            <td colspan="4"
-                                                style="text-align: center; padding: 40px; color: var(--text-muted); font-style: italic;">
-                                                No campers assigned to this group yet.
-                                            </td>
-                                        </tr>
-                                        <% } %>
+                            <% }) %>
+                        <% } else { %>
+                            <tr>
+                                <td colspan="4" style="text-align: center; padding: 40px; color: var(--text-muted); font-style: italic;">
+                                    No campers assigned to this group yet.
+                                </td>
+                            </tr>
+                        <% } %>
                     </tbody>
                 </table>
             </section>
+            <% } %>
+
+            <%# Contact section — Directors, Nurses, Equipment Managers %>
+            <% if (isContactRole && (counselor.Phone || counselor.Email)) { %>
+            <section>
+                <h3 style="margin-bottom: 20px;">Contact</h3>
+                <div class="duty-strip">
+                    <% if (counselor.Phone) { %>
+                    <div class="duty-box">
+                        <small>&#128222; Phone</small>
+                        <strong><a href="tel:<%= counselor.Phone %>" style="color:inherit;text-decoration:none;"><%= counselor.Phone %></a></strong>
+                    </div>
+                    <% } %>
+                    <% if (counselor.Email) { %>
+                    <div class="duty-box">
+                        <small>&#9993; Email</small>
+                        <strong><a href="mailto:<%= counselor.Email %>" style="color:inherit;text-decoration:none;"><%= counselor.Email %></a></strong>
+                    </div>
+                    <% } %>
+                </div>
+            </section>
+            <% } %>
+
         </div>
     </div>
 </body>
