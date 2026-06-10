@@ -22,7 +22,7 @@ const HOME_GROUP_LABELS = {
     Bus: 'Bus', LilPlace: "Li'l Place", KinderPlace: 'Kinder Place', SPLIT: 'SPLIT',
     SPRC: 'SPRC', Swim: 'Swim Staff'
 };
-const SPECIALTY_CAMP_COLORS = ['LilPlace', 'KinderPlace', 'SPLIT', 'SPRC'];
+const SPECIALTY_CAMP_COLORS = ['LilPlace', 'KinderPlace', 'SPLIT', 'SPRC', 'Swim'];
 
 // Period flip schedules — all times EST (UTC-5), 24-hour format.
 // clockBlock = universal time-block number (1-6 matching Sports period numbering).
@@ -634,6 +634,11 @@ try {
     const counsCols = db.prepare("PRAGMA table_info(Counselors)").all().map(c => c.name);
     if (!counsCols.includes('StaffRole')) db.exec("ALTER TABLE Counselors ADD COLUMN StaffRole TEXT DEFAULT 'Counselor'");
 } catch(e) { console.error('[migration] Counselors.StaffRole:', e.message); }
+
+try {
+    const cwaCols = db.prepare("PRAGMA table_info(CounselorWeekAttributes)").all().map(c => c.name);
+    if (!cwaCols.includes('SpecialtyGroup')) db.exec("ALTER TABLE CounselorWeekAttributes ADD COLUMN SpecialtyGroup TEXT");
+} catch(e) { console.error('[migration] CounselorWeekAttributes.SpecialtyGroup:', e.message); }
 
 // Migrate Staff rows into Counselors (one-time; skips if already present by name)
 try {
@@ -2755,15 +2760,37 @@ app.get('/counselor-scheduling', (req, res) => {
     `).all(planWeek);
 
     // Counselors with week-specific attributes (fall back to Counselors table)
-    const counselors = db.prepare(`
-        SELECT c.CounselorID, c.FirstName, c.LastName,
+    // Only Counselor and Swim Counselor roles — not Instructors, Unit Leaders, etc.
+    const allCounselors = db.prepare(`
+        SELECT c.CounselorID, c.FirstName, c.LastName, c.StaffRole,
                COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor,
                COALESCE(cwa.BusRoute,       c.BusRoute)       AS BusRoute,
-               COALESCE(cwa.ScheduleType,   c.ScheduleType)   AS ScheduleType
+               COALESCE(cwa.ScheduleType,   c.ScheduleType)   AS ScheduleType,
+               COALESCE(cwa.ExtendedHours,  c.ExtendedHours)  AS ExtendedHours,
+               cwa.SpecialtyGroup
         FROM Counselors c
         LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
+        WHERE c.StaffRole IN ('Counselor', 'Swim Counselor')
         ORDER BY c.LastName, c.FirstName
     `).all(planWeek);
+
+    const SPECIALTY_SET = new Set(SPECIALTY_CAMP_COLORS);
+    // Auto-set HomeGroupColor for Swim Counselors who don't have it yet
+    for (const c of allCounselors) {
+        if (c.StaffRole === 'Swim Counselor' && !c.HomeGroupColor) c.HomeGroupColor = 'Swim';
+    }
+    const mainCounselors      = allCounselors.filter(c => !SPECIALTY_SET.has(c.HomeGroupColor) || c.SpecialtyGroup);
+    const specialtyCounselors = [];
+    for (const c of allCounselors) {
+        if (SPECIALTY_SET.has(c.HomeGroupColor)) {
+            specialtyCounselors.push(c);
+        } else if (c.SpecialtyGroup) {
+            // Dual-assigned: also appears in specialty section with specialty color
+            specialtyCounselors.push({ ...c, HomeGroupColor: c.SpecialtyGroup, _dualAssigned: true });
+        }
+    }
+    // Keep counselors array as all for backwards-compat with availability/assignment logic below
+    const counselors = allCounselors;
 
     const availability = {};
     const staffAvailability = {};
@@ -2845,7 +2872,7 @@ app.get('/counselor-scheduling', (req, res) => {
         ActivityPreferences: JSON.parse(p.ActivityPreferences || '[]')
     }));
 
-    res.render('counselor-scheduling', { offerings, counselors, availability, staffAvailability, existingAssignments, alertMessage, camperCounts, preferences, sessions, planWeek });
+    res.render('counselor-scheduling', { offerings, counselors, mainCounselors, specialtyCounselors, availability, staffAvailability, existingAssignments, alertMessage, camperCounts, preferences, sessions, planWeek });
 });
 
 app.post('/auto-assign-homegroups', (req, res) => {
@@ -2859,14 +2886,14 @@ app.post('/auto-assign-homegroups', (req, res) => {
     const camperCounts = Object.fromEntries(camperRows.map(r => [r.HomeGroupColor, r.n]));
     const totalCampers = Object.values(camperCounts).reduce((a, b) => a + b, 0);
 
-    // Only standard Counselors with main-camp colors are eligible for homegroup auto-assign
+    // Cabinizer: only counselors already explicitly assigned to a main camp color are reshuffled
     const counselors = db.prepare(`
         SELECT c.CounselorID,
                COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS CurrentColor
         FROM Counselors c
         LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
         WHERE c.StaffRole = 'Counselor'
-          AND COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) NOT IN ('LilPlace','KinderPlace','SPLIT','SPRC')
+          AND COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) IN ('Red','Carolina','Green','Navy')
     `).all(week);
     const totalCounselors = counselors.length;
 
@@ -2914,12 +2941,31 @@ app.post('/auto-assign-homegroups', (req, res) => {
 });
 
 app.post('/save-counselor-group-assignments', (req, res) => {
-    const { counselors } = req.body;
+    const { counselors, weekNumber } = req.body;
     if (!Array.isArray(counselors)) return res.status(400).json({ error: 'Invalid payload' });
-    const update = db.prepare('UPDATE Counselors SET HomeGroupColor = ?, BusRoute = ?, ScheduleType = ? WHERE CounselorID = ?');
+    const week = parseInt(weekNumber) || getActiveWeek();
+    const upsert = db.prepare(`
+        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours, SpecialtyGroup)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET
+            HomeGroupColor = excluded.HomeGroupColor,
+            ScheduleType   = excluded.ScheduleType,
+            BusRoute       = excluded.BusRoute,
+            ExtendedHours  = excluded.ExtendedHours,
+            SpecialtyGroup = excluded.SpecialtyGroup
+    `);
     db.transaction(list => {
         for (const c of list) {
-            if (c.counselorID) update.run(c.homeGroupColor || null, c.busRoute || null, c.scheduleType || null, c.counselorID);
+            if (!c.counselorID) continue;
+            upsert.run(
+                c.counselorID,
+                week,
+                c.homeGroupColor || null,
+                c.scheduleType   || null,
+                c.busRoute       || null,
+                c.extendedHours  || null,
+                c.specialtyGroup || null
+            );
         }
     })(counselors);
     res.json({ ok: true });
