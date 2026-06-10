@@ -327,15 +327,26 @@
                             </div>
 
                             <div class="upload-section">
-                                <h4>Camper Rosters</h4>
+                                <h4>Camper Roster (ACR-005)</h4>
                                 <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">
-                                    <strong>Required CSV Headers:</strong><br>
-                                    FirstName, LastName, Age, HomeGroupColor, HomeGroupCounselor, BusRoute,
-                                    ExtendedHours, CampLunch, P1, P2, P3, P4, P5
+                                    Export the <strong>ACR-005</strong> report from camp management (any week).
+                                    Creates and updates campers: name, color group, lunch, shirt size.
                                 </p>
                                 <form action="/upload-campers" method="POST" enctype="multipart/form-data">
                                     <input type="file" name="file" accept=".csv" required>
-                                    <button type="submit" class="btn primary btn-small">Import Campers</button>
+                                    <button type="submit" class="btn primary btn-small">Import Roster</button>
+                                </form>
+                            </div>
+
+                            <div class="upload-section">
+                                <h4>Master Schedule</h4>
+                                <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">
+                                    Export the <strong>Master Schedule</strong> report from camp management.
+                                    Enriches existing campers with grade, bus route, extended hours, and activity schedule.
+                                </p>
+                                <form action="/upload-campers-schedule" method="POST" enctype="multipart/form-data">
+                                    <input type="file" name="file" accept=".csv" required>
+                                    <button type="submit" class="btn primary btn-small">Import Schedule</button>
                                 </form>
 
                                 <form action="/clear-campers" method="POST" onsubmit="return confirm('Delete ALL campers?');" style="margin-top: 10px;">

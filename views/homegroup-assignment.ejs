@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assign Homegroups | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .hga-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 24px; }
+        .hga-group-section { margin-bottom: 28px; }
+        .hga-group-header {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 16px; border-radius: 10px 10px 0 0;
+            font-weight: 700; font-size: 0.95rem; background: #f1f5f9;
+            border: 1px solid var(--border-color);
+        }
+        .hga-group-stats { font-size: 0.78rem; font-weight: 400; color: var(--text-muted); }
+        .hga-counselor-block {
+            border: 1px solid var(--border-color); border-top: none;
+            padding: 14px 16px; background: white;
+        }
+        .hga-counselor-block:last-child { border-radius: 0 0 10px 10px; }
+        .hga-counselor-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+        .hga-counselor-name { font-weight: 600; font-size: 0.9rem; min-width: 140px; }
+        .hga-progress { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
+        .hga-progress.full { color: #16a34a; font-weight: 600; }
+        .hga-slots { display: flex; flex-wrap: wrap; gap: 6px; }
+        .hga-slot {
+            padding: 4px 8px; border: 1px solid var(--border-color);
+            border-radius: 6px; font-size: 0.82rem; font-family: inherit;
+            background: white; min-width: 160px; max-width: 220px;
+        }
+        .hga-slot option:disabled { color: #bbb; }
+        .hga-unassigned-bar {
+            padding: 8px 16px; border: 1px solid var(--border-color); border-top: 1px dashed #e2e8f0;
+            background: #fafafa; border-radius: 0 0 10px 10px;
+            font-size: 0.78rem; color: var(--text-muted);
+        }
+        .mirror-row { display: flex; align-items: center; gap: 8px; }
+        .mirror-row select { padding: 5px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.82rem; }
+        .save-toast {
+            position: fixed; bottom: 24px; right: 24px;
+            background: #16a34a; color: white; padding: 10px 20px;
+            border-radius: 8px; font-size: 0.88rem; display: none; z-index: 999;
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/counselor-scheduling" class="nav-btn">&#128197; Scheduling</a>
+        <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
+        <a href="/homegroup-assignment" class="nav-btn primary">&#128101; Homegroups</a>
+        <a href="/settings" class="nav-btn">&#9881;&#65039; Settings</a>
+    </nav>
+
+    <div class="container-xl">
+
+        <div class="page-header" style="margin-bottom:16px;">
+            <div>
+                <h1 style="margin:0;">Assign Homegroups</h1>
+                <p class="text-muted" style="margin:4px 0 0;">Assign campers to their counselor for each week. Slots = group size &divide; counselors (rounded).</p>
+            </div>
+        </div>
+
+        <!-- Week selector -->
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:20px; flex-wrap:wrap;">
+            <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">Week:</span>
+            <% sessions.forEach(s => { %>
+            <a href="/homegroup-assignment?week=<%= s.weekNumber %>"
+               class="btn btn-small"
+               style="<%= s.weekNumber === week ? 'background:var(--primary);color:white;border-color:var(--primary);' : 'background:#f1f5f9;color:var(--text);' %> text-decoration:none; font-size:0.8rem;">
+                <%= s.label %><% if (s.isActive) { %>&nbsp;&#9733;<% } %>
+            </a>
+            <% }); %>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="hga-toolbar">
+            <div class="mirror-row">
+                <span style="font-size:0.82rem; font-weight:600;">Mirror from</span>
+                <select id="mirrorWeekSelect">
+                    <% sessions.forEach(s => { if (s.weekNumber !== week) { %>
+                    <option value="<%= s.weekNumber %>"><%= s.label %></option>
+                    <% } }); %>
+                </select>
+                <button class="btn btn-small" onclick="mirrorWeek()">Mirror</button>
+            </div>
+            <button class="btn btn-small" onclick="autoFillAll()">Auto-Fill All</button>
+            <button class="btn primary btn-small" onclick="saveAll()">Save All</button>
+        </div>
+
+        <div id="hgaContent"></div>
+
+    </div>
+
+    <div class="save-toast" id="saveToast">Saved!</div>
+
+    <script>
+        const WEEK       = <%- week %>;
+        const COUNSELORS = <%- JSON.stringify(counselors) %>;
+        const CAMPERS    = <%- JSON.stringify(campers) %>;
+
+        const COLORS = ['Red', 'Carolina', 'Green', 'Navy'];
+        const COLOR_LABELS = { Red: 'Red', Carolina: 'Carolina', Green: 'Green', Navy: 'Navy' };
+
+        // assignments: { counselorId (str) -> Set<camperId (num)> }
+        const assignments = {};
+        for (const c of COUNSELORS) {
+            assignments[c.CounselorID] = new Set();
+        }
+        // Pre-populate from server data
+        for (const cam of CAMPERS) {
+            if (cam.AssignedCounselorID && assignments[cam.AssignedCounselorID] !== undefined) {
+                assignments[cam.AssignedCounselorID].add(cam.CamperID);
+            }
+        }
+
+        // Group counselors and campers by color
+        const counselorsByColor = {};
+        const campersByColor = {};
+        for (const color of COLORS) {
+            counselorsByColor[color] = COUNSELORS.filter(c => c.HomeGroupColor === color);
+            campersByColor[color]    = CAMPERS.filter(c => c.HomeGroupColor === color);
+        }
+
+        function buildUI() {
+            const container = document.getElementById('hgaContent');
+            container.innerHTML = '';
+
+            for (const color of COLORS) {
+                const counselors = counselorsByColor[color];
+                const campers    = campersByColor[color];
+                if (counselors.length === 0 && campers.length === 0) continue;
+
+                const target = counselors.length > 0
+                    ? Math.round(campers.length / counselors.length)
+                    : 0;
+
+                const section = document.createElement('div');
+                section.className = 'hga-group-section';
+                section.dataset.color = color;
+
+                // Header
+                const header = document.createElement('div');
+                header.className = 'hga-group-header';
+                header.innerHTML = `
+                    <span class="tag ${color}" style="font-size:0.78rem;">${COLOR_LABELS[color]}</span>
+                    <span class="hga-group-stats">${counselors.length} counselors &bull; ${campers.length} campers &bull; ~${target} slots each</span>
+                    <span id="unassigned-count-${color}" class="hga-group-stats" style="margin-left:auto;"></span>
+                `;
+                section.appendChild(header);
+
+                // Counselor blocks
+                for (const co of counselors) {
+                    const block = buildCounselorBlock(co, campers, target, color);
+                    section.appendChild(block);
+                }
+
+                container.appendChild(section);
+                updateUnassignedCount(color);
+            }
+        }
+
+        function buildCounselorBlock(co, campers, target, color) {
+            const block = document.createElement('div');
+            block.className = 'hga-counselor-block';
+            block.dataset.counselorId = co.CounselorID;
+            block.dataset.color = color;
+
+            const assigned = [...(assignments[co.CounselorID] || new Set())];
+            const slotCount = Math.max(target, assigned.length);
+
+            const row = document.createElement('div');
+            row.className = 'hga-counselor-row';
+
+            const nameEl = document.createElement('span');
+            nameEl.className = 'hga-counselor-name';
+            nameEl.textContent = `${co.FirstName} ${co.LastName}`;
+            row.appendChild(nameEl);
+
+            const progressEl = document.createElement('span');
+            progressEl.className = 'hga-progress';
+            progressEl.id = `progress-${co.CounselorID}`;
+            row.appendChild(progressEl);
+
+            block.appendChild(row);
+
+            const slotsEl = document.createElement('div');
+            slotsEl.className = 'hga-slots';
+            slotsEl.id = `slots-${co.CounselorID}`;
+
+            for (let i = 0; i < slotCount; i++) {
+                const sel = buildSlotSelect(co.CounselorID, campers, color, assigned[i] || null);
+                slotsEl.appendChild(sel);
+            }
+
+            block.appendChild(slotsEl);
+            updateProgress(co.CounselorID, target);
+            return block;
+        }
+
+        function buildSlotSelect(counselorId, campers, color, selectedCamperId) {
+            const sel = document.createElement('select');
+            sel.className = 'hga-slot';
+            sel.dataset.counselorId = counselorId;
+            sel.dataset.prevValue = selectedCamperId || '';
+
+            const emptyOpt = document.createElement('option');
+            emptyOpt.value = '';
+            emptyOpt.textContent = '— Unassigned —';
+            sel.appendChild(emptyOpt);
+
+            for (const cam of campers) {
+                const opt = document.createElement('option');
+                opt.value = cam.CamperID;
+                opt.textContent = `${cam.LastName}, ${cam.FirstName}`;
+                if (cam.CamperID === selectedCamperId) opt.selected = true;
+                sel.appendChild(opt);
+            }
+
+            sel.addEventListener('change', function() {
+                const oldId = this.dataset.prevValue ? parseInt(this.dataset.prevValue) : null;
+                const newId = this.value ? parseInt(this.value) : null;
+                const cid   = parseInt(this.dataset.counselorId);
+
+                if (oldId) assignments[cid].delete(oldId);
+                if (newId) {
+                    // Remove from any other counselor first
+                    for (const key of Object.keys(assignments)) {
+                        if (parseInt(key) !== cid) assignments[key].delete(newId);
+                    }
+                    assignments[cid].add(newId);
+                }
+                this.dataset.prevValue = this.value;
+
+                refreshTakenState(color);
+                updateProgress(cid, getTarget(color));
+                updateUnassignedCount(color);
+            });
+
+            return sel;
+        }
+
+        function getTarget(color) {
+            const c = counselorsByColor[color].length;
+            const p = campersByColor[color].length;
+            return c > 0 ? Math.round(p / c) : 0;
+        }
+
+        function refreshTakenState(color) {
+            // Collect all camperIds assigned to ANY counselor in this color group
+            const takenIds = new Set();
+            for (const co of counselorsByColor[color]) {
+                for (const id of (assignments[co.CounselorID] || [])) takenIds.add(id);
+            }
+
+            // Update disabled state on all slots in this color group
+            document.querySelectorAll(`.hga-counselor-block[data-color="${color}"] .hga-slot`).forEach(sel => {
+                const ownVal = sel.value ? parseInt(sel.value) : null;
+                for (const opt of sel.options) {
+                    if (!opt.value) continue;
+                    const id = parseInt(opt.value);
+                    opt.disabled = takenIds.has(id) && id !== ownVal;
+                }
+            });
+        }
+
+        function updateProgress(counselorId, target) {
+            const count = (assignments[counselorId] || new Set()).size;
+            const el = document.getElementById(`progress-${counselorId}`);
+            if (!el) return;
+            el.textContent = `${count} / ${target}`;
+            el.className = 'hga-progress' + (count >= target ? ' full' : '');
+        }
+
+        function updateUnassignedCount(color) {
+            const takenIds = new Set();
+            for (const co of counselorsByColor[color]) {
+                for (const id of (assignments[co.CounselorID] || [])) takenIds.add(id);
+            }
+            const unassigned = campersByColor[color].filter(c => !takenIds.has(c.CamperID)).length;
+            const el = document.getElementById(`unassigned-count-${color}`);
+            if (el) el.textContent = unassigned > 0 ? `${unassigned} unassigned` : 'All assigned';
+        }
+
+        function autoFillAll() {
+            for (const color of COLORS) {
+                const counselors = counselorsByColor[color];
+                const campers    = campersByColor[color];
+                if (counselors.length === 0) continue;
+
+                // Collect unassigned campers for this color
+                const takenIds = new Set();
+                for (const co of counselors) {
+                    for (const id of (assignments[co.CounselorID] || [])) takenIds.add(id);
+                }
+                const unassigned = campers.filter(c => !takenIds.has(c.CamperID));
+                // Shuffle
+                for (let i = unassigned.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [unassigned[i], unassigned[j]] = [unassigned[j], unassigned[i]];
+                }
+
+                const target = getTarget(color);
+
+                // Distribute round-robin into empty slots
+                let camperQueue = [...unassigned];
+                for (let pass = 0; pass < target && camperQueue.length > 0; pass++) {
+                    for (const co of counselors) {
+                        if (camperQueue.length === 0) break;
+                        const current = assignments[co.CounselorID] || new Set();
+                        if (current.size <= pass) {
+                            const cam = camperQueue.shift();
+                            current.add(cam.CamperID);
+                            assignments[co.CounselorID] = current;
+                        }
+                    }
+                }
+            }
+            buildUI();
+        }
+
+        function saveAll() {
+            const pairs = [];
+            for (const [counselorId, camperSet] of Object.entries(assignments)) {
+                for (const camperId of camperSet) {
+                    pairs.push({ camperId, counselorId: parseInt(counselorId) });
+                }
+            }
+
+            fetch('/homegroup-assignment/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `weekNumber=${WEEK}&assignments=${encodeURIComponent(JSON.stringify(pairs))}`
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const toast = document.getElementById('saveToast');
+                    toast.style.display = 'block';
+                    setTimeout(() => { toast.style.display = 'none'; }, 2500);
+                }
+            });
+        }
+
+        function mirrorWeek() {
+            const fromWeek = parseInt(document.getElementById('mirrorWeekSelect').value);
+            if (!fromWeek) return;
+
+            fetch('/homegroup-assignment/mirror', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `toWeek=${WEEK}&fromWeek=${fromWeek}`
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.mirrored > 0) {
+                    location.reload();
+                } else {
+                    alert('No assignments found in the selected week to mirror.');
+                }
+            });
+        }
+
+        buildUI();
+        // Initial disabled-state pass for all colors
+        for (const color of COLORS) refreshTakenState(color);
+    </script>
+</body>
+</html>

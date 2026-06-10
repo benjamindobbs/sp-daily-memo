@@ -41,8 +41,8 @@ db.exec(`
     CamperID INTEGER PRIMARY KEY AUTOINCREMENT,
     FirstName TEXT NOT NULL,
     LastName TEXT NOT NULL,
-    Age INTEGER,
-    -- Fixed typo constraint
+    Grade INTEGER,
+    ShirtSize TEXT,
     HomeGroupColor TEXT CHECK(HomeGroupColor IN ('Red','Carolina','Green','Navy','LilPlace','KinderPlace','SPLIT','SPRC')),
     HomeGroupCounselorID INTEGER,
     BusRoute INTEGER,
@@ -76,6 +76,14 @@ CREATE TABLE IF NOT EXISTS Activities (
     TimeOfDay TEXT,
     Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (CamperID) REFERENCES Campers(CamperID)
+  );
+  CREATE TABLE IF NOT EXISTS CamperHomeGroups (
+    CamperID    INTEGER NOT NULL,
+    WeekNumber  INTEGER NOT NULL CHECK(WeekNumber BETWEEN 1 AND 6),
+    CounselorID INTEGER,
+    PRIMARY KEY (CamperID, WeekNumber),
+    FOREIGN KEY (CamperID)    REFERENCES Campers(CamperID),
+    FOREIGN KEY (CounselorID) REFERENCES Counselors(CounselorID)
   );
 `);
 

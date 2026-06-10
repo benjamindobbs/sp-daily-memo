@@ -111,12 +111,12 @@
                     <% if (campers.length > 0) { %>
                     <div class="table-scroll">
                     <table class="roster-table">
-                        <thead><tr><th>Camper</th><th>Age</th><th>Group</th><th>Home Counselor</th></tr></thead>
+                        <thead><tr><th>Camper</th><th>Grade</th><th>Group</th><th>Home Counselor</th></tr></thead>
                         <tbody id="rosterBody">
                             <% campers.forEach(function(c) { %>
                             <tr class="roster-row" data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>">
                                 <td><a class="camper-name-link" href="/search?name=<%= encodeURIComponent(c.FirstName + ' ' + c.LastName) %>"><%= c.FirstName %> <%= c.LastName %></a></td>
-                                <td style="color: var(--text-muted);"><%= c.Age || '—' %></td>
+                                <td style="color: var(--text-muted);"><%= c.Grade || '—' %></td>
                                 <td><span class="tag <%= c.HomeGroupColor %>"><%= c.HomeGroupColor %></span></td>
                                 <td>
                                     <% if (c.CounselorID) { %>
