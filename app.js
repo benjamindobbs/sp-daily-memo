@@ -165,7 +165,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/upload-staff', '/upload-instructors', '/upload-activity-rules', '/add-activity',
     '/delete-activity', '/update-activity', '/add-activity-period-group',
     '/delete-activity-period-group',
-    '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings',
+    '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings', '/sync-offerings-from-schedule',
     '/save-counselor-assignments', '/export-counselor-schedule', '/export-staff-schedule',
     '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups',
     '/hub-content', '/director-notes', '/photo-gallery', '/photo-vote',
@@ -2883,6 +2883,109 @@ app.post('/clear-weekly-offerings', (req, res) => {
     const weekNumber = parseInt(req.body.weekNumber) || getActiveWeek();
     db.prepare('DELETE FROM WeeklyOfferings WHERE WeekNumber=?').run(weekNumber);
     res.redirect(`/counselor-scheduling?week=${weekNumber}&message=Week+${weekNumber}+offerings+cleared.`);
+});
+
+app.post('/sync-offerings-from-schedule', (req, res) => {
+    const weekNumber = parseInt(req.body.weekNumber) || getActiveWeek();
+
+    const rows = db.prepare(`
+        SELECT s.ActivityName, s.PeriodNumber AS CamperPeriod,
+               c.HomeGroupColor, COUNT(*) AS Enrollment
+        FROM Schedules s
+        JOIN Campers c ON s.PersonID = c.CamperID
+        WHERE s.PersonType = 'Camper'
+          AND s.WeekNumber = ?
+          AND c.HomeGroupColor IN ('Red','Carolina','Green','Navy')
+        GROUP BY s.ActivityName, s.PeriodNumber, c.HomeGroupColor
+    `).all(weekNumber);
+
+    if (!rows.length)
+        return res.redirect(`/settings?message=No+standard-group+camper+schedules+found+for+Week+${weekNumber}.`);
+
+    function deriveSide(color, p) {
+        if (['Red','Carolina'].includes(color)) return p <= 2 ? 'Enrichment' : 'Sports';
+        if (['Green','Navy'].includes(color))   return p <= 3 ? 'Sports' : 'Enrichment';
+        return null;
+    }
+    function toUniversalPeriod(color, p) {
+        if (['Red','Carolina'].includes(color)) return p > 3  ? p + 1 : p;
+        if (['Green','Navy'].includes(color))   return p >= 3 ? p + 1 : p;
+        return p;
+    }
+    function deriveAllowedGroups(colorSet) {
+        const rc = colorSet.has('Red') || colorSet.has('Carolina');
+        const gn = colorSet.has('Green') || colorSet.has('Navy');
+        if (rc && gn) return null;
+        if (colorSet.has('Red') && colorSet.has('Carolina')) return 'Red-Carolina';
+        if (colorSet.has('Red'))      return 'Red';
+        if (colorSet.has('Carolina')) return 'Carolina';
+        return 'Green-Navy';
+    }
+
+    // Build per-(activity, universal period) offering entries
+    const offeringMap = new Map();
+    for (const row of rows) {
+        const uPeriod = toUniversalPeriod(row.HomeGroupColor, row.CamperPeriod);
+        const key = `${row.ActivityName}|${uPeriod}`;
+        if (!offeringMap.has(key)) {
+            offeringMap.set(key, {
+                activityName: row.ActivityName,
+                universalPeriod: uPeriod,
+                side: deriveSide(row.HomeGroupColor, row.CamperPeriod),
+                colorSet: new Set(),
+                enrollment: 0
+            });
+        }
+        const entry = offeringMap.get(key);
+        entry.colorSet.add(row.HomeGroupColor);
+        entry.enrollment += row.Enrollment;
+    }
+
+    // Collapse to unique activity-level side/group (cross-side → null)
+    const activityMap = new Map();
+    for (const [, entry] of offeringMap) {
+        const act = activityMap.get(entry.activityName);
+        if (!act) {
+            activityMap.set(entry.activityName, { side: entry.side, colorSet: new Set(entry.colorSet) });
+        } else {
+            for (const c of entry.colorSet) act.colorSet.add(c);
+            if (act.side !== entry.side) act.side = null;
+        }
+    }
+
+    const crossSide = [];
+    db.transaction(() => {
+        const upsertAct = db.prepare(`
+            INSERT INTO Activities (Name, SideOfCamp, MaxCapacity, AllowedGroups)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(Name) DO UPDATE SET
+                SideOfCamp    = COALESCE(Activities.SideOfCamp,    excluded.SideOfCamp),
+                MaxCapacity   = COALESCE(Activities.MaxCapacity,   excluded.MaxCapacity),
+                AllowedGroups = COALESCE(Activities.AllowedGroups, excluded.AllowedGroups)
+        `);
+        for (const [name, act] of activityMap) {
+            if (!act.side) crossSide.push(name);
+            const cap = act.side === 'Sports' ? 25 : act.side === 'Enrichment' ? 16 : 20;
+            upsertAct.run(name, act.side, cap, deriveAllowedGroups(act.colorSet));
+        }
+
+        db.prepare('DELETE FROM WeeklyOfferings WHERE WeekNumber=?').run(weekNumber);
+        const insOffer = db.prepare(`
+            INSERT INTO WeeklyOfferings
+              (WeekNumber, ActivityName, PreliminaryEnrollment, SideOfCamp, PeriodNumber, MaxCapacity, AllowedGroups)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const [, entry] of offeringMap) {
+            const cap = entry.side === 'Sports' ? 25 : entry.side === 'Enrichment' ? 16 : 20;
+            insOffer.run(weekNumber, entry.activityName, entry.enrollment,
+                         entry.side, entry.universalPeriod, cap,
+                         deriveAllowedGroups(entry.colorSet));
+        }
+    })();
+
+    let msg = `Synced+${activityMap.size}+activities,+${offeringMap.size}+offerings+for+Week+${weekNumber}.`;
+    if (crossSide.length) msg += `+Cross-side+activities+(need+manual+review):+${crossSide.map(n => n.replace(/ /g,'+')).join(',+')}.`;
+    res.redirect(`/settings?message=${msg}`);
 });
 
 app.post('/save-counselor-assignments', (req, res) => {

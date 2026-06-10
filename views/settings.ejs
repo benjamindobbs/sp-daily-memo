@@ -93,6 +93,10 @@
                             <input type="hidden" name="weekNumber" value="<%= s.weekNumber %>">
                             <button type="submit" class="btn btn-small" style="background:#fef2f2; color:#991b1b; font-size:0.75rem;" <%= s.counselorCount === 0 ? 'disabled' : '' %>>Clear</button>
                         </form>
+                        <form action="/sync-offerings-from-schedule" method="POST" onsubmit="return confirm('Sync activities and offerings for Week <%= s.weekNumber %> from imported schedule? This will replace existing offerings.');">
+                            <input type="hidden" name="weekNumber" value="<%= s.weekNumber %>">
+                            <button type="submit" class="btn btn-small" style="background:#f0fdf4; color:#166534; font-size:0.75rem;">Sync</button>
+                        </form>
                     </td>
                 </tr>
                 <% }); %>
