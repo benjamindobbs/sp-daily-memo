@@ -171,7 +171,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/hub-content', '/director-notes', '/photo-gallery', '/photo-vote',
     '/set-active-week', '/set-released-week', '/update-session-label',
     '/clear-counselor-week', '/counselor-week-assignments',
-    '/audit',
+    '/audit', '/merge-class',
     '/homegroup-assignment',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
@@ -871,6 +871,7 @@ app.get('/admin', (req, res) => {
 app.get('/audit', (req, res) => {
     const activeWeek = getActiveWeek();
     const activeSession = db.prepare('SELECT * FROM Sessions WHERE weekNumber=?').get(activeWeek);
+    const alertMessage = req.query.message || null;
 
     const noCounselor = db.prepare(`
         SELECT CamperID, FirstName, LastName, HomeGroupColor
@@ -912,7 +913,89 @@ app.get('/audit', (req, res) => {
         return expected != null && c.classCount !== expected;
     });
 
-    res.render('audit', { activeSession, noCounselor, missingSchedule, counselorMismatch, EXPECTED });
+    const suspectRows = db.prepare(`
+        SELECT ActivityName, COUNT(*) AS totalCampers,
+               GROUP_CONCAT(DISTINCT PeriodNumber ORDER BY PeriodNumber) AS periods
+        FROM Schedules
+        WHERE PersonType = 'Camper'
+        GROUP BY ActivityName
+        HAVING totalCampers <= 3
+        ORDER BY totalCampers, ActivityName
+    `).all();
+
+    const allClassNames = db.prepare(
+        "SELECT DISTINCT ActivityName FROM Schedules WHERE PersonType='Camper' ORDER BY ActivityName"
+    ).all().map(r => r.ActivityName);
+
+    function suggestTargets(suspectName, names) {
+        const tok = s => s.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim().split(/\s+/)[0];
+        const sFirst = tok(suspectName);
+        const minLen = Math.max(4, Math.floor(sFirst.length * 0.7));
+        return names.filter(n => {
+            if (n === suspectName) return false;
+            const nFirst = tok(n);
+            const shorter = sFirst.length <= nFirst.length ? sFirst : nFirst;
+            const longer  = sFirst.length <= nFirst.length ? nFirst : sFirst;
+            return longer.startsWith(shorter.slice(0, minLen));
+        });
+    }
+
+    const suspects = suspectRows.map(r => ({
+        activityName: r.ActivityName,
+        totalCampers: r.totalCampers,
+        periods: r.periods,
+        suggestions: suggestTargets(r.ActivityName, allClassNames)
+    }));
+
+    res.render('audit', { activeSession, alertMessage, noCounselor, missingSchedule, counselorMismatch, EXPECTED, suspects, allClassNames });
+});
+
+app.post('/merge-class', (req, res) => {
+    const fromName = (req.body.fromName || '').trim();
+    const toName   = (req.body.toName   || '').trim();
+    if (!fromName || !toName || fromName === toName)
+        return res.redirect('/audit?message=Invalid+merge+request.');
+
+    db.transaction(() => {
+        // Drop any Schedules rows where the camper/counselor is already enrolled in toName
+        // at the same period (avoids duplicate period entries after rename)
+        db.prepare(`
+            DELETE FROM Schedules
+            WHERE ActivityName = ?
+              AND EXISTS (
+                SELECT 1 FROM Schedules s2
+                WHERE s2.PersonID     = Schedules.PersonID
+                  AND s2.PeriodNumber = Schedules.PeriodNumber
+                  AND s2.PersonType   = Schedules.PersonType
+                  AND s2.ActivityName = ?
+              )
+        `).run(fromName, toName);
+
+        // Rename the rest
+        db.prepare("UPDATE Schedules SET ActivityName = ? WHERE ActivityName = ?").run(toName, fromName);
+
+        // Update counselor schedule assignments globally
+        db.prepare(`
+            DELETE FROM CounselorScheduleAssignments
+            WHERE ActivityName = ?
+              AND EXISTS (
+                SELECT 1 FROM CounselorScheduleAssignments csa2
+                WHERE csa2.PersonID     = CounselorScheduleAssignments.PersonID
+                  AND csa2.PeriodNumber = CounselorScheduleAssignments.PeriodNumber
+                  AND csa2.PersonType   = CounselorScheduleAssignments.PersonType
+                  AND csa2.ActivityName = ?
+              )
+        `).run(fromName, toName);
+        db.prepare("UPDATE CounselorScheduleAssignments SET ActivityName = ? WHERE ActivityName = ?").run(toName, fromName);
+
+        // Remove typo from WeeklyOfferings (all weeks)
+        db.prepare("DELETE FROM WeeklyOfferings WHERE ActivityName = ?").run(fromName);
+
+        // Remove typo from Activities (target already exists or will be auto-created on next sync)
+        db.prepare("DELETE FROM Activities WHERE Name = ?").run(fromName);
+    })();
+
+    res.redirect(`/audit?message=Merged+"${encodeURIComponent(fromName)}"+into+"${encodeURIComponent(toName)}".`);
 });
 
 // --- MASTER SCHEDULE ---
@@ -2894,10 +2977,9 @@ app.post('/sync-offerings-from-schedule', (req, res) => {
         FROM Schedules s
         JOIN Campers c ON s.PersonID = c.CamperID
         WHERE s.PersonType = 'Camper'
-          AND s.WeekNumber = ?
           AND c.HomeGroupColor IN ('Red','Carolina','Green','Navy')
         GROUP BY s.ActivityName, s.PeriodNumber, c.HomeGroupColor
-    `).all(weekNumber);
+    `).all();
 
     if (!rows.length)
         return res.redirect(`/settings?message=No+standard-group+camper+schedules+found+for+Week+${weekNumber}.`);

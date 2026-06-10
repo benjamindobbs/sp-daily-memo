@@ -42,6 +42,10 @@
     <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:6px;">
         <h1 style="margin:0;">Audit Roster</h1>
     </div>
+    <% if (alertMessage) { %>
+        <div class="alert" style="margin-bottom:16px;"><%= decodeURIComponent(alertMessage) %></div>
+    <% } %>
+
     <p class="audit-meta">
         Checking data integrity for
         <strong><%= activeSession ? activeSession.label : 'Week ' + (activeSession?.weekNumber ?? '—') %></strong>.
@@ -132,6 +136,62 @@
                 </table>
             <% } %>
         </div>
+    </div>
+
+    <%/* ── Class Name Suspects ── */%>
+    <div class="audit-section">
+        <h2>
+            Class Name Suspects
+            <% if (suspects.length > 0) { %>
+                <span class="count-pill"><%= suspects.length %></span>
+            <% } else { %>
+                <span class="count-pill count-ok">All clear</span>
+            <% } %>
+        </h2>
+        <p class="audit-meta" style="margin-top:-8px;">Classes with 3 or fewer campers enrolled — likely typos or accidental duplicates. Merging moves all enrolled campers into the target class and removes the suspect entry.</p>
+
+        <% if (suspects.length === 0) { %>
+            <div class="card">
+                <div class="all-clear">&#10003; No suspiciously small classes found.</div>
+            </div>
+        <% } else { %>
+            <% suspects.forEach(s => { %>
+            <div class="card" style="margin-bottom:12px; padding:14px 18px;">
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+                    <div>
+                        <div style="font-weight:700; font-size:0.95rem; margin-bottom:4px;"><%= s.activityName %></div>
+                        <div style="font-size:0.8rem; color:var(--text-muted);">
+                            <span class="flag-badge flag-error"><%= s.totalCampers %> camper<%= s.totalCampers !== 1 ? 's' : '' %></span>
+                            &nbsp;Periods: <%= s.periods %>
+                            <% if (s.suggestions.length > 0) { %>
+                                &nbsp;&bull;&nbsp;Suggested: <strong><%= s.suggestions[0] %></strong><% if (s.suggestions.length > 1) { %> +<%= s.suggestions.length - 1 %> more<% } %>
+                            <% } %>
+                        </div>
+                    </div>
+                    <form action="/merge-class" method="POST" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;"
+                          onsubmit="return confirm('Merge \'' + this.fromName.value + '\' into \'' + this.toName.value + '\'? This cannot be undone.');">
+                        <input type="hidden" name="fromName" value="<%= s.activityName %>">
+                        <select name="toName" required style="padding:6px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; min-width:200px;">
+                            <option value="">— Merge into —</option>
+                            <% if (s.suggestions.length > 0) { %>
+                                <optgroup label="Suggested">
+                                    <% s.suggestions.forEach(sug => { %>
+                                        <option value="<%= sug %>"><%= sug %></option>
+                                    <% }) %>
+                                </optgroup>
+                            <% } %>
+                            <optgroup label="All Classes">
+                                <% allClassNames.filter(n => n !== s.activityName).forEach(n => { %>
+                                    <option value="<%= n %>"><%= n %></option>
+                                <% }) %>
+                            </optgroup>
+                        </select>
+                        <button type="submit" class="btn btn-small" style="background:#fee2e2; color:#991b1b; white-space:nowrap;">Merge &amp; Delete</button>
+                    </form>
+                </div>
+            </div>
+            <% }) %>
+        <% } %>
     </div>
 
     <%/* ── Counselor Flags ── */%>
