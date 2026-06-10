@@ -1335,8 +1335,9 @@ app.get('/settings', (req, res) => {
     const periodOverrides = db.prepare('SELECT * FROM ActivityPeriodGroups ORDER BY ActivityName, PeriodNumber').all();
     const sessions = db.prepare('SELECT * FROM Sessions ORDER BY weekNumber').all();
     // Attach counselor + offering counts per week
+    const totalActiveStaff = db.prepare("SELECT COUNT(*) as n FROM Counselors WHERE StaffRole NOT IN ('Director','Office Staff','Nurse','Equipment Manager','CPR Instructor','Internship')").get().n;
     sessions.forEach(s => {
-        s.counselorCount = db.prepare('SELECT COUNT(DISTINCT CounselorID) as n FROM CounselorWeekSchedules WHERE WeekNumber=?').get(s.weekNumber).n;
+        s.counselorCount = totalActiveStaff;
         s.offeringCount  = db.prepare('SELECT COUNT(*) as n FROM WeeklyOfferings WHERE WeekNumber=?').get(s.weekNumber).n;
     });
     res.render('settings', {
@@ -1668,7 +1669,12 @@ app.post('/upload-campers-schedule', upload.single('file'), (req, res) => {
                 }
             })(results);
 
-            res.redirect('/settings?message=Master+Schedule+Import+Success');
+            // Auto-sync offerings for all sessions from newly imported schedule
+            const allSessions = db.prepare("SELECT weekNumber FROM Sessions").all();
+            for (const { weekNumber } of allSessions) {
+                try { syncOfferingsForWeek(weekNumber); } catch(e) { console.error('[sync offerings]', e.message); }
+            }
+            res.redirect('/settings?message=Master+Schedule+Import+Success+(offerings+synced)');
         } catch (err) {
             console.error('Master Schedule upload error:', err);
             res.redirect('/settings?message=Database+Error+Check+Console');
@@ -2881,14 +2887,13 @@ app.post('/auto-assign-homegroups', (req, res) => {
     const camperCounts = Object.fromEntries(camperRows.map(r => [r.HomeGroupColor, r.n]));
     const totalCampers = Object.values(camperCounts).reduce((a, b) => a + b, 0);
 
-    // Cabinizer: only counselors already explicitly assigned to a main camp color are reshuffled
+    // Include all main-camp counselors (role='Counselor'), not just pre-assigned ones
     const counselors = db.prepare(`
         SELECT c.CounselorID,
                COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS CurrentColor
         FROM Counselors c
         LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
         WHERE c.StaffRole = 'Counselor'
-          AND COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) IN ('Red','Carolina','Green','Navy')
     `).all(week);
     const totalCounselors = counselors.length;
 
@@ -3009,9 +3014,27 @@ app.post('/clear-weekly-offerings', (req, res) => {
     res.redirect(`/counselor-scheduling?week=${weekNumber}&message=Week+${weekNumber}+offerings+cleared.`);
 });
 
-app.post('/sync-offerings-from-schedule', (req, res) => {
-    const weekNumber = parseInt(req.body.weekNumber) || getActiveWeek();
+function deriveSideOfCamp(color, p) {
+    if (['Red','Carolina'].includes(color)) return p <= 2 ? 'Enrichment' : 'Sports';
+    if (['Green','Navy'].includes(color))   return p <= 3 ? 'Sports' : 'Enrichment';
+    return null;
+}
+function toUniversalPeriod(color, p) {
+    if (['Red','Carolina'].includes(color)) return p > 3  ? p + 1 : p;
+    if (['Green','Navy'].includes(color))   return p >= 3 ? p + 1 : p;
+    return p;
+}
+function deriveAllowedGroups(colorSet) {
+    const rc = colorSet.has('Red') || colorSet.has('Carolina');
+    const gn = colorSet.has('Green') || colorSet.has('Navy');
+    if (rc && gn) return null;
+    if (colorSet.has('Red') && colorSet.has('Carolina')) return 'Red-Carolina';
+    if (colorSet.has('Red'))      return 'Red';
+    if (colorSet.has('Carolina')) return 'Carolina';
+    return 'Green-Navy';
+}
 
+function syncOfferingsForWeek(weekNumber) {
     const rows = db.prepare(`
         SELECT s.ActivityName, s.PeriodNumber AS CamperPeriod,
                c.HomeGroupColor, COUNT(*) AS Enrollment
@@ -3022,30 +3045,8 @@ app.post('/sync-offerings-from-schedule', (req, res) => {
         GROUP BY s.ActivityName, s.PeriodNumber, c.HomeGroupColor
     `).all();
 
-    if (!rows.length)
-        return res.redirect(`/settings?message=No+standard-group+camper+schedules+found+for+Week+${weekNumber}.`);
+    if (!rows.length) return { activitiesCount: 0, offeringsCount: 0, crossSide: [] };
 
-    function deriveSide(color, p) {
-        if (['Red','Carolina'].includes(color)) return p <= 2 ? 'Enrichment' : 'Sports';
-        if (['Green','Navy'].includes(color))   return p <= 3 ? 'Sports' : 'Enrichment';
-        return null;
-    }
-    function toUniversalPeriod(color, p) {
-        if (['Red','Carolina'].includes(color)) return p > 3  ? p + 1 : p;
-        if (['Green','Navy'].includes(color))   return p >= 3 ? p + 1 : p;
-        return p;
-    }
-    function deriveAllowedGroups(colorSet) {
-        const rc = colorSet.has('Red') || colorSet.has('Carolina');
-        const gn = colorSet.has('Green') || colorSet.has('Navy');
-        if (rc && gn) return null;
-        if (colorSet.has('Red') && colorSet.has('Carolina')) return 'Red-Carolina';
-        if (colorSet.has('Red'))      return 'Red';
-        if (colorSet.has('Carolina')) return 'Carolina';
-        return 'Green-Navy';
-    }
-
-    // Build per-(activity, universal period) offering entries
     const offeringMap = new Map();
     for (const row of rows) {
         const uPeriod = toUniversalPeriod(row.HomeGroupColor, row.CamperPeriod);
@@ -3054,7 +3055,7 @@ app.post('/sync-offerings-from-schedule', (req, res) => {
             offeringMap.set(key, {
                 activityName: row.ActivityName,
                 universalPeriod: uPeriod,
-                side: deriveSide(row.HomeGroupColor, row.CamperPeriod),
+                side: deriveSideOfCamp(row.HomeGroupColor, row.CamperPeriod),
                 colorSet: new Set(),
                 enrollment: 0
             });
@@ -3064,7 +3065,6 @@ app.post('/sync-offerings-from-schedule', (req, res) => {
         entry.enrollment += row.Enrollment;
     }
 
-    // Collapse to unique activity-level side/group (cross-side → null)
     const activityMap = new Map();
     for (const [, entry] of offeringMap) {
         const act = activityMap.get(entry.activityName);
@@ -3106,7 +3106,15 @@ app.post('/sync-offerings-from-schedule', (req, res) => {
         }
     })();
 
-    let msg = `Synced+${activityMap.size}+activities,+${offeringMap.size}+offerings+for+Week+${weekNumber}.`;
+    return { activitiesCount: activityMap.size, offeringsCount: offeringMap.size, crossSide };
+}
+
+app.post('/sync-offerings-from-schedule', (req, res) => {
+    const weekNumber = parseInt(req.body.weekNumber) || getActiveWeek();
+    const { activitiesCount, offeringsCount, crossSide } = syncOfferingsForWeek(weekNumber);
+    if (activitiesCount === 0)
+        return res.redirect(`/settings?message=No+standard-group+camper+schedules+found+for+Week+${weekNumber}.`);
+    let msg = `Synced+${activitiesCount}+activities,+${offeringsCount}+offerings+for+Week+${weekNumber}.`;
     if (crossSide.length) msg += `+Cross-side+activities+(need+manual+review):+${crossSide.map(n => n.replace(/ /g,'+')).join(',+')}.`;
     res.redirect(`/settings?message=${msg}`);
 });

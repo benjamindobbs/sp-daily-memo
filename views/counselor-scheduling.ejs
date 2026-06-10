@@ -317,7 +317,7 @@
 
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn btn-primary" onclick="buildSchedule()">Build Schedule</button>
-                <button class="btn btn-primary" onclick="autoCalculateSlots(); buildSchedule();" style="background:var(--success, #16a34a);">⚡ Full Auto Build</button>
+                <button class="btn btn-primary" onclick="autoAssignHomeGroups(); autoCalculateSlots(); buildSchedule();" style="background:var(--success, #16a34a);">⚡ Full Auto Build</button>
                 <span id="autoStatus" style="font-size:0.82rem; color:var(--text-muted); margin-left:4px;"></span>
             </div>
             <% if (sessions.filter(s => s.weekNumber !== planWeek).length > 0) { %>
@@ -523,6 +523,7 @@
         const STAFF_AVAIL  = <%- JSON.stringify(staffAvailability) %>;
         const EXISTING     = <%- JSON.stringify(existingAssignments) %>;
         const PREFERENCES  = <%- JSON.stringify(preferences) %>;
+        const CAMPER_COUNTS = <%- JSON.stringify(camperCounts) %>;
         const PLAN_WEEK    = <%= planWeek %>;
         const SESSIONS     = <%- JSON.stringify(sessions) %>;
 
@@ -899,6 +900,51 @@
             statusEl.textContent = `Mirrored ${mirrored} ${side} class${mirrored !== 1 ? 'es' : ''} from ${SESSIONS.find(s => s.weekNumber === fromWeek)?.label ?? `Week ${fromWeek}`}.`;
         }
 
+        function autoAssignHomeGroups() {
+            const prefMap = {};
+            PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
+            const colors = ['Red','Carolina','Green','Navy'];
+            const schedFor = c => ['Red','Carolina'].includes(c) ? 'AM Enrichment / PM Sports' : 'AM Sports / PM Enrichment';
+            const totalCampers = colors.reduce((s, c) => s + (CAMPER_COUNTS[c] || 0), 0);
+            if (totalCampers === 0 || MAIN_COUNSELORS.length === 0) return;
+
+            // Proportional targets with largest-remainder rounding
+            const targets = {};
+            let totalAssigned = 0;
+            colors.forEach(c => {
+                targets[c] = Math.floor(((CAMPER_COUNTS[c] || 0) / totalCampers) * MAIN_COUNSELORS.length);
+                totalAssigned += targets[c];
+            });
+            const rem = MAIN_COUNSELORS.length - totalAssigned;
+            colors.map(c => ({ c, frac: ((CAMPER_COUNTS[c]||0)/totalCampers)*MAIN_COUNSELORS.length - targets[c] }))
+                .sort((a,b) => b.frac - a.frac).slice(0, rem).forEach(({c}) => targets[c]++);
+
+            // Assign by preference first, then randomly
+            const assignedIds = new Set();
+            const assignments = {};
+            const targetsLeft = { ...targets };
+            colors.forEach(color => {
+                MAIN_COUNSELORS.filter(c => !assignedIds.has(c.CounselorID) && prefMap[c.CounselorID]?.HomeGroupPreference === color)
+                    .slice(0, targetsLeft[color])
+                    .forEach(c => { assignments[c.CounselorID] = color; assignedIds.add(c.CounselorID); targetsLeft[color]--; });
+            });
+            const unassigned = MAIN_COUNSELORS.filter(c => !assignedIds.has(c.CounselorID)).sort(() => Math.random() - 0.5);
+            let offset = 0;
+            for (const color of colors) {
+                unassigned.slice(offset, offset + targetsLeft[color]).forEach(c => { assignments[c.CounselorID] = color; });
+                offset += targetsLeft[color];
+            }
+
+            // Update home group and schedule type dropdowns in DOM
+            Object.entries(assignments).forEach(([cid, color]) => {
+                const hg = document.querySelector(`.cg-homegroup[data-cid="${cid}"]`);
+                if (hg) hg.value = color;
+                const sc = document.querySelector(`.cg-schedule[data-cid="${cid}"]`);
+                if (sc) sc.value = schedFor(color);
+            });
+            updateGroupCounters();
+        }
+
         function autoCalculateSlots() {
             const sportsMin       = parseInt(document.getElementById('sportsMin').value)       || 2;
             const sportsThreshold = parseInt(document.getElementById('sportsThreshold').value) || 16;
@@ -920,7 +966,7 @@
                     else if (ag === 'Carolina')     count = enrichCarolina;
                     else if (ag === 'Red-Carolina') count = enrichRC;
                     else if (ag === 'Green-Navy')   count = enrichGN;
-                    else                            count = 1;
+                    else                            count = enrichRC; // cross-side or unclassified → RC default
                 }
                 state[idx].counselors = Array(count).fill(null);
                 const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
@@ -958,7 +1004,7 @@
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
                 const { PeriodNumber: period, SideOfCamp: side, ActivityName: name } = act;
                 const block = period <= 3 ? 'am' : 'pm';
-                const avail = AVAIL[period]?.[side] ?? [];
+                const avail = COUNSELORS; // use full roster; eligibility filter applies ScheduleType check
 
                 // Counselors already placed in this period (across all sides)
                 const usedThisPeriod = new Set();
