@@ -77,6 +77,23 @@
             <% }); %>
         </div>
 
+        <!-- Ratio settings -->
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px; font-size:0.82rem; padding:10px 14px; background:#f8fafc; border:1px solid var(--border-color); border-radius:8px;">
+            <span style="font-size:0.72rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap;">Max ratio 1&nbsp;:</span>
+            <label style="display:flex; align-items:center; gap:5px;">
+                <span class="tag Red" style="font-size:0.7rem; margin:0;">Red</span>
+                <input type="number" id="ratioRed" value="6" min="1" max="30" style="width:44px; padding:3px 6px; border:1px solid var(--border-color); border-radius:5px; font-size:0.82rem; text-align:center;" onchange="buildUI()">
+            </label>
+            <label style="display:flex; align-items:center; gap:5px;">
+                <span class="tag Carolina" style="font-size:0.7rem; margin:0;">Carolina</span>
+                <input type="number" id="ratioCarolina" value="8" min="1" max="30" style="width:44px; padding:3px 6px; border:1px solid var(--border-color); border-radius:5px; font-size:0.82rem; text-align:center;" onchange="buildUI()">
+            </label>
+            <label style="display:flex; align-items:center; gap:5px;">
+                <span class="tag Green" style="font-size:0.7rem; margin:0;">Grn</span><span style="font-size:0.75rem;">/</span><span class="tag Navy" style="font-size:0.7rem; margin:0;">Navy</span>
+                <input type="number" id="ratioGN" value="10" min="1" max="30" style="width:44px; padding:3px 6px; border:1px solid var(--border-color); border-radius:5px; font-size:0.82rem; text-align:center;" onchange="buildUI()">
+            </label>
+        </div>
+
         <!-- Toolbar -->
         <div class="hga-toolbar">
             <div class="mirror-row">
@@ -100,8 +117,8 @@
 
     <script>
         const WEEK         = <%- week %>;
-        const COUNSELORS   = <%- JSON.stringify(counselors) %>;
-        const UNIT_LEADERS = <%- JSON.stringify(unitLeaders) %>;
+        const COUNSELORS           = <%- JSON.stringify(counselors) %>;
+        const SPECIALTY_COUNSELORS = <%- JSON.stringify(specialtyCounselors) %>;
         const CAMPERS      = <%- JSON.stringify(campers) %>;
 
         const COLORS = ['Red', 'Carolina', 'Green', 'Navy'];
@@ -124,11 +141,8 @@
         for (const c of COUNSELORS) {
             extendedHoursMap[c.CounselorID] = c.ExtendedHours || '';
         }
-
-        // Unit leader color state: { counselorId -> color|'' }
-        const ulColorMap = {};
-        for (const ul of UNIT_LEADERS) {
-            ulColorMap[ul.CounselorID] = ul.HomeGroupColor || '';
+        for (const c of SPECIALTY_COUNSELORS) {
+            extendedHoursMap[c.CounselorID] = c.ExtendedHours || '';
         }
 
         // Group counselors and campers by color
@@ -148,9 +162,14 @@
                 const campers    = campersByColor[color];
                 if (counselors.length === 0 && campers.length === 0) continue;
 
-                const target = counselors.length > 0
-                    ? Math.round(campers.length / counselors.length)
+                const maxRatio = getMaxRatio(color);
+                const required = Math.ceil(campers.length / maxRatio);
+                const target   = counselors.length > 0
+                    ? Math.min(Math.ceil(campers.length / counselors.length), maxRatio)
                     : 0;
+                const shortWarn = counselors.length < required
+                    ? ` &nbsp;<span style="color:#dc2626; font-weight:600;">&#9888; ${required} needed (${counselors.length} assigned)</span>`
+                    : '';
 
                 const section = document.createElement('div');
                 section.className = 'hga-group-section';
@@ -160,7 +179,7 @@
                 header.className = 'hga-group-header';
                 header.innerHTML = `
                     <span class="tag ${color}" style="font-size:0.78rem;">${COLOR_LABELS[color]}</span>
-                    <span class="hga-group-stats">${counselors.length} counselors &bull; ${campers.length} campers &bull; ~${target} slots each</span>
+                    <span class="hga-group-stats">${counselors.length} counselors &bull; ${campers.length} campers &bull; max 1:${maxRatio}${shortWarn}</span>
                     <span id="unassigned-count-${color}" class="hga-group-stats" style="margin-left:auto;"></span>
                 `;
                 section.appendChild(header);
@@ -174,10 +193,12 @@
                 updateUnassignedCount(color);
             }
 
-            if (UNIT_LEADERS.length > 0) buildUnitLeaderSection(container);
+            if (SPECIALTY_COUNSELORS.length > 0) buildSpecialtyCounselorSection(container);
         }
 
-        function buildUnitLeaderSection(container) {
+        function buildSpecialtyCounselorSection(container) {
+            const colorLabels = { LilPlace: "Li'l Place", KinderPlace: 'Kinder Place', SPLIT: 'SPLIT', SPRC: 'SPRC' };
+
             const section = document.createElement('div');
             section.className = 'hga-group-section';
             section.style.marginTop = '32px';
@@ -185,42 +206,40 @@
             const header = document.createElement('div');
             header.className = 'hga-group-header';
             header.innerHTML = `
-                <span style="font-weight:700; font-size:0.9rem;">&#128101; Unit Leaders &amp; Sports Leaders</span>
-                <span class="hga-group-stats">${UNIT_LEADERS.length} leaders &mdash; assign home group color for this week</span>
+                <span style="font-weight:700; font-size:0.9rem;">&#127919; Specialty Camp Counselors</span>
+                <span class="hga-group-stats">${SPECIALTY_COUNSELORS.length} counselors &mdash; home group locked to specialty camp</span>
             `;
             section.appendChild(header);
 
-            for (const ul of UNIT_LEADERS) {
+            for (const c of SPECIALTY_COUNSELORS) {
                 const block = document.createElement('div');
                 block.className = 'hga-counselor-block';
-                block.style.display = 'flex';
-                block.style.alignItems = 'center';
-                block.style.gap = '14px';
-                block.style.flexWrap = 'wrap';
+                block.style.cssText = 'display:flex; align-items:center; gap:14px; flex-wrap:wrap;';
 
                 const nameEl = document.createElement('span');
                 nameEl.className = 'hga-counselor-name';
-                nameEl.textContent = `${ul.FirstName} ${ul.LastName}`;
+                nameEl.textContent = `${c.FirstName} ${c.LastName}`;
                 block.appendChild(nameEl);
 
-                const roleTag = document.createElement('span');
-                roleTag.textContent = ul.StaffRole;
-                roleTag.style.cssText = 'font-size:0.72rem; background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:10px; white-space:nowrap;';
-                block.appendChild(roleTag);
+                const colorTag = document.createElement('span');
+                colorTag.className = `tag ${c.HomeGroupColor}`;
+                colorTag.style.cssText = 'font-size:0.72rem;';
+                colorTag.textContent = colorLabels[c.HomeGroupColor] || c.HomeGroupColor;
+                block.appendChild(colorTag);
 
-                const colorSel = document.createElement('select');
-                colorSel.style.cssText = 'padding:4px 8px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem; font-family:inherit; margin-left:auto;';
-                colorSel.dataset.ulId = ul.CounselorID;
-                for (const [val, label] of [['','— No Group —'],['Red','Red'],['Carolina','Carolina'],['Green','Green'],['Navy','Navy']]) {
+                const extSel = document.createElement('select');
+                extSel.style.cssText = 'padding:3px 7px; border:1px solid var(--border-color); border-radius:6px; font-size:0.78rem; font-family:inherit; color:var(--text-muted); margin-left:auto;';
+                extSel.dataset.counselorId = c.CounselorID;
+                for (const [val, label] of [['','No Ext'],['AM','AM Ext'],['PM','PM Ext'],['Both','AM+PM']]) {
                     const o = document.createElement('option');
                     o.value = val; o.textContent = label;
-                    if ((ulColorMap[ul.CounselorID] || '') === val) o.selected = true;
-                    colorSel.appendChild(o);
+                    if ((extendedHoursMap[c.CounselorID] || '') === val) o.selected = true;
+                    extSel.appendChild(o);
                 }
-                colorSel.addEventListener('change', function() {
-                    ulColorMap[parseInt(this.dataset.ulId)] = this.value;
+                extSel.addEventListener('change', function() {
+                    extendedHoursMap[parseInt(this.dataset.counselorId)] = this.value;
                 });
-                block.appendChild(colorSel);
+                block.appendChild(extSel);
                 section.appendChild(block);
             }
 
@@ -322,10 +341,18 @@
             return sel;
         }
 
+        function getMaxRatio(color) {
+            if (color === 'Red')      return parseInt(document.getElementById('ratioRed').value)      || 6;
+            if (color === 'Carolina') return parseInt(document.getElementById('ratioCarolina').value) || 8;
+            return parseInt(document.getElementById('ratioGN').value) || 10;
+        }
+
         function getTarget(color) {
             const c = counselorsByColor[color].length;
             const p = campersByColor[color].length;
-            return c > 0 ? Math.round(p / c) : 0;
+            if (c === 0) return 0;
+            const maxRatio = getMaxRatio(color);
+            return Math.min(Math.ceil(p / c), maxRatio);
         }
 
         function refreshTakenState(color) {
@@ -409,19 +436,16 @@
                 }
             }
 
+            // Always send all entries so clearing (switching back to 'No Ext') persists
             const extPayload = {};
             for (const [cId, val] of Object.entries(extendedHoursMap)) {
-                if (val) extPayload[cId] = val;
-            }
-            const ulPayload = {};
-            for (const [cId, val] of Object.entries(ulColorMap)) {
-                ulPayload[cId] = val || '';
+                extPayload[cId] = val || '';
             }
 
             fetch('/homegroup-assignment/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `weekNumber=${WEEK}&assignments=${encodeURIComponent(JSON.stringify(pairs))}&extendedHours=${encodeURIComponent(JSON.stringify(extPayload))}&unitLeaderColors=${encodeURIComponent(JSON.stringify(ulPayload))}`
+                body: `weekNumber=${WEEK}&assignments=${encodeURIComponent(JSON.stringify(pairs))}&extendedHours=${encodeURIComponent(JSON.stringify(extPayload))}`
             })
             .then(r => r.json())
             .then(data => {

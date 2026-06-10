@@ -3380,13 +3380,15 @@ app.get('/homegroup-assignment', (req, res) => {
         ORDER BY COALESCE(cwa.HomeGroupColor, co.HomeGroupColor), co.LastName, co.FirstName
     `).all(week);
 
-    const unitLeaders = db.prepare(`
-        SELECT co.CounselorID, co.FirstName, co.LastName, co.StaffRole,
-               COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) AS HomeGroupColor
+    const specialtyCounselors = db.prepare(`
+        SELECT co.CounselorID, co.FirstName, co.LastName,
+               COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) AS HomeGroupColor,
+               cwa.ExtendedHours AS ExtendedHours
         FROM Counselors co
         LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = co.CounselorID AND cwa.WeekNumber = ?
-        WHERE co.StaffRole IN ('Unit Leader','Sports Leader')
-        ORDER BY co.StaffRole, co.LastName, co.FirstName
+        WHERE co.StaffRole = 'Counselor'
+          AND COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) IN ('LilPlace','KinderPlace','SPLIT','SPRC')
+        ORDER BY COALESCE(cwa.HomeGroupColor, co.HomeGroupColor), co.LastName, co.FirstName
     `).all(week);
 
     const campers = db.prepare(`
@@ -3399,7 +3401,7 @@ app.get('/homegroup-assignment', (req, res) => {
     `).all(week);
 
     res.render('homegroup-assignment', {
-        week, sessions, counselors, unitLeaders, campers,
+        week, sessions, counselors, specialtyCounselors, campers,
         activeWeek: getActiveWeek()
     });
 });
@@ -3408,20 +3410,13 @@ app.post('/homegroup-assignment/save', (req, res) => {
     const week = parseInt(req.body.weekNumber) || getActiveWeek();
     let assignments = [];
     let extHours = {};
-    let ulColors = {};
     try { assignments = JSON.parse(req.body.assignments || '[]'); } catch { /* bad JSON */ }
     try { extHours  = JSON.parse(req.body.extendedHours || '{}'); } catch { /* bad JSON */ }
-    try { ulColors  = JSON.parse(req.body.unitLeaderColors || '{}'); } catch { /* bad JSON */ }
 
     const upsertAttr = db.prepare(`
         INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
-        VALUES (?, ?, ?, NULL, NULL, ?)
+        VALUES (?, ?, NULL, NULL, NULL, ?)
         ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET ExtendedHours = excluded.ExtendedHours
-    `);
-    const upsertULColor = db.prepare(`
-        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
-        VALUES (?, ?, ?, NULL, NULL, NULL)
-        ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET HomeGroupColor = excluded.HomeGroupColor
     `);
 
     db.transaction(() => {
@@ -3433,10 +3428,7 @@ app.post('/homegroup-assignment/save', (req, res) => {
             if (camperId && counselorId) ins.run(camperId, week, counselorId);
         }
         for (const [cId, ext] of Object.entries(extHours)) {
-            upsertAttr.run(parseInt(cId), week, null, ext || null);
-        }
-        for (const [cId, color] of Object.entries(ulColors)) {
-            upsertULColor.run(parseInt(cId), week, color || null);
+            upsertAttr.run(parseInt(cId), week, ext || null);
         }
     })();
 
