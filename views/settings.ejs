@@ -289,40 +289,34 @@
 
                             <div class="upload-section"
                                 style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
-                                <h4 style="margin-bottom: 5px;">Counselors</h4>
+                                <h4 style="margin-bottom: 5px;">All Staff (Counselors, Leaders, Faculty)</h4>
                                 <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">
-                                    Required Headers: <strong>FirstName, LastName, HomeGroupColor, ScheduleType, Bus, Extended, P1–P6</strong>
+                                    Export the staff roster from camp management. Required columns: <strong>Name</strong> (Last, First), <strong>Positions</strong>, <strong>Camp</strong>.
+                                    Handles all roles: Counselor, Swim Counselor, Faculty, Unit Leader, Sports Leader, Director, and more.
+                                    Home group color is assigned via the Schedule Builder — not imported here.
                                 </p>
                                 <form action="/upload-counselors" method="POST" enctype="multipart/form-data" style="display: flex; flex-direction: column; gap: 10px;">
-                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                                        <label style="font-size:0.8rem; font-weight:600;">Week:</label>
-                                        <select name="weekNumber" style="padding:5px 8px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem;">
-                                            <% sessions.forEach(s => { %>
-                                            <option value="<%= s.weekNumber %>"><%= s.label %><% if (s.isActive) { %> ★<% } %></option>
-                                            <% }); %>
-                                        </select>
-                                    </div>
                                     <input type="file" name="file" accept=".csv" required style="font-size: 0.85rem;">
-                                    <button type="submit" class="btn primary btn-small" style="width: fit-content;">Import Counselors</button>
+                                    <button type="submit" class="btn primary btn-small" style="width: fit-content;">Import Staff</button>
                                 </form>
-                                <form action="/clear-counselors" method="POST" onsubmit="return confirm('Delete ALL counselors?');" style="margin-top: 5px;">
-                                    <button type="submit" class="settings-link-btn">🗑️ Clear All Counselors</button>
+                                <form action="/clear-counselors" method="POST" onsubmit="return confirm('Delete ALL counselors and staff?');" style="margin-top: 5px;">
+                                    <button type="submit" class="settings-link-btn">🗑️ Clear All Staff</button>
                                 </form>
                             </div>
 
                             <div class="upload-section"
                                 style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
-                                <h4 style="margin-bottom: 5px;">Unit Leaders & Instructors</h4>
+                                <h4 style="margin-bottom: 5px;">Instructor Schedules</h4>
                                 <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">
-                                    Required Headers: <strong>FirstName, LastName, HomeGroupColor, StaffType, P1,
-                                        P2...</strong>
+                                    Assigns period schedules to existing instructors. Required columns: <strong>Name</strong> (Last, First), <strong>P1–P6</strong>, <strong>L1–L6</strong> (locations, optional).
+                                    Person must already exist in the system via the Staff import above.
                                 </p>
-                                <form action="/upload-staff" method="POST" enctype="multipart/form-data" style="display: flex; flex-direction: column; gap: 10px;">
+                                <form action="/upload-instructors" method="POST" enctype="multipart/form-data" style="display: flex; flex-direction: column; gap: 10px;">
                                     <input type="file" name="file" accept=".csv" required style="font-size: 0.85rem;">
-                                    <button type="submit" class="btn primary btn-small" style="width: fit-content;">Import Staff List</button>
+                                    <button type="submit" class="btn primary btn-small" style="width: fit-content;">Import Instructor Schedules</button>
                                 </form>
-                                <form action="/clear-staff" method="POST" onsubmit="return confirm('Delete ALL general staff?');" style="margin-top: 5px;">
-                                    <button type="submit" class="settings-link-btn">🗑️ Clear All Staff</button>
+                                <form action="/clear-staff" method="POST" onsubmit="return confirm('Delete all instructor and unit leader records?');" style="margin-top: 5px;">
+                                    <button type="submit" class="settings-link-btn">🗑️ Clear Instructor &amp; Leader Data</button>
                                 </form>
                             </div>
 

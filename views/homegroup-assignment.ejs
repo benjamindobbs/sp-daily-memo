@@ -99,9 +99,10 @@
     <div class="save-toast" id="saveToast">Saved!</div>
 
     <script>
-        const WEEK       = <%- week %>;
-        const COUNSELORS = <%- JSON.stringify(counselors) %>;
-        const CAMPERS    = <%- JSON.stringify(campers) %>;
+        const WEEK         = <%- week %>;
+        const COUNSELORS   = <%- JSON.stringify(counselors) %>;
+        const UNIT_LEADERS = <%- JSON.stringify(unitLeaders) %>;
+        const CAMPERS      = <%- JSON.stringify(campers) %>;
 
         const COLORS = ['Red', 'Carolina', 'Green', 'Navy'];
         const COLOR_LABELS = { Red: 'Red', Carolina: 'Carolina', Green: 'Green', Navy: 'Navy' };
@@ -116,6 +117,18 @@
             if (cam.AssignedCounselorID && assignments[cam.AssignedCounselorID] !== undefined) {
                 assignments[cam.AssignedCounselorID].add(cam.CamperID);
             }
+        }
+
+        // Extended hours state: { counselorId -> 'AM'|'PM'|'Both'|'' }
+        const extendedHoursMap = {};
+        for (const c of COUNSELORS) {
+            extendedHoursMap[c.CounselorID] = c.ExtendedHours || '';
+        }
+
+        // Unit leader color state: { counselorId -> color|'' }
+        const ulColorMap = {};
+        for (const ul of UNIT_LEADERS) {
+            ulColorMap[ul.CounselorID] = ul.HomeGroupColor || '';
         }
 
         // Group counselors and campers by color
@@ -143,7 +156,6 @@
                 section.className = 'hga-group-section';
                 section.dataset.color = color;
 
-                // Header
                 const header = document.createElement('div');
                 header.className = 'hga-group-header';
                 header.innerHTML = `
@@ -153,7 +165,6 @@
                 `;
                 section.appendChild(header);
 
-                // Counselor blocks
                 for (const co of counselors) {
                     const block = buildCounselorBlock(co, campers, target, color);
                     section.appendChild(block);
@@ -162,6 +173,58 @@
                 container.appendChild(section);
                 updateUnassignedCount(color);
             }
+
+            if (UNIT_LEADERS.length > 0) buildUnitLeaderSection(container);
+        }
+
+        function buildUnitLeaderSection(container) {
+            const section = document.createElement('div');
+            section.className = 'hga-group-section';
+            section.style.marginTop = '32px';
+
+            const header = document.createElement('div');
+            header.className = 'hga-group-header';
+            header.innerHTML = `
+                <span style="font-weight:700; font-size:0.9rem;">&#128101; Unit Leaders &amp; Sports Leaders</span>
+                <span class="hga-group-stats">${UNIT_LEADERS.length} leaders &mdash; assign home group color for this week</span>
+            `;
+            section.appendChild(header);
+
+            for (const ul of UNIT_LEADERS) {
+                const block = document.createElement('div');
+                block.className = 'hga-counselor-block';
+                block.style.display = 'flex';
+                block.style.alignItems = 'center';
+                block.style.gap = '14px';
+                block.style.flexWrap = 'wrap';
+
+                const nameEl = document.createElement('span');
+                nameEl.className = 'hga-counselor-name';
+                nameEl.textContent = `${ul.FirstName} ${ul.LastName}`;
+                block.appendChild(nameEl);
+
+                const roleTag = document.createElement('span');
+                roleTag.textContent = ul.StaffRole;
+                roleTag.style.cssText = 'font-size:0.72rem; background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:10px; white-space:nowrap;';
+                block.appendChild(roleTag);
+
+                const colorSel = document.createElement('select');
+                colorSel.style.cssText = 'padding:4px 8px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem; font-family:inherit; margin-left:auto;';
+                colorSel.dataset.ulId = ul.CounselorID;
+                for (const [val, label] of [['','— No Group —'],['Red','Red'],['Carolina','Carolina'],['Green','Green'],['Navy','Navy']]) {
+                    const o = document.createElement('option');
+                    o.value = val; o.textContent = label;
+                    if ((ulColorMap[ul.CounselorID] || '') === val) o.selected = true;
+                    colorSel.appendChild(o);
+                }
+                colorSel.addEventListener('change', function() {
+                    ulColorMap[parseInt(this.dataset.ulId)] = this.value;
+                });
+                block.appendChild(colorSel);
+                section.appendChild(block);
+            }
+
+            container.appendChild(section);
         }
 
         function buildCounselorBlock(co, campers, target, color) {
@@ -185,6 +248,21 @@
             progressEl.className = 'hga-progress';
             progressEl.id = `progress-${co.CounselorID}`;
             row.appendChild(progressEl);
+
+            // Extended hours dropdown
+            const extSel = document.createElement('select');
+            extSel.style.cssText = 'padding:3px 7px; border:1px solid var(--border-color); border-radius:6px; font-size:0.78rem; font-family:inherit; color:var(--text-muted); margin-left:auto;';
+            extSel.dataset.counselorId = co.CounselorID;
+            for (const [val, label] of [['','No Ext'],['AM','AM Ext'],['PM','PM Ext'],['Both','AM+PM']]) {
+                const o = document.createElement('option');
+                o.value = val; o.textContent = label;
+                if ((extendedHoursMap[co.CounselorID] || '') === val) o.selected = true;
+                extSel.appendChild(o);
+            }
+            extSel.addEventListener('change', function() {
+                extendedHoursMap[parseInt(this.dataset.counselorId)] = this.value;
+            });
+            row.appendChild(extSel);
 
             block.appendChild(row);
 
@@ -331,10 +409,19 @@
                 }
             }
 
+            const extPayload = {};
+            for (const [cId, val] of Object.entries(extendedHoursMap)) {
+                if (val) extPayload[cId] = val;
+            }
+            const ulPayload = {};
+            for (const [cId, val] of Object.entries(ulColorMap)) {
+                ulPayload[cId] = val || '';
+            }
+
             fetch('/homegroup-assignment/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `weekNumber=${WEEK}&assignments=${encodeURIComponent(JSON.stringify(pairs))}`
+                body: `weekNumber=${WEEK}&assignments=${encodeURIComponent(JSON.stringify(pairs))}&extendedHours=${encodeURIComponent(JSON.stringify(extPayload))}&unitLeaderColors=${encodeURIComponent(JSON.stringify(ulPayload))}`
             })
             .then(r => r.json())
             .then(data => {

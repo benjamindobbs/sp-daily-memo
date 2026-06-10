@@ -26,56 +26,68 @@
             
             <div class="card dir-filters" style="margin-top: 20px;">
                 <input type="text" id="staffSearch" placeholder="Filter by name..." onkeyup="filterStaff()">
-                <select id="groupFilter" onchange="filterStaff()">
-                    <option value="all">All Groups</option>
+                <select id="roleFilter" onchange="filterStaff()">
+                    <option value="all">All Roles</option>
+                    <optgroup label="Counselors">
+                        <option value="__role_Counselor">Counselors</option>
+                        <option value="__role_Swim Counselor">Swim Counselors</option>
+                    </optgroup>
+                    <optgroup label="Leaders">
+                        <option value="__role_Unit Leader">Unit Leaders</option>
+                        <option value="__role_Sports Leader">Sports Leaders</option>
+                    </optgroup>
+                    <optgroup label="Faculty">
+                        <option value="__role_Instructor">Instructors</option>
+                    </optgroup>
                     <optgroup label="Home Groups">
-                        <option value="Red">Red</option>
-                        <option value="Carolina">Carolina</option>
-                        <option value="Green">Green</option>
-                        <option value="Navy">Navy</option>
+                        <option value="__color_Red">Red</option>
+                        <option value="__color_Carolina">Carolina</option>
+                        <option value="__color_Green">Green</option>
+                        <option value="__color_Navy">Navy</option>
                     </optgroup>
                     <optgroup label="Specialty Camps">
-                        <option value="LilPlace">Li'l Place</option>
-                        <option value="KinderPlace">Kinder Place</option>
-                        <option value="SPLIT">SPLIT</option>
-                        <option value="SPRC">SPRC</option>
+                        <option value="__color_LilPlace">Li'l Place</option>
+                        <option value="__color_KinderPlace">Kinder Place</option>
+                        <option value="__color_SPLIT">SPLIT</option>
+                        <option value="__color_SPRC">SPRC</option>
+                        <option value="__color_Swim">Swim Staff</option>
                     </optgroup>
-                    <optgroup label="Support Roles">
-                        <option value="Bus">Bus</option>
-                        <option value="Swim">Swim Staff</option>
-                        <option value="__ext_am__">AM Extended</option>
-                        <option value="__ext_pm__">PM Extended</option>
+                    <optgroup label="Support">
+                        <option value="__support">Support Staff (Directors, etc.)</option>
                     </optgroup>
                 </select>
             </div>
         </header>
 
+        <% const SUPPORT_ROLES = ['Director','Office Staff','Nurse','Equipment Manager','CPR Instructor','Internship']; %>
         <div class="directory-grid" id="staffGrid">
             <% counselors.forEach(c => { %>
                 <div class="counselor-card staff-item"
                      data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>"
-                     data-group="<%= c.HomeGroupColor %>"
-                     data-extended="<%= c.ExtendedHours || '' %>">
-                    
-                    <span class="tag <%= c.HomeGroupColor %>"><%= c.HomeGroupColor %> Group</span>
-                    
+                     data-group="<%= c.HomeGroupColor || '' %>"
+                     data-role="<%= c.StaffRole || 'Counselor' %>"
+                     data-support="<%= SUPPORT_ROLES.includes(c.StaffRole) ? '1' : '0' %>">
+
+                    <% if (c.HomeGroupColor) { %>
+                        <span class="tag <%= c.HomeGroupColor %>" style="font-size:0.72rem;"><%= c.HomeGroupColor %></span>
+                    <% } %>
+                    <span style="font-size:0.72rem; background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:10px; white-space:nowrap;"><%= c.StaffRole || 'Counselor' %></span>
+
                     <div class="counselor-name">
                         <%= c.FirstName %> <%= c.LastName %>
                     </div>
 
+                    <% if (!SUPPORT_ROLES.includes(c.StaffRole)) { %>
                     <div class="assignment-info">
-                        <div class="info-row">
-                            <span class="info-label">🚌 Bus Route</span>
-                            <span class="info-value"><%= c.BusRoute || 'N/A' %></span>
-                        </div>
                         <div class="info-row">
                             <span class="info-label">⏰ Extended</span>
                             <span class="info-value"><%= c.ExtendedHours || 'None' %></span>
                         </div>
                     </div>
+                    <% } %>
 
                     <a href="/counselor-profile/<%= c.CounselorID %>" class="profile-btn">
-                        View Schedule & Roster
+                        View Profile
                     </a>
                 </div>
             <% }) %>
@@ -85,22 +97,22 @@
     <script>
         function filterStaff() {
             const query = document.getElementById('staffSearch').value.toLowerCase();
-            const group = document.getElementById('groupFilter').value;
+            const filter = document.getElementById('roleFilter').value;
             const items = document.querySelectorAll('.staff-item');
 
             items.forEach(item => {
                 const nameMatch = item.dataset.name.includes(query);
-                let groupMatch;
-                if (group === 'all') {
-                    groupMatch = true;
-                } else if (group === '__ext_am__') {
-                    groupMatch = item.dataset.extended === 'AM' || item.dataset.extended === 'Both';
-                } else if (group === '__ext_pm__') {
-                    groupMatch = item.dataset.extended === 'PM' || item.dataset.extended === 'Both';
-                } else {
-                    groupMatch = item.dataset.group === group;
+                let filterMatch = true;
+                if (filter === 'all') {
+                    filterMatch = true;
+                } else if (filter === '__support') {
+                    filterMatch = item.dataset.support === '1';
+                } else if (filter.startsWith('__role_')) {
+                    filterMatch = item.dataset.role === filter.slice(7);
+                } else if (filter.startsWith('__color_')) {
+                    filterMatch = item.dataset.group === filter.slice(8);
                 }
-                item.style.display = (nameMatch && groupMatch) ? 'flex' : 'none';
+                item.style.display = (nameMatch && filterMatch) ? 'flex' : 'none';
             });
         }
     </script>

@@ -16,7 +16,7 @@ const db = new Database(dbPath);
 db.exec('PRAGMA foreign_keys = ON;');
 
 db.exec(`
-  -- 1. Counselors (Home Group Leaders)
+  -- 1. Counselors (all non-camper staff)
   CREATE TABLE IF NOT EXISTS Counselors (
     CounselorID INTEGER PRIMARY KEY AUTOINCREMENT,
     FirstName TEXT NOT NULL,
@@ -24,7 +24,11 @@ db.exec(`
     HomeGroupColor TEXT CHECK(HomeGroupColor IN ('Red','Carolina','Green','Navy','Bus','Extended','Swim','LilPlace','KinderPlace','SPLIT','SPRC')),
     ScheduleType TEXT,
     BusRoute TEXT,
-    ExtendedHours TEXT CHECK(ExtendedHours IN ('AM', 'PM', 'Both', NULL))
+    ExtendedHours TEXT CHECK(ExtendedHours IN ('AM', 'PM', 'Both', NULL)),
+    StaffRole TEXT CHECK(StaffRole IN (
+      'Counselor','Swim Counselor','Unit Leader','Sports Leader','Instructor',
+      'Director','Office Staff','Nurse','Equipment Manager','CPR Instructor','Internship'
+    )) DEFAULT 'Counselor'
   );
 
   -- 2. Staff (Unit Leaders & Instructors)
@@ -55,7 +59,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS Schedules (
     ScheduleID INTEGER PRIMARY KEY AUTOINCREMENT,
     PersonID INTEGER,
-    PersonType TEXT CHECK(PersonType IN ('Camper', 'Counselor', 'Staff')),
+    PersonType TEXT CHECK(PersonType IN ('Camper', 'Counselor', 'Staff', 'Instructor')),
     PeriodNumber INTEGER,
     ActivityName TEXT,
     Location TEXT,

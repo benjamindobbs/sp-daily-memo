@@ -55,17 +55,17 @@
 
             <div class="card" style="margin-bottom: 20px;">
                 <h3 style="margin:0 0 18px;">Your Name</h3>
-                <select name="counselorID" required style="width:100%; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.95rem; background:white;">
+                <select name="counselorID" id="counselorSelect" required onchange="onCounselorChange(this.value)" style="width:100%; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.95rem; background:white;">
                     <option value="">— Select your name —</option>
                     <% counselors.forEach(function(c) { %>
-                        <option value="<%= c.CounselorID %>" <%= selectedCounselorId === c.CounselorID ? 'selected' : '' %>>
-                            <%= c.FirstName %> <%= c.LastName %> (<%= c.HomeGroupColor %> Group)
+                        <option value="<%= c.CounselorID %>" data-role="<%= c.StaffRole %>" <%= selectedCounselorId === c.CounselorID ? 'selected' : '' %>>
+                            <%= c.FirstName %> <%= c.LastName %><% if (c.HomeGroupColor) { %> (<%= c.HomeGroupColor %>)<% } %> — <%= c.StaffRole %>
                         </option>
                     <% }); %>
                 </select>
             </div>
 
-            <div class="card" style="margin-bottom: 20px;">
+            <div class="card" style="margin-bottom: 20px;" id="groupPrefSection">
                 <h3 style="margin:0 0 6px;">Home Group Preference</h3>
                 <p class="text-muted" style="margin:0 0 16px; font-size:0.85rem;">Which home group would you prefer to be assigned to?</p>
                 <div style="display:flex; flex-wrap:wrap; gap:10px;">
@@ -82,7 +82,7 @@
                 </div>
             </div>
 
-            <div class="card" style="margin-bottom: 20px;">
+            <div class="card" style="margin-bottom: 20px;" id="schedulePrefSection">
                 <h3 style="margin:0 0 6px;">Schedule Preference</h3>
                 <p class="text-muted" style="margin:0 0 16px; font-size:0.85rem;">What type of schedule would you prefer?</p>
                 <div style="display:flex; flex-direction:column; gap:10px;">
@@ -104,7 +104,7 @@
                 </div>
             </div>
 
-            <div class="card" style="margin-bottom: 28px;">
+            <div class="card" style="margin-bottom: 28px;" id="activityPrefSection">
                 <h3 style="margin:0 0 6px;">Activity Preferences</h3>
                 <p class="text-muted" style="margin:0 0 16px; font-size:0.85rem;">Select all activities you would enjoy teaching. Check as many as you like.</p>
 
@@ -173,6 +173,26 @@
     </div>
 
     <script>
+        const SUPPORT_ROLES = new Set(['Director','Office Staff','Nurse','Equipment Manager','CPR Instructor','Internship']);
+
+        function onCounselorChange(val) {
+            if (!val) return;
+            const sel = document.getElementById('counselorSelect');
+            const opt = sel.querySelector(`option[value="${val}"]`);
+            const role = opt ? opt.dataset.role : '';
+            const isSupportOnly = SUPPORT_ROLES.has(role);
+            document.getElementById('schedulePrefSection').style.display  = isSupportOnly ? 'none' : '';
+            document.getElementById('activityPrefSection').style.display  = isSupportOnly ? 'none' : '';
+            const groupLabel = document.querySelector('#groupPrefSection h3');
+            if (groupLabel) groupLabel.textContent = isSupportOnly ? 'Group of the Day Preference' : 'Home Group Preference';
+        }
+
+        // Apply on page load if a counselor is already selected
+        document.addEventListener('DOMContentLoaded', function() {
+            const sel = document.getElementById('counselorSelect');
+            if (sel.value) onCounselorChange(sel.value);
+        });
+
         function filterActivities() {
             const term = document.getElementById('activityFilter').value.toLowerCase();
             document.querySelectorAll('.activity-check-label').forEach(function(label) {
