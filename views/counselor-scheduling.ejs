@@ -21,8 +21,9 @@
         .side-heading { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9; }
         .offering-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 20px; }
         .offering-card { border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; background: #fafafa; }
-        .offering-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
-        .offering-name { font-weight: 700; font-size: 0.95rem; }
+        .offering-card-header { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+        .offering-card-badges { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+        .offering-name { font-weight: 700; font-size: 0.95rem; overflow-wrap: break-word; word-break: break-word; }
         .enrollment-pill { font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: #f1f5f9; color: var(--text-muted); white-space: nowrap; }
         .slot-group { margin-bottom: 10px; }
         .slot-group-label { font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 5px; display: flex; align-items: center; gap: 8px; }
@@ -161,12 +162,14 @@
                         <div class="offering-card" data-offer="<%= idx %>">
                             <div class="offering-card-header">
                                 <span class="offering-name"><%= act.ActivityName %></span>
-                                <% if (parseInt(act.PeriodNumber) <= 3) { %>
-                                    <span style="font-size:0.68rem;font-weight:700;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;white-space:nowrap;">AM · Green / Navy</span>
-                                <% } else { %>
-                                    <span style="font-size:0.68rem;font-weight:700;background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;white-space:nowrap;">PM · Red / Carolina</span>
-                                <% } %>
-                                <span class="enrollment-pill"><%= act.PreliminaryEnrollment %> expected</span>
+                                <div class="offering-card-badges">
+                                    <% if (parseInt(act.PeriodNumber) <= 3) { %>
+                                        <span style="font-size:0.68rem;font-weight:700;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;white-space:nowrap;">AM · Green / Navy</span>
+                                    <% } else { %>
+                                        <span style="font-size:0.68rem;font-weight:700;background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;white-space:nowrap;">PM · Red / Carolina</span>
+                                    <% } %>
+                                    <span class="enrollment-pill"><%= act.PreliminaryEnrollment %> expected</span>
+                                </div>
                             </div>
                             <div class="slot-group">
                                 <div class="slot-group-label">
@@ -200,7 +203,12 @@
                         <div class="offering-card" data-offer="<%= idx %>">
                             <div class="offering-card-header">
                                 <span class="offering-name"><%= act.ActivityName %></span>
-                                <span class="enrollment-pill"><%= act.PreliminaryEnrollment %> expected</span>
+                                <div class="offering-card-badges">
+                                    <% if (act.AllowedGroups) { %>
+                                        <span class="enrollment-pill"><%= act.AllowedGroups %></span>
+                                    <% } %>
+                                    <span class="enrollment-pill"><%= act.PreliminaryEnrollment %> expected</span>
+                                </div>
                             </div>
                             <div class="slot-group">
                                 <div class="slot-group-label">
@@ -210,15 +218,6 @@
                                            oninput="handleCountChange(<%= idx %>, 'counselors', +this.value)">
                                 </div>
                                 <div class="slot-dropdowns" data-slot="counselors"></div>
-                            </div>
-                            <div class="slot-group">
-                                <div class="slot-group-label">
-                                    Instructors
-                                    <input type="number" class="count-input" min="0" max="10" value="0"
-                                           data-count-type="staff"
-                                           oninput="handleCountChange(<%= idx %>, 'staff', +this.value)">
-                                </div>
-                                <div class="slot-dropdowns" data-slot="staff"></div>
                             </div>
                         </div>
                     <% }); %>
@@ -483,7 +482,8 @@
                             <td>
                                 <select class="person-select cg-schedule cg-specialty-schedule" data-cid="<%= c.CounselorID %>">
                                     <option value="">— Unassigned —</option>
-                                    <% ['All Sports','All Enrichment','AM Sports / PM Enrichment','AM Enrichment / PM Sports'].forEach(type => { %>
+                                    <% ['All Sports','All Enrichment','AM Sports / PM Enrichment','AM Enrichment / PM Sports',
+                                        'AM Sports Only','PM Sports Only','AM Enrichment Only','PM Enrichment Only'].forEach(type => { %>
                                     <option value="<%= type %>"<%= c.ScheduleType === type ? ' selected' : '' %>><%= type %></option>
                                     <% }); %>
                                 </select>
@@ -589,11 +589,17 @@
                       const sched = sel ? sel.value : (c.ScheduleType || '');
                       return sched && isCounselorAvailableFor(sched, period, side);
                   })
-                : (STAFF_AVAIL[period]?.[side]?.length
-                      ? STAFF_AVAIL[period][side]
-                      : STAFF_MEMBERS);
+                : (() => {
+                      const pool = STAFF_AVAIL[period]?.[side]?.length
+                          ? STAFF_AVAIL[period][side]
+                          : STAFF_MEMBERS;
+                      return side === 'Sports'
+                          ? pool.filter(s => ['Unit Leader','Sports Leader'].includes(s.StaffType))
+                          : [];
+                  })();
 
             const container = card.querySelector(`.slot-dropdowns[data-slot="${type}"]`);
+            if (!container) return;
             container.innerHTML = '';
 
             arr.forEach((selectedId, slotIdx) => {
@@ -607,7 +613,7 @@
                     const id = type === 'counselors' ? person.CounselorID : person.StaffID;
                     if (usedElsewhere.has(id)) return;
                     const label = type === 'counselors'
-                        ? `${person.FirstName} ${person.LastName} (${person.HomeGroupColor})`
+                        ? `${person.FirstName} ${person.LastName}${person.HomeGroupColor ? ` (${person.HomeGroupColor})` : ''}`
                         : `${person.FirstName} ${person.LastName} — ${person.StaffType}`;
                     const opt = new Option(label, id);
                     if (id === selectedId) opt.selected = true;
@@ -647,6 +653,10 @@
                 case 'All Enrichment':            return side === 'Enrichment';
                 case 'AM Sports / PM Enrichment': return am ? side === 'Sports'     : side === 'Enrichment';
                 case 'AM Enrichment / PM Sports': return am ? side === 'Enrichment' : side === 'Sports';
+                case 'AM Sports Only':            return am  && side === 'Sports';
+                case 'PM Sports Only':            return !am && side === 'Sports';
+                case 'AM Enrichment Only':        return am  && side === 'Enrichment';
+                case 'PM Enrichment Only':        return !am && side === 'Enrichment';
                 default: return false;
             }
         }
@@ -717,9 +727,12 @@
                 state[idx].counselors.forEach(id => {
                     if (id) assignments.push({ periodNumber: act.PeriodNumber, activityName: act.ActivityName, personID: id, personType: 'Counselor' });
                 });
-                state[idx].staff.forEach(id => {
-                    if (id) assignments.push({ periodNumber: act.PeriodNumber, activityName: act.ActivityName, personID: id, personType: 'Staff' });
-                });
+                // Staff only assigned to sports activities
+                if (act.SideOfCamp === 'Sports') {
+                    state[idx].staff.forEach(id => {
+                        if (id) assignments.push({ periodNumber: act.PeriodNumber, activityName: act.ActivityName, personID: id, personType: 'Staff' });
+                    });
+                }
             });
 
             try {
@@ -731,6 +744,8 @@
                 if (resp.ok) {
                     if (btn) { btn.textContent = '✓ Saved!'; setTimeout(() => { btn.textContent = 'Save Assignments'; btn.disabled = false; }, 2500); }
                 } else {
+                    const errBody = await resp.json().catch(() => ({}));
+                    console.error('[save-counselor-assignments] server error:', errBody.error || resp.status);
                     if (btn) { btn.textContent = 'Error — try again'; btn.disabled = false; }
                 }
             } catch {
@@ -914,11 +929,10 @@
             const prefMap = {};
             PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
             const colors = ['Red','Carolina','Green','Navy'];
-            const schedFor = c => ['Red','Carolina'].includes(c) ? 'AM Enrichment / PM Sports' : 'AM Sports / PM Enrichment';
             const totalCampers = colors.reduce((s, c) => s + (CAMPER_COUNTS[c] || 0), 0);
             if (totalCampers === 0 || MAIN_COUNSELORS.length === 0) return;
 
-            // Proportional targets with largest-remainder rounding
+            // Proportional home group targets with largest-remainder rounding
             const targets = {};
             let totalAssigned = 0;
             colors.forEach(c => {
@@ -929,7 +943,7 @@
             colors.map(c => ({ c, frac: ((CAMPER_COUNTS[c]||0)/totalCampers)*MAIN_COUNSELORS.length - targets[c] }))
                 .sort((a,b) => b.frac - a.frac).slice(0, rem).forEach(({c}) => targets[c]++);
 
-            // Assign by preference first, then randomly
+            // Assign home groups: preference first, then random
             const assignedIds = new Set();
             const assignments = {};
             const targetsLeft = { ...targets };
@@ -945,13 +959,26 @@
                 offset += targetsLeft[color];
             }
 
-            // Update home group and schedule type dropdowns in DOM
+            // Update home group dropdowns
             Object.entries(assignments).forEach(([cid, color]) => {
                 const hg = document.querySelector(`.cg-homegroup[data-cid="${cid}"]`);
                 if (hg) hg.value = color;
-                const sc = document.querySelector(`.cg-schedule[data-cid="${cid}"]`);
-                if (sc) sc.value = schedFor(color);
             });
+
+            // Assign schedule types: honor preferences, then default to All Sports / All Enrichment
+            let sportsTurn = true;
+            Object.keys(assignments).forEach(cid => {
+                const sc = document.querySelector(`.cg-schedule[data-cid="${cid}"]:not(.cg-specialty-schedule)`);
+                if (!sc) return;
+                const schedPref = prefMap[parseInt(cid)]?.SchedulePreference;
+                if (schedPref && schedPref !== 'No Preference') {
+                    sc.value = schedPref;
+                } else {
+                    sc.value = sportsTurn ? 'All Sports' : 'All Enrichment';
+                    sportsTurn = !sportsTurn;
+                }
+            });
+
             updateGroupCounters();
         }
 
@@ -1091,9 +1118,9 @@
         document.addEventListener('DOMContentLoaded', () => {
             initState();
             renderAllFromState();
-            // Default staff slot count to 1 for any activity with no existing assignment
+            // Default staff slot count to 1 for sports activities only (enrichment has no staff section)
             OFFERINGS.forEach((act, idx) => {
-                if (!act.PeriodNumber) return;
+                if (!act.PeriodNumber || act.SideOfCamp !== 'Sports') return;
                 if (state[idx].staff.length === 0) {
                     handleCountChange(idx, 'staff', 1);
                     const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);

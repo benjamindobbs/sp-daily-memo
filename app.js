@@ -3149,10 +3149,12 @@ app.post('/save-counselor-assignments', (req, res) => {
 
             for (const a of assignments) {
                 if (!a.periodNumber || !a.activityName || !a.personID || !a.personType) continue;
+                const pNum = parseInt(a.periodNumber);
                 if (a.personType === 'Counselor') {
-                    insCws.run(parseInt(a.personID), w, parseInt(a.periodNumber), a.activityName);
+                    if (isNaN(pNum) || pNum < 1 || pNum > 6) continue; // skip invalid periods
+                    insCws.run(parseInt(a.personID), w, pNum, a.activityName);
                 } else {
-                    insStaff.run(a.periodNumber, a.activityName, a.personID, a.personType);
+                    insStaff.run(pNum || a.periodNumber, a.activityName, a.personID, a.personType);
                 }
             }
         })();
