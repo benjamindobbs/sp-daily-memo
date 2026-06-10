@@ -2873,7 +2873,14 @@ app.get('/counselor-scheduling', (req, res) => {
         ActivityPreferences: JSON.parse(p.ActivityPreferences || '[]')
     }));
 
-    res.render('counselor-scheduling', { offerings, counselors, mainCounselors, specialtyCounselors, availability, staffAvailability, existingAssignments, alertMessage, camperCounts, preferences, sessions, planWeek });
+    const staffMembers = db.prepare(`
+        SELECT CounselorID AS StaffID, FirstName, LastName, StaffRole AS StaffType
+        FROM Counselors
+        WHERE StaffRole IN ('Instructor', 'Unit Leader', 'Sports Leader')
+        ORDER BY LastName, FirstName
+    `).all();
+
+    res.render('counselor-scheduling', { offerings, counselors, mainCounselors, specialtyCounselors, availability, staffAvailability, existingAssignments, alertMessage, camperCounts, preferences, sessions, planWeek, staffMembers });
 });
 
 app.post('/auto-assign-homegroups', (req, res) => {
@@ -3127,28 +3134,33 @@ app.post('/save-counselor-assignments', (req, res) => {
     // Collect counselor IDs being submitted for this week
     const counselorIds = [...new Set(assignments.filter(a => a.personType === 'Counselor' && a.personID).map(a => parseInt(a.personID)))];
 
-    db.transaction(() => {
-        // Wipe this week's counselor assignments (all periods) for submitted counselors
-        if (counselorIds.length > 0) {
-            const placeholders = counselorIds.map(() => '?').join(',');
-            db.prepare(`DELETE FROM CounselorWeekSchedules WHERE WeekNumber=? AND CounselorID IN (${placeholders})`).run(w, ...counselorIds);
-        }
-        // Re-insert counselor assignments for this week
-        const insCws = db.prepare('INSERT OR REPLACE INTO CounselorWeekSchedules (CounselorID, WeekNumber, PeriodNumber, ActivityName) VALUES (?, ?, ?, ?)');
-        // Wipe all staff from CounselorScheduleAssignments and reinsert
-        db.exec('DELETE FROM CounselorScheduleAssignments WHERE PersonType=\'Instructor\'');
-        const insStaff = db.prepare('INSERT OR IGNORE INTO CounselorScheduleAssignments (PeriodNumber, ActivityName, PersonID, PersonType) VALUES (?, ?, ?, ?)');
-
-        for (const a of assignments) {
-            if (!a.periodNumber || !a.activityName || !a.personID || !a.personType) continue;
-            if (a.personType === 'Counselor') {
-                insCws.run(parseInt(a.personID), w, parseInt(a.periodNumber), a.activityName);
-            } else {
-                insStaff.run(a.periodNumber, a.activityName, a.personID, a.personType);
+    try {
+        db.transaction(() => {
+            // Wipe this week's counselor assignments (all periods) for submitted counselors
+            if (counselorIds.length > 0) {
+                const placeholders = counselorIds.map(() => '?').join(',');
+                db.prepare(`DELETE FROM CounselorWeekSchedules WHERE WeekNumber=? AND CounselorID IN (${placeholders})`).run(w, ...counselorIds);
             }
-        }
-    })();
-    res.json({ ok: true });
+            // Re-insert counselor assignments for this week
+            const insCws = db.prepare('INSERT OR REPLACE INTO CounselorWeekSchedules (CounselorID, WeekNumber, PeriodNumber, ActivityName) VALUES (?, ?, ?, ?)');
+            // Wipe all staff from CounselorScheduleAssignments and reinsert
+            db.prepare('DELETE FROM CounselorScheduleAssignments WHERE PersonType IN (\'Instructor\', \'Staff\')').run();
+            const insStaff = db.prepare('INSERT OR IGNORE INTO CounselorScheduleAssignments (PeriodNumber, ActivityName, PersonID, PersonType) VALUES (?, ?, ?, ?)');
+
+            for (const a of assignments) {
+                if (!a.periodNumber || !a.activityName || !a.personID || !a.personType) continue;
+                if (a.personType === 'Counselor') {
+                    insCws.run(parseInt(a.personID), w, parseInt(a.periodNumber), a.activityName);
+                } else {
+                    insStaff.run(a.periodNumber, a.activityName, a.personID, a.personType);
+                }
+            }
+        })();
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[save-counselor-assignments]', err.message);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.get('/export-counselor-schedule', (_req, res) => {

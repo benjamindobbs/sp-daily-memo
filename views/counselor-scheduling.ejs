@@ -523,7 +523,8 @@
         const STAFF_AVAIL  = <%- JSON.stringify(staffAvailability) %>;
         const EXISTING     = <%- JSON.stringify(existingAssignments) %>;
         const PREFERENCES  = <%- JSON.stringify(preferences) %>;
-        const CAMPER_COUNTS = <%- JSON.stringify(camperCounts) %>;
+        const CAMPER_COUNTS  = <%- JSON.stringify(camperCounts) %>;
+        const STAFF_MEMBERS  = <%- JSON.stringify(staffMembers) %>;
         const PLAN_WEEK    = <%= planWeek %>;
         const SESSIONS     = <%- JSON.stringify(sessions) %>;
 
@@ -583,8 +584,14 @@
             const side      = act.SideOfCamp;
             const arr       = state[offerIdx][type];
             const allPeople = type === 'counselors'
-                ? (AVAIL[period]?.[side]       ?? [])
-                : (STAFF_AVAIL[period]?.[side] ?? []);
+                ? COUNSELORS.filter(c => {
+                      const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                      const sched = sel ? sel.value : (c.ScheduleType || '');
+                      return sched && isCounselorAvailableFor(sched, period, side);
+                  })
+                : (STAFF_AVAIL[period]?.[side]?.length
+                      ? STAFF_AVAIL[period][side]
+                      : STAFF_MEMBERS);
 
             const container = card.querySelector(`.slot-dropdowns[data-slot="${type}"]`);
             container.innerHTML = '';
@@ -866,8 +873,11 @@
                 const prev = prevMap[act.ActivityName];
                 if (!prev || prev.length === 0) return; // class didn't exist or had no assignments
 
-                const avail = AVAIL[act.PeriodNumber]?.[side] ?? [];
-                const availIds = new Set(avail.map(c => c.CounselorID));
+                const availIds = new Set(COUNSELORS.filter(c => {
+                    const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                    const sched = sel ? sel.value : (c.ScheduleType || '');
+                    return sched && isCounselorAvailableFor(sched, act.PeriodNumber, side);
+                }).map(c => c.CounselorID));
 
                 // Only carry over counselors who are available in the planning week
                 let candidates = shuffle(prev.filter(cid => availIds.has(cid)));
