@@ -681,6 +681,10 @@ db.exec(`INSERT OR IGNORE INTO CounselorWeekAttributes (CounselorID, WeekNumber,
 db.exec(`UPDATE Campers    SET BusRoute = NULL WHERE LOWER(TRIM(BusRoute)) = 'null' OR TRIM(BusRoute) = ''`);
 db.exec(`UPDATE Counselors SET BusRoute = NULL WHERE LOWER(TRIM(BusRoute)) = 'null' OR TRIM(BusRoute) = ''`);
 db.exec(`UPDATE Campers    SET ExtendedHours = NULL WHERE LOWER(TRIM(ExtendedHours)) = 'null' OR TRIM(ExtendedHours) = ''`);
+// Normalize float bus routes to whole numbers (e.g. "3.0" → "3")
+db.exec(`UPDATE Campers SET BusRoute = CAST(CAST(BusRoute AS INTEGER) AS TEXT) WHERE BusRoute GLOB '[0-9]*.[0-9]*'`);
+// Remove group color names erroneously stored as bus routes
+db.exec(`UPDATE Campers SET BusRoute = NULL WHERE BusRoute IN ('Red','Carolina','Green','Navy','LilPlace','KinderPlace','SPLIT','SPRC','Swim')`);
 
 // --- WEEK HELPERS ---
 function getActiveWeek() {
@@ -1169,10 +1173,10 @@ app.post('/update-class-location', (req, res) => {
 app.get('/search', (req, res) => {
     try {
         const query = req.query.name || '';
-        
+        const aw = getActiveWeek();
         const camperList = db.prepare(`
-            SELECT 
-                c.*, 
+            SELECT
+                c.*,
                 n.FirstName || ' ' || n.LastName AS HomeCounselorName,
                 s1.ActivityName AS P1,
                 s2.ActivityName AS P2,
@@ -1180,7 +1184,8 @@ app.get('/search', (req, res) => {
                 s4.ActivityName AS P4,
                 s5.ActivityName AS P5
             FROM Campers c
-            LEFT JOIN Counselors n ON c.HomeGroupCounselorID = n.CounselorID
+            LEFT JOIN CamperHomeGroups chg ON chg.CamperID = c.CamperID AND chg.WeekNumber = ?
+            LEFT JOIN Counselors n ON COALESCE(chg.CounselorID, c.HomeGroupCounselorID) = n.CounselorID
             LEFT JOIN Schedules s1 ON c.CamperID = s1.PersonID AND s1.PeriodNumber = 1 AND s1.PersonType = 'Camper'
             LEFT JOIN Schedules s2 ON c.CamperID = s2.PersonID AND s2.PeriodNumber = 2 AND s2.PersonType = 'Camper'
             LEFT JOIN Schedules s3 ON c.CamperID = s3.PersonID AND s3.PeriodNumber = 3 AND s3.PersonType = 'Camper'
@@ -1188,7 +1193,7 @@ app.get('/search', (req, res) => {
             LEFT JOIN Schedules s5 ON c.CamperID = s5.PersonID AND s5.PeriodNumber = 5 AND s5.PersonType = 'Camper'
             WHERE (c.FirstName || ' ' || c.LastName LIKE ?) OR (? = '')
             ORDER BY c.LastName ASC
-        `).all(`%${query}%`, query);
+        `).all(aw, `%${query}%`, query);
 
         res.render('search', { 
             camper: camperList, 
@@ -1277,12 +1282,14 @@ app.get('/counselor-profile/:id', (req, res) => {
 
 app.get('/camper/:id', (req, res) => {
     try {
+        const aw = getActiveWeek();
         const camper = db.prepare(`
             SELECT c.*, co.FirstName || ' ' || co.LastName AS HomeCounselorName
             FROM Campers c
-            LEFT JOIN Counselors co ON c.HomeGroupCounselorID = co.CounselorID
+            LEFT JOIN CamperHomeGroups chg ON chg.CamperID = c.CamperID AND chg.WeekNumber = ?
+            LEFT JOIN Counselors co ON COALESCE(chg.CounselorID, c.HomeGroupCounselorID) = co.CounselorID
             WHERE c.CamperID = ?
-        `).get(req.params.id);
+        `).get(aw, req.params.id);
 
         if (!camper) return res.status(404).send('Camper not found');
 
@@ -3056,7 +3063,7 @@ function syncOfferingsForWeek(weekNumber) {
 
     const offeringMap = new Map();
     for (const row of rows) {
-        const uPeriod = toUniversalPeriod(row.HomeGroupColor, row.CamperPeriod);
+        const uPeriod = row.CamperPeriod;
         const key = `${row.ActivityName}|${uPeriod}`;
         if (!offeringMap.has(key)) {
             offeringMap.set(key, {
