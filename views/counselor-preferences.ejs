@@ -69,6 +69,10 @@
                 Schedule preferences are only available for Counselors.
             </div>
 
+            <button type="submit" id="saveNameBtn" class="btn btn-primary" style="width:100%; padding:14px; font-size:1rem; margin-bottom:20px; display:<%= (selectedCounselorId && selectedCounselorRole !== 'Counselor') ? '' : 'none' %>;">
+                Save Name
+            </button>
+
             <div id="prefsContainer" style="display:<%= selectedCounselorRole === 'Counselor' ? '' : 'none' %>;">
 
             <div class="card" style="margin-bottom: 20px;" id="groupPrefSection">
@@ -202,18 +206,21 @@
 
         function onCounselorChange(val) {
             const prefsContainer = document.getElementById('prefsContainer');
-            const noPrefsMsg    = document.getElementById('noPrefsMsg');
+            const noPrefsMsg     = document.getElementById('noPrefsMsg');
+            const saveNameBtn    = document.getElementById('saveNameBtn');
             const role = getRoleForValue(val);
 
             if (!val) {
                 prefsContainer.style.display = 'none';
                 noPrefsMsg.style.display     = 'none';
+                saveNameBtn.style.display    = 'none';
                 return;
             }
 
             if (role === 'Counselor') {
                 prefsContainer.style.display = '';
                 noPrefsMsg.style.display     = 'none';
+                saveNameBtn.style.display    = 'none';
                 fetch('/api/counselor-preferences/' + val)
                     .then(function(r) { return r.json(); })
                     .then(function(prefs) { applyPrefs(prefs); })
@@ -221,6 +228,7 @@
             } else {
                 prefsContainer.style.display = 'none';
                 noPrefsMsg.style.display     = '';
+                saveNameBtn.style.display    = '';
             }
         }
 

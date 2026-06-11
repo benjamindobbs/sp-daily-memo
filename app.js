@@ -3319,6 +3319,12 @@ app.post('/counselor-preferences', (req, res) => {
     const counselorExists = db.prepare("SELECT 1 FROM Counselors WHERE CounselorID = ?").get(parsedId);
     if (!counselorExists) return res.redirect('/counselor-preferences?message=Counselor+not+found.+Please+re-select+your+name.');
 
+    res.cookie('selectedCounselor', parsedId, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+
+    if (!homeGroupPreference) {
+        return res.redirect('/counselor-preferences?message=Name+saved!');
+    }
+
     db.prepare(`
         INSERT INTO CounselorPreferences (CounselorID, HomeGroupPreference, SchedulePreference, ActivityPreferences, SubmittedAt)
         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -3327,9 +3333,8 @@ app.post('/counselor-preferences', (req, res) => {
             SchedulePreference   = excluded.SchedulePreference,
             ActivityPreferences  = excluded.ActivityPreferences,
             SubmittedAt          = CURRENT_TIMESTAMP
-    `).run(parsedId, homeGroupPreference || null, schedulePreference || null, JSON.stringify(activityPreferences));
+    `).run(parsedId, homeGroupPreference, schedulePreference || null, JSON.stringify(activityPreferences));
 
-    res.cookie('selectedCounselor', parsedId, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
     res.redirect('/counselor-preferences?message=Preferences+saved!');
 });
 
