@@ -124,6 +124,19 @@
             <button id="saveBtn" class="btn btn-primary" onclick="saveAssignments()">Save Assignments</button>
             <a href="/export-counselor-schedule" class="btn btn-primary" style="background:var(--success,#16a34a);">&#11015;&#65039; Counselor CSV</a>
             <a href="/export-staff-schedule" class="btn btn-primary" style="background:var(--success,#16a34a);">&#11015;&#65039; Staff CSV</a>
+            <span style="width:1px; height:28px; background:var(--border-color); display:inline-block; align-self:center;"></span>
+            <form action="/clear-counselor-schedule" method="POST" style="margin:0;"
+                  onsubmit="return confirm('Clear all counselor AND staff/unit leader assignments for Week <%= planWeek %>?')">
+                <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                <input type="hidden" name="mode" value="full">
+                <button type="submit" class="btn btn-small" style="background:#fee2e2; color:#991b1b; border-color:#fca5a5;">Clear All</button>
+            </form>
+            <form action="/clear-counselor-schedule" method="POST" style="margin:0;"
+                  onsubmit="return confirm('Clear counselor assignments for Week <%= planWeek %>? Unit Leader / Sports Leader slots will be kept.')">
+                <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                <input type="hidden" name="mode" value="counselors">
+                <button type="submit" class="btn btn-small" style="background:#fff7ed; color:#c2410c; border-color:#fed7aa;">Clear Counselors Only</button>
+            </form>
         </div>
 
         <!-- Period Sections -->
@@ -339,6 +352,19 @@
             <button class="btn btn-primary" onclick="saveAssignments()">Save Assignments</button>
             <a href="/export-counselor-schedule" class="btn btn-primary" style="background:var(--success,#16a34a);">&#11015;&#65039; Counselor CSV</a>
             <a href="/export-staff-schedule" class="btn btn-primary" style="background:var(--success,#16a34a);">&#11015;&#65039; Staff CSV</a>
+            <span style="width:1px; height:28px; background:var(--border-color); display:inline-block; align-self:center;"></span>
+            <form action="/clear-counselor-schedule" method="POST" style="margin:0;"
+                  onsubmit="return confirm('Clear all counselor AND staff/unit leader assignments for Week <%= planWeek %>?')">
+                <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                <input type="hidden" name="mode" value="full">
+                <button type="submit" class="btn btn-small" style="background:#fee2e2; color:#991b1b; border-color:#fca5a5;">Clear All</button>
+            </form>
+            <form action="/clear-counselor-schedule" method="POST" style="margin:0;"
+                  onsubmit="return confirm('Clear counselor assignments for Week <%= planWeek %>? Unit Leader / Sports Leader slots will be kept.')">
+                <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                <input type="hidden" name="mode" value="counselors">
+                <button type="submit" class="btn btn-small" style="background:#fff7ed; color:#c2410c; border-color:#fed7aa;">Clear Counselors Only</button>
+            </form>
         </div>
 
         <% } %>
@@ -504,8 +530,13 @@
                 <% } %>
 
                 <!-- ── Save button (always visible at bottom) ───────────────────── -->
-                <div style="margin-top: 16px;">
+                <div style="margin-top: 16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                     <button id="saveCGBtn" class="btn btn-primary" onclick="saveCounselorGroups()">Save Group Assignments</button>
+                    <form action="/clear-counselor-homegroups" method="POST" style="margin:0;"
+                          onsubmit="return confirm('Clear all homegroup and schedule type assignments for Week <%= planWeek %>? Bus routes and extended hours will be kept.')">
+                        <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                        <button type="submit" class="btn btn-small" style="background:#fee2e2; color:#991b1b; border-color:#fca5a5;">Clear Homegroups &amp; Schedule Types</button>
+                    </form>
                 </div>
 
             </div>

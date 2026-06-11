@@ -170,7 +170,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups',
     '/hub-content', '/director-notes', '/photo-gallery', '/photo-vote',
     '/set-active-week', '/set-released-week', '/update-session-label',
-    '/clear-counselor-week', '/counselor-week-assignments',
+    '/clear-counselor-week', '/counselor-week-assignments', '/clear-counselor-schedule', '/clear-counselor-homegroups',
     '/audit', '/merge-class',
     '/homegroup-assignment',
 ];
@@ -817,6 +817,11 @@ app.post('/director-notes', (req, res) => {
     res.redirect('/admin');
 });
 
+app.post('/director-notes/delete/:id', (req, res) => {
+    db.prepare("DELETE FROM DirectorNotes WHERE id = ?").run(req.params.id);
+    res.redirect('/admin');
+});
+
 app.post('/hub-content/:id', (req, res) => {
     const allowed = ['announcement', 'director_notes'];
     if (!allowed.includes(req.params.id)) return res.status(400).json({ error: 'Invalid' });
@@ -1334,6 +1339,19 @@ app.post('/camper/:id/update', (req, res) => {
         console.error(err);
         res.redirect(`/camper/${req.params.id}?message=Error+saving+changes`);
     }
+});
+
+app.post('/camper/:id/delete', (req, res) => {
+    const id = req.params.id;
+    db.transaction(() => {
+        db.prepare("DELETE FROM Schedules       WHERE PersonID = ? AND PersonType = 'Camper'").run(id);
+        db.prepare("DELETE FROM Waitlists       WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM Attendance      WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM EarlyDismissals WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM CamperHomeGroups WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM Campers         WHERE CamperID = ?").run(id);
+    })();
+    res.redirect('/search');
 });
 
 // --- SETTINGS & ACTIVITY MANAGEMENT ---
@@ -3266,6 +3284,17 @@ app.get('/export-master-schedule', (_req, res) => {
 });
 
 // --- Counselor Preferences ---
+app.get('/api/counselor-preferences/:id', (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.json({ HomeGroupPreference: null, SchedulePreference: null, activityPreferences: [] });
+    const row = db.prepare("SELECT HomeGroupPreference, SchedulePreference, ActivityPreferences FROM CounselorPreferences WHERE CounselorID = ?").get(id);
+    res.json({
+        HomeGroupPreference: row?.HomeGroupPreference ?? null,
+        SchedulePreference:  row?.SchedulePreference  ?? null,
+        activityPreferences: row?.ActivityPreferences ? JSON.parse(row.ActivityPreferences) : []
+    });
+});
+
 app.get('/counselor-preferences', (req, res) => {
     const counselors = db.prepare("SELECT CounselorID, FirstName, LastName, HomeGroupColor, StaffRole FROM Counselors ORDER BY LastName, FirstName").all();
     const activities = db.prepare("SELECT Name, SideOfCamp FROM Activities ORDER BY SideOfCamp, Name").all();
@@ -3275,7 +3304,8 @@ app.get('/counselor-preferences', (req, res) => {
         ? db.prepare("SELECT HomeGroupPreference, SchedulePreference, ActivityPreferences FROM CounselorPreferences WHERE CounselorID = ?").get(selectedCounselorId)
         : null;
     const savedActivityPrefs = existingPrefs?.ActivityPreferences ? JSON.parse(existingPrefs.ActivityPreferences) : [];
-    res.render('counselor-preferences', { counselors, activities, alertMessage, selectedCounselorId, existingPrefs, savedActivityPrefs });
+    const selectedCounselorRole = counselors.find(c => c.CounselorID === selectedCounselorId)?.StaffRole || null;
+    res.render('counselor-preferences', { counselors, activities, alertMessage, selectedCounselorId, selectedCounselorRole, existingPrefs, savedActivityPrefs });
 });
 
 app.post('/counselor-preferences', (req, res) => {
@@ -3425,6 +3455,24 @@ app.post('/clear-counselor-week', (req, res) => {
     db.prepare('DELETE FROM CounselorWeekSchedules WHERE WeekNumber=?').run(w);
     db.prepare('DELETE FROM CounselorWeekAttributes WHERE WeekNumber=?').run(w);
     res.redirect('/settings?message=Week+' + w + '+counselor+data+cleared');
+});
+
+app.post('/clear-counselor-schedule', (req, res) => {
+    const w = parseInt(req.body.weekNumber);
+    const mode = req.body.mode; // 'full' or 'counselors'
+    if (w < 1 || w > 6) return res.redirect(`/counselor-scheduling?week=${w}&message=Invalid+week`);
+    db.prepare('DELETE FROM CounselorWeekSchedules WHERE WeekNumber=?').run(w);
+    if (mode === 'full') {
+        db.prepare('DELETE FROM CounselorScheduleAssignments').run();
+    }
+    res.redirect(`/counselor-scheduling?week=${w}&message=Schedule+cleared`);
+});
+
+app.post('/clear-counselor-homegroups', (req, res) => {
+    const w = parseInt(req.body.weekNumber);
+    if (w < 1 || w > 6) return res.redirect(`/counselor-scheduling?week=${w}&message=Invalid+week`);
+    db.prepare('UPDATE CounselorWeekAttributes SET HomeGroupColor=NULL, ScheduleType=NULL WHERE WeekNumber=?').run(w);
+    res.redirect(`/counselor-scheduling?week=${w}&message=Homegroups+and+schedule+types+cleared`);
 });
 
 app.get('/counselor-week-assignments/:week', (req, res) => {

@@ -225,9 +225,17 @@
                      data-author="<%= note.author.toLowerCase() %>"
                      data-date="<%= note.createdAt %>"
                      data-body="<%= (note.body || '').replace(/</g,'').replace(/>/g,'').toLowerCase() %>">
-                    <div class="note-meta">
-                        <strong><%= note.author %></strong>
-                        <span class="note-ts"><%= new Date(note.createdAt).toLocaleString() %></span>
+                    <div class="note-meta" style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <strong><%= note.author %></strong>
+                            <span class="note-ts" data-ts="<%= note.createdAt %>"></span>
+                        </div>
+                        <form action="/director-notes/delete/<%= note.id %>" method="POST"
+                              onsubmit="return confirm('Delete this note?')" style="margin:0;">
+                            <button type="submit" title="Delete note"
+                                    style="background:none; border:none; cursor:pointer; color:#cbd5e1; font-size:0.85rem; padding:2px 4px; line-height:1;"
+                                    onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">&#10005;</button>
+                        </form>
                     </div>
                     <div class="note-body"><%- note.body %></div>
                 </div>
@@ -368,6 +376,12 @@
             setTimeout(() => { btn.disabled = false; btn.textContent = 'Save'; }, 1500);
         }
         function saveAnnounce(e) { saveHub('announcement', quillAnnounce, e.currentTarget); }
+
+        // Render note timestamps in the browser's local timezone
+        document.querySelectorAll('.note-ts[data-ts]').forEach(function(el) {
+            const d = new Date(el.dataset.ts);
+            el.textContent = isNaN(d) ? el.dataset.ts : d.toLocaleString();
+        });
 
         // Director Notes feed controls
         function toggleAddNote() {

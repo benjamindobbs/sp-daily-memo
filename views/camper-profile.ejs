@@ -112,6 +112,15 @@
 
                         <button type="submit" class="btn btn-primary" style="width:100%;">Save Changes</button>
                     </form>
+
+                    <hr style="margin:20px 0; border:none; border-top:1px solid var(--border-color);">
+
+                    <form action="/camper/<%= camper.CamperID %>/delete" method="POST"
+                          onsubmit="return confirm('Permanently remove <%= camper.FirstName %> <%= camper.LastName %> from the roster? This cannot be undone.')">
+                        <button type="submit" class="btn" style="width:100%; background:#fee2e2; color:#991b1b; border-color:#fca5a5;">
+                            Remove Camper
+                        </button>
+                    </form>
                 </div>
             </div>
             <% } %>
