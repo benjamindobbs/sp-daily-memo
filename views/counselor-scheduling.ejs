@@ -1186,22 +1186,26 @@
                     });
                     if (extras.length === 0) continue;
 
-                    // Eligible offerings for this period+side sorted by enrollment desc
+                    // Eligible offerings for this period+side
                     const eligibleIdxs = [];
                     OFFERINGS.forEach((act, idx) => {
                         if (act.PeriodNumber === period && act.SideOfCamp === side) eligibleIdxs.push(idx);
                     });
-                    eligibleIdxs.sort((a, b) => (OFFERINGS[b].PreliminaryEnrollment || 0) - (OFFERINGS[a].PreliminaryEnrollment || 0));
                     if (eligibleIdxs.length === 0) continue;
 
-                    // For each extra counselor, add one slot to the highest-enrollment valid offering
-                    const newSlots = []; // { idx, slotPos }
+                    // For each extra counselor, add one slot to the offering with the highest camper:counselor ratio.
+                    // Re-evaluate after each assignment so the ratio reflects the newly added slot.
+                    const newSlots = [];
                     for (const extra of extras) {
                         const valid = eligibleIdxs.filter(idx =>
                             !blockUsed[extra.CounselorID][block].has(OFFERINGS[idx].ActivityName)
                         );
                         if (valid.length === 0) continue;
-                        const targetIdx = valid[0];
+                        const targetIdx = valid.reduce((best, idx) => {
+                            const bestRatio = (OFFERINGS[best].PreliminaryEnrollment || 0) / Math.max(state[best].counselors.length, 1);
+                            const idxRatio  = (OFFERINGS[idx].PreliminaryEnrollment || 0) / Math.max(state[idx].counselors.length, 1);
+                            return idxRatio > bestRatio ? idx : best;
+                        });
                         state[targetIdx].counselors.push(null);
                         newSlots.push({ idx: targetIdx, slotPos: state[targetIdx].counselors.length - 1 });
                     }
@@ -1212,9 +1216,11 @@
                         if (state[idx].counselors[slotPos] != null) continue;
                         const actName = OFFERINGS[idx].ActivityName;
                         const preferred = shuffle([...remaining].filter(cid =>
+                            !blockUsed[cid][block].has(actName) &&
                             prefMap[cid]?.ActivityPreferences?.includes(actName)
                         ));
                         const nonPref = shuffle([...remaining].filter(cid =>
+                            !blockUsed[cid][block].has(actName) &&
                             !prefMap[cid]?.ActivityPreferences?.includes(actName)
                         ));
                         const chosen = preferred[0] ?? nonPref[0];
