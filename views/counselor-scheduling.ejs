@@ -21,8 +21,9 @@
         .side-heading { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9; }
         .offering-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 20px; }
         .offering-card { border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; background: #fafafa; }
-        .offering-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
-        .offering-name { font-weight: 700; font-size: 0.95rem; }
+        .offering-card-header { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+        .offering-card-badges { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+        .offering-name { font-weight: 700; font-size: 0.95rem; overflow-wrap: break-word; word-break: break-word; }
         .enrollment-pill { font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: #f1f5f9; color: var(--text-muted); white-space: nowrap; }
         .slot-group { margin-bottom: 10px; }
         .slot-group-label { font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 5px; display: flex; align-items: center; gap: 8px; }
@@ -45,7 +46,7 @@
     <nav class="nav-bar">
         <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
-        <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
+        <a href="/counselor-directory" class="nav-btn">&#128101; Staff Directory</a>
         <a href="/counselor-scheduling" class="nav-btn primary">&#128197; Scheduling</a>
         <a href="/settings" class="nav-btn">&#9881;&#65039; Settings</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
@@ -123,6 +124,19 @@
             <button id="saveBtn" class="btn btn-primary" onclick="saveAssignments()">Save Assignments</button>
             <a href="/export-counselor-schedule" class="btn btn-primary" style="background:var(--success,#16a34a);">&#11015;&#65039; Counselor CSV</a>
             <a href="/export-staff-schedule" class="btn btn-primary" style="background:var(--success,#16a34a);">&#11015;&#65039; Staff CSV</a>
+            <span style="width:1px; height:28px; background:var(--border-color); display:inline-block; align-self:center;"></span>
+            <form action="/clear-counselor-schedule" method="POST" style="margin:0;"
+                  onsubmit="return confirm('Clear all counselor AND staff/unit leader assignments for Week <%= planWeek %>?')">
+                <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                <input type="hidden" name="mode" value="full">
+                <button type="submit" class="btn btn-small" style="background:#fee2e2; color:#991b1b; border-color:#fca5a5;">Clear All</button>
+            </form>
+            <form action="/clear-counselor-schedule" method="POST" style="margin:0;"
+                  onsubmit="return confirm('Clear counselor assignments for Week <%= planWeek %>? Unit Leader / Sports Leader slots will be kept.')">
+                <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                <input type="hidden" name="mode" value="counselors">
+                <button type="submit" class="btn btn-small" style="background:#fff7ed; color:#c2410c; border-color:#fed7aa;">Clear Counselors Only</button>
+            </form>
         </div>
 
         <!-- Period Sections -->
@@ -161,12 +175,14 @@
                         <div class="offering-card" data-offer="<%= idx %>">
                             <div class="offering-card-header">
                                 <span class="offering-name"><%= act.ActivityName %></span>
-                                <% if (parseInt(act.PeriodNumber) <= 3) { %>
-                                    <span style="font-size:0.68rem;font-weight:700;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;white-space:nowrap;">AM Â· Green / Navy</span>
-                                <% } else { %>
-                                    <span style="font-size:0.68rem;font-weight:700;background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;white-space:nowrap;">PM Â· Red / Carolina</span>
-                                <% } %>
-                                <span class="enrollment-pill"><%= act.PreliminaryEnrollment %> expected</span>
+                                <div class="offering-card-badges">
+                                    <% if (parseInt(act.PeriodNumber) <= 3) { %>
+                                        <span style="font-size:0.68rem;font-weight:700;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;white-space:nowrap;">AM · Green / Navy</span>
+                                    <% } else { %>
+                                        <span style="font-size:0.68rem;font-weight:700;background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;white-space:nowrap;">PM · Red / Carolina</span>
+                                    <% } %>
+                                    <span class="enrollment-pill"><%= act.PreliminaryEnrollment %> expected</span>
+                                </div>
                             </div>
                             <div class="slot-group">
                                 <div class="slot-group-label">
@@ -200,7 +216,12 @@
                         <div class="offering-card" data-offer="<%= idx %>">
                             <div class="offering-card-header">
                                 <span class="offering-name"><%= act.ActivityName %></span>
-                                <span class="enrollment-pill"><%= act.PreliminaryEnrollment %> expected</span>
+                                <div class="offering-card-badges">
+                                    <% if (act.AllowedGroups) { %>
+                                        <span class="enrollment-pill"><%= act.AllowedGroups %></span>
+                                    <% } %>
+                                    <span class="enrollment-pill"><%= act.PreliminaryEnrollment %> expected</span>
+                                </div>
                             </div>
                             <div class="slot-group">
                                 <div class="slot-group-label">
@@ -210,15 +231,6 @@
                                            oninput="handleCountChange(<%= idx %>, 'counselors', +this.value)">
                                 </div>
                                 <div class="slot-dropdowns" data-slot="counselors"></div>
-                            </div>
-                            <div class="slot-group">
-                                <div class="slot-group-label">
-                                    Instructors
-                                    <input type="number" class="count-input" min="0" max="10" value="0"
-                                           data-count-type="staff"
-                                           oninput="handleCountChange(<%= idx %>, 'staff', +this.value)">
-                                </div>
-                                <div class="slot-dropdowns" data-slot="staff"></div>
                             </div>
                         </div>
                     <% }); %>
@@ -317,7 +329,7 @@
 
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn btn-primary" onclick="buildSchedule()">Build Schedule</button>
-                <button class="btn btn-primary" onclick="autoCalculateSlots(); buildSchedule();" style="background:var(--success, #16a34a);">âš¡ Full Auto Build</button>
+                <button class="btn btn-primary" onclick="autoAssignHomeGroups(); autoCalculateSlots(); buildSchedule(); fillExtraCounselors();" style="background:var(--success, #16a34a);">⚡ Full Auto Build</button>
                 <span id="autoStatus" style="font-size:0.82rem; color:var(--text-muted); margin-left:4px;"></span>
             </div>
             <% if (sessions.filter(s => s.weekNumber !== planWeek).length > 0) { %>
@@ -340,12 +352,25 @@
             <button class="btn btn-primary" onclick="saveAssignments()">Save Assignments</button>
             <a href="/export-counselor-schedule" class="btn btn-primary" style="background:var(--success,#16a34a);">&#11015;&#65039; Counselor CSV</a>
             <a href="/export-staff-schedule" class="btn btn-primary" style="background:var(--success,#16a34a);">&#11015;&#65039; Staff CSV</a>
+            <span style="width:1px; height:28px; background:var(--border-color); display:inline-block; align-self:center;"></span>
+            <form action="/clear-counselor-schedule" method="POST" style="margin:0;"
+                  onsubmit="return confirm('Clear all counselor AND staff/unit leader assignments for Week <%= planWeek %>?')">
+                <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                <input type="hidden" name="mode" value="full">
+                <button type="submit" class="btn btn-small" style="background:#fee2e2; color:#991b1b; border-color:#fca5a5;">Clear All</button>
+            </form>
+            <form action="/clear-counselor-schedule" method="POST" style="margin:0;"
+                  onsubmit="return confirm('Clear counselor assignments for Week <%= planWeek %>? Unit Leader / Sports Leader slots will be kept.')">
+                <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                <input type="hidden" name="mode" value="counselors">
+                <button type="submit" class="btn btn-small" style="background:#fff7ed; color:#c2410c; border-color:#fed7aa;">Clear Counselors Only</button>
+            </form>
         </div>
 
         <% } %>
 
         <!-- Counselor Group Assignments -->
-        <% if (counselors.length > 0) { %>
+        <% if (mainCounselors.length > 0 || specialtyCounselors.length > 0) { %>
         <details class="period-details" style="margin-top: 28px;">
             <summary class="period-summary">
                 <span class="period-label">&#128100; Counselor Group Assignments</span>
@@ -363,16 +388,22 @@
                         &#127912; PM&nbsp;<span id="gc-val-pm-enrichment">0</span>&nbsp;/&nbsp;<span id="gc-denom-pm-enrichment">0</span>
                     </span>
                 </span>
-                <span class="text-muted" style="font-size:0.82rem; margin-left:4px;"><%= counselors.length %> counselors</span>
+                <span class="text-muted" style="font-size:0.82rem; margin-left:4px;">
+                    <%= mainCounselors.length %> main &middot; <%= specialtyCounselors.length %> specialty
+                </span>
             </summary>
             <div class="period-body">
-                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+
+                <!-- ── Main Camp Counselors ──────────────────────────────────────── -->
+                <% if (mainCounselors.length > 0) { %>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
                     <% ['Red','Carolina','Green','Navy'].forEach(color => { %>
                     <span class="tag <%= color %>" style="font-size:0.78rem; padding:3px 12px;">
                         <%= color %>: <%= camperCounts[color] || 0 %> campers
                     </span>
                     <% }); %>
                 </div>
+                <h4 style="margin:0 0 8px; font-size:0.82rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Main Camp Counselors</h4>
                 <table class="counselor-assign-table">
                     <thead>
                         <tr>
@@ -380,16 +411,17 @@
                             <th>Home Group</th>
                             <th>Bus Route</th>
                             <th>Schedule</th>
+                            <th>Extended Hours</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <% counselors.forEach(c => { %>
-                        <tr>
+                        <% mainCounselors.forEach(c => { %>
+                        <tr data-cid="<%= c.CounselorID %>" data-specialty-group="<%= c.SpecialtyGroup || '' %>">
                             <td><%= c.FirstName %> <%= c.LastName %></td>
                             <td>
                                 <select class="person-select cg-homegroup" data-cid="<%= c.CounselorID %>">
-                                    <option value="">â€” Unassigned â€”</option>
-                                    <% ['Red','Carolina','Green','Navy','Bus'].forEach(color => { %>
+                                    <option value="">— Unassigned —</option>
+                                    <% ['Red','Carolina','Green','Navy','Bus','Swim'].forEach(color => { %>
                                     <option value="<%= color %>"<%= c.HomeGroupColor === color ? ' selected' : '' %>><%= color %></option>
                                     <% }); %>
                                 </select>
@@ -406,31 +438,124 @@
                                     <% }); %>
                                 </select>
                             </td>
+                            <td>
+                                <select class="person-select cg-extended" data-cid="<%= c.CounselorID %>">
+                                    <option value="">None</option>
+                                    <% ['AM','PM','Both'].forEach(opt => { %>
+                                    <option value="<%= opt %>"<%= c.ExtendedHours === opt ? ' selected' : '' %>><%= opt %></option>
+                                    <% }); %>
+                                </select>
+                            </td>
                         </tr>
                         <% }); %>
                     </tbody>
                 </table>
-                <div style="margin-top: 14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                    <button id="saveCGBtn" class="btn btn-primary" onclick="saveCounselorGroups()">Save Group Assignments</button>
-                    <form action="/auto-assign-homegroups" method="POST" style="margin:0;"
-                          onsubmit="return confirm('This will overwrite all homegroup and schedule type assignments for Week <%= planWeek %>. Continue?')">
+                <div style="margin-top: 10px;">
+                    <form action="/auto-assign-homegroups" method="POST" style="display:inline; margin:0;"
+                          onsubmit="return confirm('This will reshuffle homegroup assignments for counselors already marked Red/Carolina/Green/Navy for Week <%= planWeek %>. Continue?')">
                         <input type="hidden" name="weekNumber" value="<%= planWeek %>">
                         <button type="submit" class="btn btn-secondary">âš¡ Auto Assign Homegroups</button>
                     </form>
                 </div>
+                <% } %>
+
+                <!-- ── Specialty Camp Counselors ─────────────────────────────────── -->
+                <% if (specialtyCounselors.length > 0) { %>
+                <%
+                    const specialtyOrder = ['LilPlace','KinderPlace','SPLIT','SPRC','Swim'];
+                    const specialtyLabels = { LilPlace: "Li'l Place", KinderPlace: 'Kinder Place', SPLIT: 'SPLIT', SPRC: 'SPRC', Swim: 'Swim' };
+                    const specialtyGroups = {};
+                    specialtyCounselors.forEach(c => {
+                        const grp = c.HomeGroupColor || 'Other';
+                        if (!specialtyGroups[grp]) specialtyGroups[grp] = [];
+                        specialtyGroups[grp].push(c);
+                    });
+                %>
+                <h4 style="margin:24px 0 8px; font-size:0.82rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Specialty Camp Counselors</h4>
+                <table class="counselor-assign-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Home Group</th>
+                            <th>Bus Route</th>
+                            <th>Schedule</th>
+                            <th>Extended Hours</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% specialtyOrder.forEach(grpKey => {
+                            const members = specialtyGroups[grpKey];
+                            if (!members || members.length === 0) return;
+                        %>
+                        <tr class="type-group-header">
+                            <td colspan="5"><%= specialtyLabels[grpKey] || grpKey %></td>
+                        </tr>
+                        <% members.forEach(c => { %>
+                        <tr data-cid="<%= c.CounselorID %>" data-specialty-color="<%= c.HomeGroupColor %>">
+                            <td>
+                                <%= c.FirstName %> <%= c.LastName %>
+                                <% if (c._dualAssigned) { %><span style="font-size:0.7rem; color:var(--text-muted); margin-left:4px;">(also main)</span><% } %>
+                            </td>
+                            <td>
+                                <span class="tag <%= c.HomeGroupColor %>" style="font-size:0.75rem;">
+                                    <%= specialtyLabels[c.HomeGroupColor] || c.HomeGroupColor %>
+                                </span>
+                            </td>
+                            <td>
+                                <input type="text" class="cg-bus-input cg-specialty-bus" data-cid="<%= c.CounselorID %>"
+                                       value="<%= c.BusRoute || '' %>" placeholder="Bus #">
+                            </td>
+                            <td>
+                                <select class="person-select cg-schedule cg-specialty-schedule" data-cid="<%= c.CounselorID %>">
+                                    <option value="">— Unassigned —</option>
+                                    <% ['All Sports','All Enrichment','AM Sports / PM Enrichment','AM Enrichment / PM Sports',
+                                        'AM Sports Only','PM Sports Only','AM Enrichment Only','PM Enrichment Only'].forEach(type => { %>
+                                    <option value="<%= type %>"<%= c.ScheduleType === type ? ' selected' : '' %>><%= type %></option>
+                                    <% }); %>
+                                </select>
+                            </td>
+                            <td>
+                                <select class="person-select cg-extended cg-specialty-extended" data-cid="<%= c.CounselorID %>">
+                                    <option value="">None</option>
+                                    <% ['AM','PM','Both'].forEach(opt => { %>
+                                    <option value="<%= opt %>"<%= c.ExtendedHours === opt ? ' selected' : '' %>><%= opt %></option>
+                                    <% }); %>
+                                </select>
+                            </td>
+                        </tr>
+                        <% }); %>
+                        <% }); %>
+                    </tbody>
+                </table>
+                <% } %>
+
+                <!-- ── Save button (always visible at bottom) ───────────────────── -->
+                <div style="margin-top: 16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <button id="saveCGBtn" class="btn btn-primary" onclick="saveCounselorGroups()">Save Group Assignments</button>
+                    <form action="/clear-counselor-homegroups" method="POST" style="margin:0;"
+                          onsubmit="return confirm('Clear all homegroup and schedule type assignments for Week <%= planWeek %>? Bus routes and extended hours will be kept.')">
+                        <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                        <button type="submit" class="btn btn-small" style="background:#fee2e2; color:#991b1b; border-color:#fca5a5;">Clear Homegroups &amp; Schedule Types</button>
+                    </form>
+                </div>
+
             </div>
         </details>
         <% } %>
     </div>
 
     <script>
-        // â”€â”€ Server data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        const OFFERINGS    = <%- JSON.stringify(offerings) %>;
-        const COUNSELORS   = <%- JSON.stringify(counselors) %>;
-        const AVAIL        = <%- JSON.stringify(availability) %>;
+        // ── Server data ──────────────────────────────────────────────────────────
+        const OFFERINGS          = <%- JSON.stringify(offerings) %>;
+        const MAIN_COUNSELORS    = <%- JSON.stringify(mainCounselors) %>;
+        const SPECIALTY_COUNSELORS = <%- JSON.stringify(specialtyCounselors) %>;
+        const COUNSELORS         = <%- JSON.stringify(counselors) %>; // all, for availability/state logic
+        const AVAIL              = <%- JSON.stringify(availability) %>;
         const STAFF_AVAIL  = <%- JSON.stringify(staffAvailability) %>;
         const EXISTING     = <%- JSON.stringify(existingAssignments) %>;
         const PREFERENCES  = <%- JSON.stringify(preferences) %>;
+        const CAMPER_COUNTS  = <%- JSON.stringify(camperCounts) %>;
+        const STAFF_MEMBERS  = <%- JSON.stringify(staffMembers) %>;
         const PLAN_WEEK    = <%= planWeek %>;
         const SESSIONS     = <%- JSON.stringify(sessions) %>;
 
@@ -490,10 +615,22 @@
             const side      = act.SideOfCamp;
             const arr       = state[offerIdx][type];
             const allPeople = type === 'counselors'
-                ? (AVAIL[period]?.[side]       ?? [])
-                : (STAFF_AVAIL[period]?.[side] ?? []);
+                ? COUNSELORS.filter(c => {
+                      const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                      const sched = sel ? sel.value : (c.ScheduleType || '');
+                      return sched && isCounselorAvailableFor(sched, period, side);
+                  })
+                : (() => {
+                      const pool = STAFF_AVAIL[period]?.[side]?.length
+                          ? STAFF_AVAIL[period][side]
+                          : STAFF_MEMBERS;
+                      return side === 'Sports'
+                          ? pool.filter(s => ['Unit Leader','Sports Leader'].includes(s.StaffType))
+                          : [];
+                  })();
 
             const container = card.querySelector(`.slot-dropdowns[data-slot="${type}"]`);
+            if (!container) return;
             container.innerHTML = '';
 
             arr.forEach((selectedId, slotIdx) => {
@@ -507,8 +644,8 @@
                     const id = type === 'counselors' ? person.CounselorID : person.StaffID;
                     if (usedElsewhere.has(id)) return;
                     const label = type === 'counselors'
-                        ? `${person.FirstName} ${person.LastName} (${person.HomeGroupColor})`
-                        : `${person.FirstName} ${person.LastName} â€” ${person.StaffType}`;
+                        ? `${person.FirstName} ${person.LastName}${person.HomeGroupColor ? ` (${person.HomeGroupColor})` : ''}`
+                        : `${person.FirstName} ${person.LastName} — ${person.StaffType}`;
                     const opt = new Option(label, id);
                     if (id === selectedId) opt.selected = true;
                     sel.appendChild(opt);
@@ -547,6 +684,10 @@
                 case 'All Enrichment':            return side === 'Enrichment';
                 case 'AM Sports / PM Enrichment': return am ? side === 'Sports'     : side === 'Enrichment';
                 case 'AM Enrichment / PM Sports': return am ? side === 'Enrichment' : side === 'Sports';
+                case 'AM Sports Only':            return am  && side === 'Sports';
+                case 'PM Sports Only':            return !am && side === 'Sports';
+                case 'AM Enrichment Only':        return am  && side === 'Enrichment';
+                case 'PM Enrichment Only':        return !am && side === 'Enrichment';
                 default: return false;
             }
         }
@@ -617,9 +758,12 @@
                 state[idx].counselors.forEach(id => {
                     if (id) assignments.push({ periodNumber: act.PeriodNumber, activityName: act.ActivityName, personID: id, personType: 'Counselor' });
                 });
-                state[idx].staff.forEach(id => {
-                    if (id) assignments.push({ periodNumber: act.PeriodNumber, activityName: act.ActivityName, personID: id, personType: 'Staff' });
-                });
+                // Staff only assigned to sports activities
+                if (act.SideOfCamp === 'Sports') {
+                    state[idx].staff.forEach(id => {
+                        if (id) assignments.push({ periodNumber: act.PeriodNumber, activityName: act.ActivityName, personID: id, personType: 'Staff' });
+                    });
+                }
             });
 
             try {
@@ -631,7 +775,9 @@
                 if (resp.ok) {
                     if (btn) { btn.textContent = 'âœ“ Saved!'; setTimeout(() => { btn.textContent = 'Save Assignments'; btn.disabled = false; }, 2500); }
                 } else {
-                    if (btn) { btn.textContent = 'Error â€” try again'; btn.disabled = false; }
+                    const errBody = await resp.json().catch(() => ({}));
+                    console.error('[save-counselor-assignments] server error:', errBody.error || resp.status);
+                    if (btn) { btn.textContent = 'Error — try again'; btn.disabled = false; }
                 }
             } catch {
                 if (btn) { btn.textContent = 'Error â€” try again'; btn.disabled = false; }
@@ -648,11 +794,13 @@
                 if (key in denom) denom[key] += state[idx].counselors.length;
             });
 
-            // Numerator: counselors assigned to each bucket via current schedule dropdowns
+            // Numerator: main camp counselors only (specialty doesn't count toward AM/PM slots)
             const assigned = { am_Sports: 0, am_Enrichment: 0, pm_Sports: 0, pm_Enrichment: 0 };
-            COUNSELORS.forEach(c => {
-                const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
-                const t = sel ? sel.value : (c.ScheduleType || '');
+            MAIN_COUNSELORS.forEach(c => {
+                const sel = document.querySelector(`.cg-homegroup[data-cid="${c.CounselorID}"]`);
+                if (sel && !sel.value) return; // skip unassigned
+                const schSel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]:not(.cg-specialty-schedule)`);
+                const t = schSel ? schSel.value : (c.ScheduleType || '');
                 if      (t === 'All Sports')                 { assigned.am_Sports++;     assigned.pm_Sports++;     }
                 else if (t === 'All Enrichment')             { assigned.am_Enrichment++; assigned.pm_Enrichment++; }
                 else if (t === 'AM Sports / PM Enrichment')  { assigned.am_Sports++;     assigned.pm_Enrichment++; }
@@ -678,25 +826,49 @@
             });
         }
 
-        // â”€â”€ Save counselor group assignments (homegroup / bus / schedule) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Save counselor group assignments (homegroup / bus / schedule / extended) ─
         async function saveCounselorGroups() {
             const btn = document.getElementById('saveCGBtn');
             btn.textContent = 'Savingâ€¦'; btn.disabled = true;
             const counselors = [];
+
+            // Main camp counselors (have a .cg-homegroup dropdown)
+            const savedCids = new Set();
             document.querySelectorAll('.cg-homegroup').forEach(sel => {
                 const cid = parseInt(sel.dataset.cid);
+                const row = sel.closest('tr');
+                savedCids.add(cid);
                 counselors.push({
                     counselorID:    cid,
                     homeGroupColor: sel.value || null,
-                    busRoute:       document.querySelector(`.cg-bus-input[data-cid="${cid}"]`)?.value.trim() || null,
-                    scheduleType:   document.querySelector(`.cg-schedule[data-cid="${cid}"]`)?.value || null,
+                    busRoute:       document.querySelector(`.cg-bus-input[data-cid="${cid}"]:not(.cg-specialty-bus)`)?.value.trim() || null,
+                    scheduleType:   document.querySelector(`.cg-schedule[data-cid="${cid}"]:not(.cg-specialty-schedule)`)?.value || null,
+                    extendedHours:  document.querySelector(`.cg-extended[data-cid="${cid}"]:not(.cg-specialty-extended)`)?.value || null,
+                    specialtyGroup: row ? (row.dataset.specialtyGroup || null) : null,
                 });
             });
+
+            // Specialty camp counselors (no homegroup dropdown — color locked)
+            // Skip dual-assigned counselors already captured from main section
+            document.querySelectorAll('tr[data-specialty-color]').forEach(row => {
+                const cid = parseInt(row.dataset.cid);
+                if (!cid || savedCids.has(cid)) return;
+                savedCids.add(cid);
+                counselors.push({
+                    counselorID:    cid,
+                    homeGroupColor: row.dataset.specialtyColor || null,
+                    busRoute:       row.querySelector(`.cg-specialty-bus`)?.value.trim() || null,
+                    scheduleType:   row.querySelector(`.cg-specialty-schedule`)?.value || null,
+                    extendedHours:  row.querySelector(`.cg-specialty-extended`)?.value || null,
+                    specialtyGroup: null,
+                });
+            });
+
             try {
                 const resp = await fetch('/save-counselor-group-assignments', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ counselors })
+                    body: JSON.stringify({ counselors, weekNumber: PLAN_WEEK })
                 });
                 if (resp.ok) {
                     btn.textContent = 'âœ“ Saved!';
@@ -747,8 +919,11 @@
                 const prev = prevMap[act.ActivityName];
                 if (!prev || prev.length === 0) return; // class didn't exist or had no assignments
 
-                const avail = AVAIL[act.PeriodNumber]?.[side] ?? [];
-                const availIds = new Set(avail.map(c => c.CounselorID));
+                const availIds = new Set(COUNSELORS.filter(c => {
+                    const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                    const sched = sel ? sel.value : (c.ScheduleType || '');
+                    return sched && isCounselorAvailableFor(sched, act.PeriodNumber, side);
+                }).map(c => c.CounselorID));
 
                 // Only carry over counselors who are available in the planning week
                 let candidates = shuffle(prev.filter(cid => availIds.has(cid)));
@@ -781,6 +956,63 @@
             statusEl.textContent = `Mirrored ${mirrored} ${side} class${mirrored !== 1 ? 'es' : ''} from ${SESSIONS.find(s => s.weekNumber === fromWeek)?.label ?? `Week ${fromWeek}`}.`;
         }
 
+        function autoAssignHomeGroups() {
+            const prefMap = {};
+            PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
+            const colors = ['Red','Carolina','Green','Navy'];
+            const totalCampers = colors.reduce((s, c) => s + (CAMPER_COUNTS[c] || 0), 0);
+            if (totalCampers === 0 || MAIN_COUNSELORS.length === 0) return;
+
+            // Proportional home group targets with largest-remainder rounding
+            const targets = {};
+            let totalAssigned = 0;
+            colors.forEach(c => {
+                targets[c] = Math.floor(((CAMPER_COUNTS[c] || 0) / totalCampers) * MAIN_COUNSELORS.length);
+                totalAssigned += targets[c];
+            });
+            const rem = MAIN_COUNSELORS.length - totalAssigned;
+            colors.map(c => ({ c, frac: ((CAMPER_COUNTS[c]||0)/totalCampers)*MAIN_COUNSELORS.length - targets[c] }))
+                .sort((a,b) => b.frac - a.frac).slice(0, rem).forEach(({c}) => targets[c]++);
+
+            // Assign home groups: preference first, then random
+            const assignedIds = new Set();
+            const assignments = {};
+            const targetsLeft = { ...targets };
+            colors.forEach(color => {
+                MAIN_COUNSELORS.filter(c => !assignedIds.has(c.CounselorID) && prefMap[c.CounselorID]?.HomeGroupPreference === color)
+                    .slice(0, targetsLeft[color])
+                    .forEach(c => { assignments[c.CounselorID] = color; assignedIds.add(c.CounselorID); targetsLeft[color]--; });
+            });
+            const unassigned = MAIN_COUNSELORS.filter(c => !assignedIds.has(c.CounselorID)).sort(() => Math.random() - 0.5);
+            let offset = 0;
+            for (const color of colors) {
+                unassigned.slice(offset, offset + targetsLeft[color]).forEach(c => { assignments[c.CounselorID] = color; });
+                offset += targetsLeft[color];
+            }
+
+            // Update home group dropdowns
+            Object.entries(assignments).forEach(([cid, color]) => {
+                const hg = document.querySelector(`.cg-homegroup[data-cid="${cid}"]`);
+                if (hg) hg.value = color;
+            });
+
+            // Assign schedule types: honor preferences, then default to All Sports / All Enrichment
+            let sportsTurn = true;
+            Object.keys(assignments).forEach(cid => {
+                const sc = document.querySelector(`.cg-schedule[data-cid="${cid}"]:not(.cg-specialty-schedule)`);
+                if (!sc) return;
+                const schedPref = prefMap[parseInt(cid)]?.SchedulePreference;
+                if (schedPref && schedPref !== 'No Preference') {
+                    sc.value = schedPref;
+                } else {
+                    sc.value = sportsTurn ? 'All Sports' : 'All Enrichment';
+                    sportsTurn = !sportsTurn;
+                }
+            });
+
+            updateGroupCounters();
+        }
+
         function autoCalculateSlots() {
             const sportsMin       = parseInt(document.getElementById('sportsMin').value)       || 2;
             const sportsThreshold = parseInt(document.getElementById('sportsThreshold').value) || 16;
@@ -802,7 +1034,7 @@
                     else if (ag === 'Carolina')     count = enrichCarolina;
                     else if (ag === 'Red-Carolina') count = enrichRC;
                     else if (ag === 'Green-Navy')   count = enrichGN;
-                    else                            count = 1;
+                    else                            count = enrichRC; // cross-side or unclassified → RC default
                 }
                 state[idx].counselors = Array(count).fill(null);
                 const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
@@ -840,7 +1072,7 @@
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
                 const { PeriodNumber: period, SideOfCamp: side, ActivityName: name } = act;
                 const block = period <= 3 ? 'am' : 'pm';
-                const avail = AVAIL[period]?.[side] ?? [];
+                const avail = COUNSELORS; // use full roster; eligibility filter applies ScheduleType check
 
                 // Counselors already placed in this period (across all sides)
                 const usedThisPeriod = new Set();
@@ -910,16 +1142,137 @@
             renderAllFromState();
             updateAllCounters();
             updateGroupCounters();
-            statusEl.textContent = 'Done! Review and save when ready.';
+            statusEl.textContent = 'Schedule built. Checking for extra counselors…';
+        }
+
+        function fillExtraCounselors() {
+            const statusEl = document.getElementById('autoStatus');
+            statusEl.textContent = 'Placing extra counselors…';
+
+            const prefMap = {};
+            PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
+
+            // Rebuild blockUsed from the current fully-built state
+            const blockUsed = {};
+            COUNSELORS.forEach(c => { blockUsed[c.CounselorID] = { am: new Set(), pm: new Set() }; });
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber) return;
+                const block = act.PeriodNumber <= 3 ? 'am' : 'pm';
+                state[idx].counselors.forEach(id => {
+                    if (id && blockUsed[id]) blockUsed[id][block].add(act.ActivityName);
+                });
+            });
+
+            let totalAdded = 0;
+
+            for (let period = 1; period <= 6; period++) {
+                const block = period <= 3 ? 'am' : 'pm';
+
+                // Build usedThisPeriod from current state
+                const usedThisPeriod = new Set();
+                OFFERINGS.forEach((a, i) => {
+                    if (a.PeriodNumber === period) {
+                        state[i].counselors.forEach(id => { if (id) usedThisPeriod.add(id); });
+                    }
+                });
+
+                for (const side of ['Sports', 'Enrichment']) {
+                    // Counselors that should be in this period+side but aren't placed
+                    const extras = COUNSELORS.filter(c => {
+                        if (usedThisPeriod.has(c.CounselorID)) return false;
+                        const schedSel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                        const sched = schedSel ? schedSel.value : (c.ScheduleType || '');
+                        return isCounselorAvailableFor(sched, period, side);
+                    });
+                    if (extras.length === 0) continue;
+
+                    // Eligible offerings for this period+side
+                    const eligibleIdxs = [];
+                    OFFERINGS.forEach((act, idx) => {
+                        if (act.PeriodNumber === period && act.SideOfCamp === side) eligibleIdxs.push(idx);
+                    });
+                    if (eligibleIdxs.length === 0) continue;
+
+                    // For each extra counselor, add one slot to the offering with the highest camper:counselor ratio.
+                    // Re-evaluate after each assignment so the ratio reflects the newly added slot.
+                    const newSlots = [];
+                    for (const extra of extras) {
+                        const valid = eligibleIdxs.filter(idx =>
+                            !blockUsed[extra.CounselorID][block].has(OFFERINGS[idx].ActivityName)
+                        );
+                        if (valid.length === 0) continue;
+                        const targetIdx = valid.reduce((best, idx) => {
+                            const bestRatio = (OFFERINGS[best].PreliminaryEnrollment || 0) / Math.max(state[best].counselors.length, 1);
+                            const idxRatio  = (OFFERINGS[idx].PreliminaryEnrollment || 0) / Math.max(state[idx].counselors.length, 1);
+                            return idxRatio > bestRatio ? idx : best;
+                        });
+                        state[targetIdx].counselors.push(null);
+                        newSlots.push({ idx: targetIdx, slotPos: state[targetIdx].counselors.length - 1 });
+                    }
+
+                    // Fill new slots — preference first, then random among remaining extras
+                    const remaining = new Set(extras.map(c => c.CounselorID));
+                    for (const { idx, slotPos } of newSlots) {
+                        if (state[idx].counselors[slotPos] != null) continue;
+                        const actName = OFFERINGS[idx].ActivityName;
+                        const preferred = shuffle([...remaining].filter(cid =>
+                            !blockUsed[cid][block].has(actName) &&
+                            prefMap[cid]?.ActivityPreferences?.includes(actName)
+                        ));
+                        const nonPref = shuffle([...remaining].filter(cid =>
+                            !blockUsed[cid][block].has(actName) &&
+                            !prefMap[cid]?.ActivityPreferences?.includes(actName)
+                        ));
+                        const chosen = preferred[0] ?? nonPref[0];
+                        if (chosen == null) continue;
+                        state[idx].counselors[slotPos] = chosen;
+                        usedThisPeriod.add(chosen);
+                        blockUsed[chosen][block].add(actName);
+                        remaining.delete(chosen);
+                        totalAdded++;
+                    }
+                }
+            }
+
+            // Re-run triple-period propagation so newly added counselors are synced across all instances
+            const tripleGroups = {};
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.ActivityName.toLowerCase().includes('triple period')) return;
+                if (!tripleGroups[act.ActivityName]) tripleGroups[act.ActivityName] = [];
+                tripleGroups[act.ActivityName].push(idx);
+            });
+            for (const [, indices] of Object.entries(tripleGroups)) {
+                if (indices.length < 2) continue;
+                const maxSlots = Math.max(...indices.map(i => state[i].counselors.length));
+                for (let slot = 0; slot < maxSlots; slot++) {
+                    const sourceIdx = indices.find(i => state[i].counselors[slot] != null);
+                    if (sourceIdx === undefined) continue;
+                    const cId = state[sourceIdx].counselors[slot];
+                    for (const idx of indices) {
+                        if (state[idx].counselors.length <= slot) {
+                            state[idx].counselors.push(cId);
+                        } else if (state[idx].counselors[slot] === null) {
+                            state[idx].counselors[slot] = cId;
+                        }
+                    }
+                }
+            }
+
+            renderAllFromState();
+            updateAllCounters();
+            updateGroupCounters();
+            statusEl.textContent = totalAdded > 0
+                ? `Done! ${totalAdded} extra counselor slot${totalAdded !== 1 ? 's' : ''} added. Review and save when ready.`
+                : 'Done! Review and save when ready.';
         }
 
         // â”€â”€ Bootstrap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         document.addEventListener('DOMContentLoaded', () => {
             initState();
             renderAllFromState();
-            // Default staff slot count to 1 for any activity with no existing assignment
+            // Default staff slot count to 1 for sports activities only (enrichment has no staff section)
             OFFERINGS.forEach((act, idx) => {
-                if (!act.PeriodNumber) return;
+                if (!act.PeriodNumber || act.SideOfCamp !== 'Sports') return;
                 if (state[idx].staff.length === 0) {
                     handleCountChange(idx, 'staff', 1);
                     const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);

@@ -14,7 +14,7 @@
         <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
-        <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
+        <a href="/counselor-directory" class="nav-btn">&#128101; Staff Directory</a>
         <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
         <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
@@ -66,6 +66,16 @@
                     <% }); %>
                 </select>
             </div>
+
+            <div id="noPrefsMsg" class="card" style="margin-bottom:20px; text-align:center; color:var(--text-muted); display:<%= (selectedCounselorId && selectedCounselorRole !== 'Counselor') ? '' : 'none' %>;">
+                Schedule preferences are only available for Counselors.
+            </div>
+
+            <button type="submit" id="saveNameBtn" class="btn btn-primary" style="width:100%; padding:14px; font-size:1rem; margin-bottom:20px; display:<%= (selectedCounselorId && selectedCounselorRole !== 'Counselor') ? '' : 'none' %>;">
+                Save Name
+            </button>
+
+            <div id="prefsContainer" style="display:<%= selectedCounselorRole === 'Counselor' ? '' : 'none' %>;">
 
             <div class="card" style="margin-bottom: 20px;" id="groupPrefSection">
                 <h3 style="margin:0 0 6px;">Home Group Preference</h3>
@@ -171,29 +181,58 @@
                 Submit Preferences
             </button>
 
+            </div><!-- /prefsContainer -->
+
         </form>
     </div>
 
     <script>
-        const SUPPORT_ROLES = new Set(['Director','Office Staff','Nurse','Equipment Manager','CPR Instructor','Internship']);
-
-        function onCounselorChange(val) {
-            if (!val) return;
-            const sel = document.getElementById('counselorSelect');
-            const opt = sel.querySelector(`option[value="${val}"]`);
-            const role = opt ? opt.dataset.role : '';
-            const isSupportOnly = SUPPORT_ROLES.has(role);
-            document.getElementById('schedulePrefSection').style.display  = isSupportOnly ? 'none' : '';
-            document.getElementById('activityPrefSection').style.display  = isSupportOnly ? 'none' : '';
-            const groupLabel = document.querySelector('#groupPrefSection h3');
-            if (groupLabel) groupLabel.textContent = isSupportOnly ? 'Group of the Day Preference' : 'Home Group Preference';
+        function getRoleForValue(val) {
+            if (!val) return '';
+            const opt = document.querySelector(`#counselorSelect option[value="${val}"]`);
+            return opt ? opt.dataset.role : '';
         }
 
-        // Apply on page load if a counselor is already selected
-        document.addEventListener('DOMContentLoaded', function() {
-            const sel = document.getElementById('counselorSelect');
-            if (sel.value) onCounselorChange(sel.value);
-        });
+        function applyPrefs(prefs) {
+            document.querySelectorAll('input[name="homeGroupPreference"]').forEach(function(r) {
+                r.checked = r.value === prefs.HomeGroupPreference;
+            });
+            document.querySelectorAll('input[name="schedulePreference"]').forEach(function(r) {
+                r.checked = r.value === prefs.SchedulePreference;
+            });
+            const actSet = new Set(prefs.activityPreferences || []);
+            document.querySelectorAll('input[name="activityPreferences"]').forEach(function(cb) {
+                cb.checked = actSet.has(cb.value);
+            });
+        }
+
+        function onCounselorChange(val) {
+            const prefsContainer = document.getElementById('prefsContainer');
+            const noPrefsMsg     = document.getElementById('noPrefsMsg');
+            const saveNameBtn    = document.getElementById('saveNameBtn');
+            const role = getRoleForValue(val);
+
+            if (!val) {
+                prefsContainer.style.display = 'none';
+                noPrefsMsg.style.display     = 'none';
+                saveNameBtn.style.display    = 'none';
+                return;
+            }
+
+            if (role === 'Counselor') {
+                prefsContainer.style.display = '';
+                noPrefsMsg.style.display     = 'none';
+                saveNameBtn.style.display    = 'none';
+                fetch('/api/counselor-preferences/' + val)
+                    .then(function(r) { return r.json(); })
+                    .then(function(prefs) { applyPrefs(prefs); })
+                    .catch(function() {});
+            } else {
+                prefsContainer.style.display = 'none';
+                noPrefsMsg.style.display     = '';
+                saveNameBtn.style.display    = '';
+            }
+        }
 
         function filterActivities() {
             const term = document.getElementById('activityFilter').value.toLowerCase();
