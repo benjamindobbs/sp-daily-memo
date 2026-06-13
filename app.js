@@ -892,9 +892,9 @@ app.get('/staff', (req, res) => {
                s.ActivityName
         FROM ScheduledPickups sp JOIN Campers c ON c.CamperID = sp.CamperID
         LEFT JOIN Schedules s ON s.PersonType='Camper' AND s.PersonID=sp.CamperID
-            AND s.PeriodNumber=sp.PeriodNumber AND s.WeekNumber=?
+            AND s.PeriodNumber=sp.PeriodNumber
         WHERE sp.Date = ? ORDER BY sp.PickupTime
-    `).all(getActiveWeek(), today);
+    `).all(today);
 
     const allLateArrivals = db.prepare(`
         SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor, a.MarkedAt
@@ -2283,15 +2283,14 @@ function getViewerName(req) {
 }
 
 function getScheduledPickupMap(date) {
-    const aw = getActiveWeek();
     const rows = db.prepare(`
         SELECT sp.CamperID, sp.PickupTime, sp.Notes, sp.PeriodNumber,
                s.ActivityName
         FROM ScheduledPickups sp
         LEFT JOIN Schedules s ON s.PersonType='Camper' AND s.PersonID=sp.CamperID
-            AND s.PeriodNumber=sp.PeriodNumber AND s.WeekNumber=?
+            AND s.PeriodNumber=sp.PeriodNumber
         WHERE sp.Date = ?
-    `).all(aw, date);
+    `).all(date);
     const map = {};
     for (const r of rows) map[r.CamperID] = {
         pickupTime: r.PickupTime,
@@ -2979,7 +2978,6 @@ app.get('/dismissals', (req, res) => {
         existingPickup = db.prepare(`SELECT * FROM ScheduledPickups WHERE CamperID = ? AND Date = ?`).get(selectedId, today);
     }
 
-    const aw = getActiveWeek();
     const todayPickups = db.prepare(`
         SELECT sp.PickupID, sp.PickupTime, sp.PeriodNumber, sp.Notes, sp.CreatedBy,
                c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
@@ -2987,10 +2985,10 @@ app.get('/dismissals', (req, res) => {
         FROM ScheduledPickups sp
         JOIN Campers c ON c.CamperID = sp.CamperID
         LEFT JOIN Schedules s ON s.PersonType='Camper' AND s.PersonID=sp.CamperID
-            AND s.PeriodNumber=sp.PeriodNumber AND s.WeekNumber=?
+            AND s.PeriodNumber=sp.PeriodNumber
         WHERE sp.Date = ?
         ORDER BY sp.PickupTime
-    `).all(aw, today);
+    `).all(today);
 
     res.render('dismissals', { q, searchResults, selectedCamper, existingPickup, todayPickups, today });
 });
