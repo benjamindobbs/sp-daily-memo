@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -10,12 +10,13 @@
 <body>
     <% if (viewMode === 'admin') { %>
     <nav class="nav-bar">
-        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn primary">&#128269; Camper Lookup</a>
         <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
         <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="staff">
             <button class="nav-btn" style="cursor:pointer;">Staff View</button>
@@ -27,6 +28,7 @@
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn primary">&#128269; Camper Lookup</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="admin">
             <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
@@ -42,7 +44,7 @@
             <div>
                 <h1 style="margin:0;"><%= camper.FirstName %> <%= camper.LastName %></h1>
                 <p class="text-muted" style="margin:2px 0 0;">
-                    Grade <%= camper.Grade || '—' %> &nbsp;·&nbsp;
+                    Grade <%= camper.Grade || 'â€”' %> &nbsp;Â·&nbsp;
                     <span class="tag <%= camper.HomeGroupColor %>"><%= camper.HomeGroupColor %></span>
                 </p>
             </div>
@@ -50,7 +52,7 @@
 
         <% if (alertMessage) { %>
             <div class="alert" style="<%= alertMessage === 'Saved' ? '' : 'background:#fee2e2; color:#991b1b; border-color:#fca5a5;' %>">
-                <%= alertMessage === 'Saved' ? '✓ Changes saved successfully.' : alertMessage %>
+                <%= alertMessage === 'Saved' ? 'âœ“ Changes saved successfully.' : alertMessage %>
             </div>
         <% } %>
 
@@ -67,11 +69,11 @@
                             <span class="info-label">Home Counselor</span>
                         </div>
                         <div style="margin-bottom: 16px;">
-                            <select name="homeGroupCounselorID" style="width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.9rem; background:white;">
-                                <option value="">— Unassigned —</option>
+                            <select name=”homeGroupCounselorID” style=”width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.9rem; background:white;”>
+                                <option value=””>— Unassigned —</option>
                                 <% counselors.forEach(function(c) { %>
-                                    <option value="<%= c.CounselorID %>"
-                                        <%= camper.HomeGroupCounselorID === c.CounselorID ? 'selected' : '' %>>
+                                    <option value=”<%= c.CounselorID %>”
+                                        <%= camper.ResolvedCounselorID === c.CounselorID ? 'selected' : '' %>>
                                         <%= c.FirstName %> <%= c.LastName %> (<%= c.HomeGroupColor %>)
                                     </option>
                                 <% }); %>
@@ -128,10 +130,10 @@
                             No schedule assigned.
                         </div>
                     <% } else { %>
-                        <% schedule.forEach(function(s) { %>
+                        <% schedule.forEach(function(s, idx) { %>
                             <div style="display:flex; align-items:center; gap:14px; padding:14px 20px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap;">
                                 <span class="period-badge" style="font-size:0.75rem; padding:4px 12px; white-space:nowrap;">
-                                    Period <%= s.PeriodNumber %>
+                                    Period <%= idx + 1 %>
                                 </span>
                                 <div style="flex:1; min-width:120px;">
                                     <div style="font-weight:600; font-size:0.92rem;"><%= s.ActivityName %></div>

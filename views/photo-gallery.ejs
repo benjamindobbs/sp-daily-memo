@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -10,7 +10,7 @@
 <body>
     <% if (viewMode === 'admin') { %>
     <nav class="nav-bar">
-        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
         <a href="/photo-day" class="nav-btn">&#128247; Photo of the Day</a>
         <a href="/photo-gallery" class="nav-btn primary">&#127775; Gallery</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">

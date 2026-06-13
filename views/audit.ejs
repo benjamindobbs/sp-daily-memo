@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -25,13 +25,14 @@
 <body>
 
 <nav class="nav-bar">
-    <a href="/admin" class="nav-btn">&#127968; Hub</a>
+    <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
     <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
     <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
     <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
     <a href="/staff-lookup" class="nav-btn">&#128101; Staff Lookup</a>
     <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
     <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
     <form action="/choose-view" method="POST" style="margin-left:auto;">
         <input type="hidden" name="view" value="staff">
         <button class="nav-btn" style="cursor:pointer;">Staff View</button>
@@ -48,12 +49,12 @@
 
     <p class="audit-meta">
         Checking data integrity for
-        <strong><%= activeSession ? activeSession.label : 'Week ' + (activeSession?.weekNumber ?? '—') %></strong>.
+        <strong><%= activeSession ? activeSession.label : 'Week ' + (activeSession?.weekNumber ?? 'â€”') %></strong>.
         Flags identify missing or mismatched data that should be resolved before the week begins.
         Li'l Place, Kinder Place, and SPLIT campers are excluded from camper checks.
     </p>
 
-    <%/* ── Camper Flags ── */%>
+    <%/* â”€â”€ Camper Flags â”€â”€ */%>
     <div class="audit-section">
         <h2>
             Camper Flags
@@ -138,7 +139,7 @@
         </div>
     </div>
 
-    <%/* ── Class Name Suspects ── */%>
+    <%/* â”€â”€ Class Name Suspects â”€â”€ */%>
     <div class="audit-section">
         <h2>
             Class Name Suspects
@@ -148,7 +149,7 @@
                 <span class="count-pill count-ok">All clear</span>
             <% } %>
         </h2>
-        <p class="audit-meta" style="margin-top:-8px;">Classes with 3 or fewer campers enrolled — likely typos or accidental duplicates. Merging moves all enrolled campers into the target class and removes the suspect entry.</p>
+        <p class="audit-meta" style="margin-top:-8px;">Classes with 3 or fewer campers enrolled â€” likely typos or accidental duplicates. Merging moves all enrolled campers into the target class and removes the suspect entry.</p>
 
         <% if (suspects.length === 0) { %>
             <div class="card">
@@ -172,7 +173,7 @@
                           onsubmit="return confirm('Merge \'' + this.fromName.value + '\' into \'' + this.toName.value + '\'? This cannot be undone.');">
                         <input type="hidden" name="fromName" value="<%= s.activityName %>">
                         <select name="toName" required style="padding:6px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; min-width:200px;">
-                            <option value="">— Merge into —</option>
+                            <option value="">â€” Merge into â€”</option>
                             <% if (s.suggestions.length > 0) { %>
                                 <optgroup label="Suggested">
                                     <% s.suggestions.forEach(sug => { %>
@@ -194,7 +195,7 @@
         <% } %>
     </div>
 
-    <%/* ── Counselor Flags ── */%>
+    <%/* â”€â”€ Counselor Flags â”€â”€ */%>
     <div class="audit-section">
         <h2>
             Counselor Flags

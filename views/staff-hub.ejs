@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -40,6 +40,7 @@
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <a href="/counselor-preferences" class="nav-btn">&#127381; My Preferences</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="admin">
@@ -105,6 +106,16 @@
                 <div class="hub-card-icon">&#127775;</div>
                 <div class="hub-card-title">Vote: Photo of the Day</div>
             </a>
+            <a href="/dismissals" class="hub-card">
+                <div class="hub-card-icon">&#128663;</div>
+                <div class="hub-card-title">Dismissals</div>
+            </a>
+            <% if (viewMode === 'admin') { %>
+            <a href="/attendance/dismissal-archive" class="hub-card">
+                <div class="hub-card-icon">&#128203;</div>
+                <div class="hub-card-title">Daily Arrival &amp; Departure Log</div>
+            </a>
+            <% } %>
         </div>
 
         <% if (announcement || viewMode === 'admin') { %>
@@ -119,6 +130,71 @@
                 <div id="announceEditor" style="min-height:120px;"></div>
             <% } else { %>
                 <div class="hub-rich-content"><%- announcement %></div>
+            <% } %>
+        </div>
+        <% } %>
+
+        <%/* ── Today's Activity Feed ── */%>
+        <% const hasActivity = todayPickups.length > 0 || todayLateArrivals.length > 0 || todayEarlyDismissals.length > 0 || todayScheduleChanges.length > 0; %>
+        <% if (hasActivity) { %>
+        <div class="card" style="margin-top:20px;">
+            <h3 style="margin:0 0 16px;">Today's Activity</h3>
+
+            <% if (todayPickups.length > 0) { %>
+            <div style="margin-bottom:16px;">
+                <div style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:8px;">&#128663; Scheduled Pickups</div>
+                <% todayPickups.forEach(function(p) { %>
+                <div style="display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-color);">
+                    <span class="tag <%= p.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px; flex-shrink:0;"><%= p.HomeGroupColor %></span>
+                    <span style="font-weight:500; flex:1;"><%= p.FirstName %> <%= p.LastName %></span>
+                    <span style="font-size:0.82rem; font-weight:700; color:#92400e; background:#fef3c7; padding:2px 8px; border-radius:4px;"><%= p.PickupTime %></span>
+                    <% if (p.Notes) { %><span style="font-size:0.8rem; color:var(--text-muted); flex:1;">&#128221; <%= p.Notes %></span><% } %>
+                </div>
+                <% }); %>
+            </div>
+            <% } %>
+
+            <% if (todayLateArrivals.length > 0) { %>
+            <div style="margin-bottom:16px;">
+                <div style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:8px;">&#9989; Late Arrivals</div>
+                <% todayLateArrivals.forEach(function(a) { %>
+                <div style="display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-color);">
+                    <span class="tag <%= a.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px; flex-shrink:0;"><%= a.HomeGroupColor %></span>
+                    <span style="font-weight:500; flex:1;"><%= a.FirstName %> <%= a.LastName %></span>
+                    <span style="font-size:0.8rem; color:var(--text-muted);"><%= fmtTimeOnly(a.MarkedAt) %></span>
+                </div>
+                <% }); %>
+            </div>
+            <% } %>
+
+            <% if (todayEarlyDismissals.length > 0) { %>
+            <div style="margin-bottom:16px;">
+                <div style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:8px;">&#128663; Early Dismissals</div>
+                <% todayEarlyDismissals.forEach(function(d) { %>
+                <div style="display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-color);">
+                    <span class="tag <%= d.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px; flex-shrink:0;"><%= d.HomeGroupColor %></span>
+                    <span style="font-weight:500; flex:1;"><%= d.FirstName %> <%= d.LastName %></span>
+                    <% if (d.DismissalTime) { %><span style="font-size:0.82rem; color:var(--text-muted);"><%= d.DismissalTime %></span><% } %>
+                    <% if (d.Notes) { %><span style="font-size:0.8rem; color:var(--text-muted); flex:1;">&#128221; <%= d.Notes %></span><% } %>
+                </div>
+                <% }); %>
+            </div>
+            <% } %>
+
+            <% if (todayScheduleChanges.length > 0) { %>
+            <div>
+                <div style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:8px;">&#128260; Class Roster Changes</div>
+                <% todayScheduleChanges.forEach(function(c) { %>
+                <div style="display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-color); flex-wrap:wrap;">
+                    <% if (c.ColorGroup) { %><span class="tag <%= c.ColorGroup %>" style="font-size:0.65rem; padding:1px 7px; flex-shrink:0;"><%= c.ColorGroup %></span><% } %>
+                    <span style="font-weight:500;"><%= c.CamperName %></span>
+                    <span style="font-size:0.8rem; color:var(--text-muted);">P<%= c.PeriodNumber %></span>
+                    <span style="font-size:0.8rem; color:#ef4444; text-decoration:line-through;"><%= c.OldActivity %></span>
+                    <span style="font-size:0.8rem; color:var(--text-muted);">&#8594;</span>
+                    <span style="font-size:0.8rem; color:#22c55e; font-weight:600;"><%= c.NewActivity %></span>
+                </div>
+                <% }); %>
+            </div>
             <% } %>
         </div>
         <% } %>

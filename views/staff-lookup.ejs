@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 </head>
 <body>
     <nav class="nav-bar">
-        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
@@ -17,6 +17,7 @@
         <a href="/faculty-summer" class="nav-btn">&#128197; Full Summer</a>
         <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
     </nav>
 
     <div class="container">
@@ -25,7 +26,7 @@
             <p style="color: var(--text-muted); margin: 6px 0 0;">Find staff schedules, activities, and locations.</p>
             <div class="search-bar-container">
                 <input type="text" id="staffSearch" class="search-input"
-                    placeholder="Type a name (e.g. 'Johnson' or 'Mike')…" oninput="runSearch()"
+                    placeholder="Type a name (e.g. 'Johnson' or 'Mike')â€¦" oninput="runSearch()"
                     value="<%= query %>">
                 <button class="btn" style="background: #f1f5f9; color: #475569;" onclick="clearSearch()">Clear</button>
             </div>
@@ -73,7 +74,7 @@
                         <div class="staff-name"><%= s.FirstName %> <%= s.LastName %></div>
                     </td>
                     <td>
-                        <span class="staff-type-badge"><%= s.StaffType || '—' %></span>
+                        <span class="staff-type-badge"><%= s.StaffType || 'â€”' %></span>
                     </td>
                     <td>
                         <div class="mini-sched">

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -12,13 +12,14 @@
 <body>
 
     <nav class="nav-bar">
-        <a href="/admin" class="nav-btn">&#127968; Hub</a>
-        <a href="/master-schedule" class="nav-btn">📅 Master Schedule</a>
-        <a href="/search" class="nav-btn">🔍 Camper Lookup</a>
-        <a href="/counselor-directory" class="nav-btn">👤 Counselor Lookup</a>
-        <a href="/swap-tool" class="nav-btn">🔄 Swap Tools</a>
-        <a href="/promotions" class="nav-btn primary">🔔 Promotions</a>
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">ðŸ“… Master Schedule</a>
+        <a href="/search" class="nav-btn">ðŸ” Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">ðŸ‘¤ Counselor Lookup</a>
+        <a href="/swap-tool" class="nav-btn">ðŸ”„ Swap Tools</a>
+        <a href="/promotions" class="nav-btn primary">ðŸ”” Promotions</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
     </nav>
 
     <% if (typeof alertMessage !== 'undefined' && alertMessage) { %>
@@ -27,7 +28,7 @@
         </div>
     <% } %>
 
-    <%/* ── Ready for Promotion ── */%>
+    <%/* â”€â”€ Ready for Promotion â”€â”€ */%>
     <div class="promo-container">
         <header style="margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px;">
             <div>
@@ -38,7 +39,7 @@
                 <form action="/promote-all" method="POST"
                     onsubmit="return confirm('Promote all eligible campers at once?')">
                     <button type="submit" class="btn btn-success">
-                        🚀 Promote All Eligible (<%= potentialPromotions.length %>)
+                        ðŸš€ Promote All Eligible (<%= potentialPromotions.length %>)
                     </button>
                 </form>
             <% } %>
@@ -46,7 +47,7 @@
 
         <% if (potentialPromotions.length === 0) { %>
             <div class="empty-state">
-                <span style="font-size: 3rem;">🎉</span>
+                <span style="font-size: 3rem;">ðŸŽ‰</span>
                 <h3>All Clear!</h3>
                 <p>There are no pending promotions at this time.</p>
             </div>
@@ -69,8 +70,8 @@
                             </p>
 
                             <span class="timestamp">
-                                🕒 Waitlisted on <%= new Date(promo.Timestamp).toLocaleDateString() %>
-                                    at <%= new Date(promo.Timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) %>
+                                🕒 Waitlisted on <%= fmtTime(promo.Timestamp, true) %>
+                                    at <%= fmtTimeOnly(promo.Timestamp) %>
                             </span>
                         </div>
 
@@ -93,7 +94,7 @@
         <% } %>
     </div>
 
-    <%/* ── Waitlist Queue ── */%>
+    <%/* â”€â”€ Waitlist Queue â”€â”€ */%>
     <div class="promo-container" style="margin-top: 40px;">
         <header style="margin-bottom: 30px;">
             <h1>Waitlist Queue</h1>
@@ -102,7 +103,7 @@
 
         <% if (waitlistQueue.length === 0) { %>
             <div class="empty-state">
-                <span style="font-size: 3rem;">✅</span>
+                <span style="font-size: 3rem;">âœ…</span>
                 <p style="font-weight: 600; margin-top: 10px;">No campers currently waiting.</p>
             </div>
         <% } else { %>
@@ -124,8 +125,8 @@
                             </p>
 
                             <span class="timestamp">
-                                🕒 Waitlisted on <%= new Date(promo.Timestamp).toLocaleDateString() %>
-                                    at <%= new Date(promo.Timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) %>
+                                🕒 Waitlisted on <%= fmtTime(promo.Timestamp, true) %>
+                                    at <%= fmtTimeOnly(promo.Timestamp) %>
                             </span>
                         </div>
 

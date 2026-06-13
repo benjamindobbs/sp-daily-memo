@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -10,12 +10,13 @@
 <body>
     <% if (viewMode === 'admin') { %>
     <nav class="nav-bar">
-        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
         <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="staff">
             <button class="nav-btn" style="cursor:pointer;">Staff View</button>
@@ -27,6 +28,7 @@
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="admin">
             <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
@@ -40,7 +42,7 @@
             <span class="pipe-sep">|</span>
             <div class="att-title">
                 <h1><%= title %></h1>
-                <p><%= date.slice(5).replace('-', '/') %><% if (typeof location !== 'undefined' && location) { %> &nbsp;·&nbsp; 📍 <%= location %><% } %></p>
+                <p><%= date.slice(5).replace('-', '/') %><% if (typeof location !== 'undefined' && location) { %> &nbsp;Â·&nbsp; ðŸ“ <%= location %><% } %></p>
             </div>
         </div>
 
@@ -60,12 +62,12 @@
         <div class="roster-card">
             <div class="roster-card-header">
                 <div>
-                    <strong id="presentCount">—</strong> present &nbsp;·&nbsp;
-                    <strong id="absentCount">—</strong> absent &nbsp;·&nbsp;
-                    <strong id="unmarkedCount">—</strong> unmarked
-                    <span class="saving-indicator" id="savingIndicator">Saving…</span>
+                    <strong id="presentCount">â€”</strong> present &nbsp;Â·&nbsp;
+                    <strong id="absentCount">â€”</strong> absent &nbsp;Â·&nbsp;
+                    <strong id="unmarkedCount">â€”</strong> unmarked
+                    <span class="saving-indicator" id="savingIndicator">Savingâ€¦</span>
                 </div>
-                <input type="text" id="searchInput" class="search-bar" placeholder="Filter by name…" oninput="filterRows()">
+                <input type="text" id="searchInput" class="search-bar" placeholder="Filter by nameâ€¦" oninput="filterRows()">
             </div>
 
             <% if (roster.length === 0) { %>
@@ -81,6 +83,13 @@
                             <% if (c.absentBusAM) { %><span class="badge-absent-bus">&#128652; Absent Bus AM</span><% } %>
                             <% if (c.dismissed) { %><span class="badge-dismissed">&#128663; Dismissed</span><% } %>
                             <% if (c.seenEarlier) { %><span class="badge-seen-earlier">&#10003; Seen Earlier</span><% } %>
+                            <% if (c.scheduledPickup) { %>
+                                <button class="badge-pickup"
+                                    onclick="openPickup('<%= c.scheduledPickup.pickupTime %>',<%- JSON.stringify(c.scheduledPickup.notes || '') %>,'<%= c.FirstName %> <%= c.LastName %>')"
+                                    style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;padding:1px 7px;font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;">
+                                    &#128663; Pickup <%= c.scheduledPickup.pickupTime %>
+                                </button>
+                            <% } %>
                         </div>
                         <div class="toggle-wrap">
                             <button class="btn-present <%= (c.currentStatus === 'present' || c.currentStatus === 'late') ? 'active' : '' %>"
@@ -95,6 +104,22 @@
                 <% }); %>
                 </div>
             <% } %>
+        </div>
+    </div>
+
+    <!-- Scheduled Pickup Info Modal -->
+    <div class="dismiss-modal" id="pickupModal">
+        <div class="dismiss-box">
+            <h3>&#128663; Scheduled Pickup</h3>
+            <p id="pickupModalName" style="margin:0 0 12px; font-weight:600;"></p>
+            <p style="margin:0 0 6px;"><span style="color:var(--text-muted); font-size:0.85rem;">Pickup Time</span><br><strong id="pickupModalTime"></strong></p>
+            <p style="margin:8px 0 0;"><span style="color:var(--text-muted); font-size:0.85rem;">Notes</span><br><span id="pickupModalNotes"></span></p>
+            <div class="dismiss-actions" style="margin-top:18px;">
+                <button type="button" class="btn-cancel" onclick="closePickup()">Close</button>
+                <% if (viewMode === 'admin') { %>
+                <a href="/dismissals" class="btn-dismiss-confirm" style="text-decoration:none; text-align:center;">Edit Pickup</a>
+                <% } %>
+            </div>
         </div>
     </div>
 
@@ -154,7 +179,7 @@
             updateCounts();
 
             // Show saving indicator
-            indicator.textContent = 'Saving…';
+            indicator.textContent = 'Savingâ€¦';
             indicator.classList.add('show');
 
             fetch('/attendance/mark', {
@@ -172,7 +197,7 @@
                 setTimeout(() => indicator.classList.remove('show'), 1200);
             })
             .catch(() => {
-                indicator.textContent = 'Error — check connection';
+                indicator.textContent = 'Error â€” check connection';
             });
         }
 
@@ -194,6 +219,19 @@
         }
         document.getElementById('dismissModal').addEventListener('click', function(e) {
             if (e.target === this) closeDismiss();
+        });
+
+        function openPickup(time, notes, name) {
+            document.getElementById('pickupModalName').textContent = name;
+            document.getElementById('pickupModalTime').textContent = time;
+            document.getElementById('pickupModalNotes').textContent = notes || '—';
+            document.getElementById('pickupModal').classList.add('open');
+        }
+        function closePickup() {
+            document.getElementById('pickupModal').classList.remove('open');
+        }
+        document.getElementById('pickupModal').addEventListener('click', function(e) {
+            if (e.target === this) closePickup();
         });
 
         updateCounts();

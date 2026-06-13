@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -29,12 +29,13 @@
 <body>
 
     <nav class="nav-bar">
-        <a href="/admin" class="nav-btn">&#127968; Hub</a>
-        <a href="/master-schedule" class="nav-btn">📅 Master Schedule</a>
-        <a href="/search" class="nav-btn">🔍 Camper Lookup</a>
-        <a href="/swap-tool" class="nav-btn">🔄 Swap Tools</a>
-        <a href="/schedule-history" class="nav-btn primary">📋 Change History</a>
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">ðŸ“… Master Schedule</a>
+        <a href="/search" class="nav-btn">ðŸ” Camper Lookup</a>
+        <a href="/swap-tool" class="nav-btn">ðŸ”„ Swap Tools</a>
+        <a href="/schedule-history" class="nav-btn primary">ðŸ“‹ Change History</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
     </nav>
 
     <div class="container">
@@ -56,7 +57,7 @@
                         <input type="checkbox" id="selectAll" onchange="toggleAll(this)"> Select all
                     </label>
                     <button type="submit" class="btn primary btn-small">
-                        ✓ Mark Selected as Updated in CampBrain
+                        âœ“ Mark Selected as Updated in CampBrain
                     </button>
                 </div>
 
@@ -83,16 +84,16 @@
                                         <% if (c.ColorGroup) { %>
                                             <span class="tag <%= c.ColorGroup %>"><%= c.ColorGroup %></span>
                                         <% } else { %>
-                                            <span style="color: #94a3b8;">—</span>
+                                            <span style="color: #94a3b8;">â€”</span>
                                         <% } %>
                                     </td>
                                     <td>P<%= c.PeriodNumber %></td>
                                     <td>
                                         <span class="old-act"><%= c.OldActivity %></span>
-                                        <span class="arrow">→</span>
+                                        <span class="arrow">â†’</span>
                                         <span class="new-act"><%= c.NewActivity %></span>
                                     </td>
-                                    <td class="ts"><%= new Date(c.ChangedAt).toLocaleString() %></td>
+                                    <td class="ts"><%= fmtTime(c.ChangedAt) %></td>
                                 </tr>
                             <% }) %>
                         </tbody>
@@ -101,8 +102,8 @@
             </form>
         <% } else { %>
             <div class="empty-state">
-                <span>✅</span>
-                <p>No pending schedule changes — all caught up!</p>
+                <span>âœ…</span>
+                <p>No pending schedule changes â€” all caught up!</p>
             </div>
         <% } %>
 
@@ -130,17 +131,17 @@
                                             <% if (c.ColorGroup) { %>
                                                 <span class="tag <%= c.ColorGroup %>" style="opacity: 0.5;"><%= c.ColorGroup %></span>
                                             <% } else { %>
-                                                <span>—</span>
+                                                <span>â€”</span>
                                             <% } %>
                                         </td>
                                         <td>P<%= c.PeriodNumber %></td>
                                         <td>
                                             <span class="old-act"><%= c.OldActivity %></span>
-                                            <span class="arrow">→</span>
+                                            <span class="arrow">â†’</span>
                                             <span class="new-act"><%= c.NewActivity %></span>
                                         </td>
-                                        <td class="ts"><%= new Date(c.ChangedAt).toLocaleString() %></td>
-                                        <td class="ts"><%= new Date(c.ArchivedAt).toLocaleString() %></td>
+                                        <td class="ts"><%= fmtTime(c.ChangedAt) %></td>
+                                        <td class="ts"><%= fmtTime(c.ArchivedAt) %></td>
                                     </tr>
                                 <% }) %>
                             </tbody>

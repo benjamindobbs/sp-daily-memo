@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -62,6 +62,7 @@
         <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/promotions" class="nav-btn">&#128276; Promotions</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <a href="/photo-gallery" class="nav-btn">&#128247; Photo of the Day</a>
         <a href="/settings" class="nav-btn">&#9881;&#65039; Data Management</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
@@ -228,7 +229,7 @@
                      data-body="<%= (note.body || '').replace(/</g,'').replace(/>/g,'').toLowerCase() %>">
                     <div class="note-meta">
                         <strong><%= note.author %></strong>
-                        <span class="note-ts"><%= new Date(note.createdAt).toLocaleString() %></span>
+                        <span class="note-ts"><%= fmtTime(note.createdAt) %></span>
                     </div>
                     <div class="note-body"><%- note.body %></div>
                 </div>

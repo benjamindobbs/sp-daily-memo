@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dismissals | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .dismissal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
+        @media (max-width: 768px) { .dismissal-grid { grid-template-columns: 1fr; } }
+        .search-result-list { list-style: none; padding: 0; margin: 8px 0 0; }
+        .search-result-list li a {
+            display: block; padding: 10px 14px;
+            border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 6px;
+            text-decoration: none; color: var(--text);
+            font-size: 0.9rem; transition: background 0.1s;
+        }
+        .search-result-list li a:hover { background: #f1f5f9; }
+        .pickup-card {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 10px;
+            margin-bottom: 8px; background: white;
+        }
+        .pickup-card-info { flex: 1; }
+        .pickup-time { font-size: 1.05rem; font-weight: 700; color: var(--primary); }
+        .pickup-meta { font-size: 0.82rem; color: var(--text-muted); margin-top: 2px; }
+        .form-field { margin-bottom: 14px; }
+        .form-field label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
+        .form-field input[type="time"], .form-field input[type="date"], .form-field input[type="text"] {
+            width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 8px;
+            font-size: 0.95rem; font-family: inherit; box-sizing: border-box;
+        }
+        .selected-camper-banner {
+            background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px;
+            padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px;
+        }
+        .cancel-btn { background: none; border: 1px solid #fca5a5; color: #dc2626; border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 0.8rem; }
+        .cancel-btn:hover { background: #fee2e2; }
+    </style>
+</head>
+<body>
+
+    <% if (viewMode === 'admin') { %>
+    <nav class="nav-bar">
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
+        <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn primary">&#128663; Dismissals</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
+    </nav>
+    <% } else { %>
+    <nav class="nav-bar">
+        <a href="/staff" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn primary">&#128663; Dismissals</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="admin">
+            <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
+        </form>
+    </nav>
+    <% } %>
+
+    <div class="container">
+        <header style="margin-bottom: 8px;">
+            <h1>&#128663; Schedule a Pickup</h1>
+            <p style="color: var(--text-muted); margin: 4px 0 0;">Log an early pickup or plan ahead for today.</p>
+        </header>
+
+        <div class="dismissal-grid">
+            <%/* ── Left: Search + Schedule Form ── */%>
+            <div>
+                <div class="card">
+                    <h3 style="margin: 0 0 14px;">Find Camper</h3>
+                    <form method="GET" action="/dismissals">
+                        <% if (selectedCamper) { %>
+                            <input type="hidden" name="camperId" value="<%= selectedCamper.CamperID %>">
+                        <% } %>
+                        <div style="display:flex; gap:8px;">
+                            <input type="text" name="q" value="<%= q %>"
+                                placeholder="Type a name…"
+                                class="search-input" style="flex:1; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-size:0.95rem;">
+                            <button type="submit" class="btn btn-primary">Search</button>
+                        </div>
+                    </form>
+
+                    <% if (q && searchResults.length === 0) { %>
+                        <p style="margin:12px 0 0; color:var(--text-muted); font-size:0.875rem;">No campers found matching "<%= q %>".</p>
+                    <% } else if (searchResults.length > 0) { %>
+                        <ul class="search-result-list" style="margin-top:12px;">
+                            <% searchResults.forEach(function(c) { %>
+                                <li>
+                                    <a href="/dismissals?camperId=<%= c.CamperID %><%= q ? '&q=' + encodeURIComponent(q) : '' %>">
+                                        <span class="tag <%= c.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px; margin-right:8px;"><%= c.HomeGroupColor %></span>
+                                        <%= c.FirstName %> <%= c.LastName %>
+                                    </a>
+                                </li>
+                            <% }); %>
+                        </ul>
+                    <% } %>
+                </div>
+
+                <% if (selectedCamper) { %>
+                <div class="card" style="margin-top:16px;">
+                    <div class="selected-camper-banner">
+                        <span class="tag <%= selectedCamper.HomeGroupColor %>"><%= selectedCamper.HomeGroupColor %></span>
+                        <strong><%= selectedCamper.FirstName %> <%= selectedCamper.LastName %></strong>
+                        <a href="/dismissals<%= q ? '?q=' + encodeURIComponent(q) : '' %>" style="margin-left:auto; font-size:0.8rem; color:var(--text-muted);">&#10005; Clear</a>
+                    </div>
+
+                    <h3 style="margin: 0 0 14px;">Schedule Pickup</h3>
+                    <form action="/dismissals/schedule" method="POST">
+                        <input type="hidden" name="camperId" value="<%= selectedCamper.CamperID %>">
+                        <div class="form-field">
+                            <label>Date</label>
+                            <input type="date" name="date" value="<%= today %>" required>
+                        </div>
+                        <div class="form-field">
+                            <label>Pickup Time</label>
+                            <input type="time" name="pickupTime" value="<%= existingPickup ? existingPickup.PickupTime : '' %>" required>
+                        </div>
+                        <div class="form-field">
+                            <label>Notes (pickup person, location, etc.)</label>
+                            <input type="text" name="notes"
+                                value="<%= existingPickup ? existingPickup.Notes || '' : '' %>"
+                                placeholder="e.g. Mom picking up at main entrance">
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="width:100%;">
+                            <%= existingPickup ? 'Update Pickup' : 'Schedule Pickup' %>
+                        </button>
+                    </form>
+                </div>
+                <% } %>
+            </div>
+
+            <%/* ── Right: Today's Pickups ── */%>
+            <div>
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                        <h3 style="margin:0;">Today's Scheduled Pickups</h3>
+                        <% if (viewMode === 'admin') { %>
+                        <a href="/attendance/dismissal-archive?date=<%= today %>" style="font-size:0.8rem; color:var(--text-muted);">Full Log &#8594;</a>
+                        <% } %>
+                    </div>
+
+                    <% if (todayPickups.length === 0) { %>
+                        <div class="empty-state" style="padding:32px 0;">
+                            <span style="font-size:2rem;">&#9989;</span>
+                            <p style="font-weight:600; margin-top:8px; color:var(--text-muted);">No pickups scheduled for today.</p>
+                        </div>
+                    <% } else { %>
+                        <% todayPickups.forEach(function(p) { %>
+                            <div class="pickup-card">
+                                <div class="pickup-card-info">
+                                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                                        <span class="tag <%= p.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px;"><%= p.HomeGroupColor %></span>
+                                        <strong><%= p.FirstName %> <%= p.LastName %></strong>
+                                        <span class="pickup-time" style="margin-left:auto;"><%= p.PickupTime %></span>
+                                    </div>
+                                    <% if (p.Notes) { %>
+                                        <div class="pickup-meta">&#128221; <%= p.Notes %></div>
+                                    <% } %>
+                                    <% if (p.CreatedBy) { %>
+                                        <div class="pickup-meta">Logged by <%= p.CreatedBy %></div>
+                                    <% } %>
+                                </div>
+                                <form action="/dismissals/cancel" method="POST" style="margin-left:12px;"
+                                      onsubmit="return confirm('Remove this scheduled pickup?')">
+                                    <input type="hidden" name="pickupId" value="<%= p.PickupID %>">
+                                    <button type="submit" class="cancel-btn">Remove</button>
+                                </form>
+                            </div>
+                        <% }); %>
+                    <% } %>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

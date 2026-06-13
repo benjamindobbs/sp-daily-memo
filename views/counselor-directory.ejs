@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -10,13 +10,14 @@
 <body>
 
     <nav class="nav-bar">
-        <a href="/admin" class="nav-btn">&#127968; Hub</a>
-        <a href="/master-schedule" class="nav-btn">📅 Master Schedule</a>
-        <a href="/search" class="nav-btn">🔍 Camper Lookup</a>
-        <a href="/counselor-directory" class="nav-btn primary">👤 Counselor Directory</a>
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">ðŸ“… Master Schedule</a>
+        <a href="/search" class="nav-btn">ðŸ” Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn primary">ðŸ‘¤ Counselor Directory</a>
         <a href="/staff-lookup" class="nav-btn">&#128101; Staff Lookup</a>
-        <a href="/promotions" class="nav-btn">🔔 Promotions</a>
+        <a href="/promotions" class="nav-btn">ðŸ”” Promotions</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
     </nav>
 
     <div class="directory-container">
@@ -80,7 +81,7 @@
                     <% if (!SUPPORT_ROLES.includes(c.StaffRole)) { %>
                     <div class="assignment-info">
                         <div class="info-row">
-                            <span class="info-label">⏰ Extended</span>
+                            <span class="info-label">â° Extended</span>
                             <span class="info-value"><%= c.ExtendedHours || 'None' %></span>
                         </div>
                     </div>

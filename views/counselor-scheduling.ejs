@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -43,7 +43,7 @@
 <body>
 
     <nav class="nav-bar">
-        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
         <a href="/counselor-scheduling" class="nav-btn primary">&#128197; Scheduling</a>
@@ -138,12 +138,12 @@
                 <span class="counter-chips">
                     <% if (sports.length > 0) { %>
                     <span class="counter-chip sports" data-counter="<%= p %>-Sports">
-                        &#9917; <span data-counter-val="<%= p %>-Sports">—</span> / <span data-counter-denom="<%= p %>-Sports">0</span> slots
+                        &#9917; <span data-counter-val="<%= p %>-Sports">â€”</span> / <span data-counter-denom="<%= p %>-Sports">0</span> slots
                     </span>
                     <% } %>
                     <% if (enrichment.length > 0) { %>
                     <span class="counter-chip enrichment" data-counter="<%= p %>-Enrichment">
-                        &#127912; <span data-counter-val="<%= p %>-Enrichment">—</span> / <span data-counter-denom="<%= p %>-Enrichment">0</span> slots
+                        &#127912; <span data-counter-val="<%= p %>-Enrichment">â€”</span> / <span data-counter-denom="<%= p %>-Enrichment">0</span> slots
                     </span>
                     <% } %>
                     <span class="text-muted" style="font-size:0.78rem; margin-left:4px;"><%= periodOfferings.length %> class<%= periodOfferings.length !== 1 ? 'es' : '' %></span>
@@ -162,9 +162,9 @@
                             <div class="offering-card-header">
                                 <span class="offering-name"><%= act.ActivityName %></span>
                                 <% if (parseInt(act.PeriodNumber) <= 3) { %>
-                                    <span style="font-size:0.68rem;font-weight:700;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;white-space:nowrap;">AM · Green / Navy</span>
+                                    <span style="font-size:0.68rem;font-weight:700;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;white-space:nowrap;">AM Â· Green / Navy</span>
                                 <% } else { %>
-                                    <span style="font-size:0.68rem;font-weight:700;background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;white-space:nowrap;">PM · Red / Carolina</span>
+                                    <span style="font-size:0.68rem;font-weight:700;background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:12px;white-space:nowrap;">PM Â· Red / Carolina</span>
                                 <% } %>
                                 <span class="enrollment-pill"><%= act.PreliminaryEnrollment %> expected</span>
                             </div>
@@ -317,7 +317,7 @@
 
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn btn-primary" onclick="buildSchedule()">Build Schedule</button>
-                <button class="btn btn-primary" onclick="autoCalculateSlots(); buildSchedule();" style="background:var(--success, #16a34a);">⚡ Full Auto Build</button>
+                <button class="btn btn-primary" onclick="autoCalculateSlots(); buildSchedule();" style="background:var(--success, #16a34a);">âš¡ Full Auto Build</button>
                 <span id="autoStatus" style="font-size:0.82rem; color:var(--text-muted); margin-left:4px;"></span>
             </div>
             <% if (sessions.filter(s => s.weekNumber !== planWeek).length > 0) { %>
@@ -388,7 +388,7 @@
                             <td><%= c.FirstName %> <%= c.LastName %></td>
                             <td>
                                 <select class="person-select cg-homegroup" data-cid="<%= c.CounselorID %>">
-                                    <option value="">— Unassigned —</option>
+                                    <option value="">â€” Unassigned â€”</option>
                                     <% ['Red','Carolina','Green','Navy','Bus'].forEach(color => { %>
                                     <option value="<%= color %>"<%= c.HomeGroupColor === color ? ' selected' : '' %>><%= color %></option>
                                     <% }); %>
@@ -400,7 +400,7 @@
                             </td>
                             <td>
                                 <select class="person-select cg-schedule" data-cid="<%= c.CounselorID %>">
-                                    <option value="">— Unassigned —</option>
+                                    <option value="">â€” Unassigned â€”</option>
                                     <% ['All Sports','All Enrichment','AM Sports / PM Enrichment','AM Enrichment / PM Sports'].forEach(type => { %>
                                     <option value="<%= type %>"<%= c.ScheduleType === type ? ' selected' : '' %>><%= type %></option>
                                     <% }); %>
@@ -415,7 +415,7 @@
                     <form action="/auto-assign-homegroups" method="POST" style="margin:0;"
                           onsubmit="return confirm('This will overwrite all homegroup and schedule type assignments for Week <%= planWeek %>. Continue?')">
                         <input type="hidden" name="weekNumber" value="<%= planWeek %>">
-                        <button type="submit" class="btn btn-secondary">⚡ Auto Assign Homegroups</button>
+                        <button type="submit" class="btn btn-secondary">âš¡ Auto Assign Homegroups</button>
                     </form>
                 </div>
             </div>
@@ -424,7 +424,7 @@
     </div>
 
     <script>
-        // ── Server data ──────────────────────────────────────────────────────────
+        // â”€â”€ Server data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const OFFERINGS    = <%- JSON.stringify(offerings) %>;
         const COUNSELORS   = <%- JSON.stringify(counselors) %>;
         const AVAIL        = <%- JSON.stringify(availability) %>;
@@ -434,12 +434,12 @@
         const PLAN_WEEK    = <%= planWeek %>;
         const SESSIONS     = <%- JSON.stringify(sessions) %>;
 
-        // ── State: state[offerIdx] = { counselors: [id|null,...], staff: [id|null,...] }
+        // â”€â”€ State: state[offerIdx] = { counselors: [id|null,...], staff: [id|null,...] }
         // Each offering already carries its PeriodNumber, so we don't need a period dimension.
         const state = {};
         OFFERINGS.forEach((_, idx) => { state[idx] = { counselors: [], staff: [] }; });
 
-        // ── Restore saved assignments on load ────────────────────────────────────
+        // â”€â”€ Restore saved assignments on load â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         function initState() {
             OFFERINGS.forEach((act, idx) => {
                 const key = `${act.PeriodNumber}|${act.ActivityName}`;
@@ -463,7 +463,7 @@
             });
         }
 
-        // ── IDs already taken in the same period+side+type (excluding one slot) ──
+        // â”€â”€ IDs already taken in the same period+side+type (excluding one slot) â”€â”€
         function getUsedElsewhere(offerIdx, type, exceptSlotIdx) {
             const act    = OFFERINGS[offerIdx];
             const period = act.PeriodNumber;
@@ -480,7 +480,7 @@
             return used;
         }
 
-        // ── Render dropdown slots for one offering card ──────────────────────────
+        // â”€â”€ Render dropdown slots for one offering card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         function renderSlots(offerIdx, type) {
             const card = document.querySelector(`.offering-card[data-offer="${offerIdx}"]`);
             if (!card) return;
@@ -501,14 +501,14 @@
 
                 const sel = document.createElement('select');
                 sel.className = 'person-select';
-                sel.appendChild(new Option('— Select —', ''));
+                sel.appendChild(new Option('â€” Select â€”', ''));
 
                 allPeople.forEach(person => {
                     const id = type === 'counselors' ? person.CounselorID : person.StaffID;
                     if (usedElsewhere.has(id)) return;
                     const label = type === 'counselors'
                         ? `${person.FirstName} ${person.LastName} (${person.HomeGroupColor})`
-                        : `${person.FirstName} ${person.LastName} — ${person.StaffType}`;
+                        : `${person.FirstName} ${person.LastName} â€” ${person.StaffType}`;
                     const opt = new Option(label, id);
                     if (id === selectedId) opt.selected = true;
                     sel.appendChild(opt);
@@ -527,7 +527,7 @@
             });
         }
 
-        // ── Count input change ───────────────────────────────────────────────────
+        // â”€â”€ Count input change â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         function handleCountChange(offerIdx, type, newCount) {
             const arr = state[offerIdx][type];
             while (arr.length < newCount) arr.push(null);
@@ -538,7 +538,7 @@
             if (type === 'counselors') updateGroupCounters();
         }
 
-        // ── Counselor availability per schedule type ─────────────────────────────
+        // â”€â”€ Counselor availability per schedule type â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Periods 1-3 are AM, 4-6 are PM.
         function isCounselorAvailableFor(scheduleType, periodNum, side) {
             const am = periodNum <= 3;
@@ -551,7 +551,7 @@
             }
         }
 
-        // ── Availability counter chip ────────────────────────────────────────────
+        // â”€â”€ Availability counter chip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // Numerator  = counselors available (by group assignment) minus those already placed this period.
         // Denominator = total counselor slots requested across all activities in this period+side.
         function updateCounter(periodNum, side) {
@@ -607,10 +607,10 @@
             });
         }
 
-        // ── Save assignments via fetch ────────────────────────────────────────────
+        // â”€â”€ Save assignments via fetch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         async function saveAssignments() {
             const btn = document.getElementById('saveBtn');
-            if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+            if (btn) { btn.textContent = 'Savingâ€¦'; btn.disabled = true; }
 
             const assignments = [];
             OFFERINGS.forEach((act, idx) => {
@@ -629,18 +629,18 @@
                     body: JSON.stringify({ assignments, weekNumber: PLAN_WEEK })
                 });
                 if (resp.ok) {
-                    if (btn) { btn.textContent = '✓ Saved!'; setTimeout(() => { btn.textContent = 'Save Assignments'; btn.disabled = false; }, 2500); }
+                    if (btn) { btn.textContent = 'âœ“ Saved!'; setTimeout(() => { btn.textContent = 'Save Assignments'; btn.disabled = false; }, 2500); }
                 } else {
-                    if (btn) { btn.textContent = 'Error — try again'; btn.disabled = false; }
+                    if (btn) { btn.textContent = 'Error â€” try again'; btn.disabled = false; }
                 }
             } catch {
-                if (btn) { btn.textContent = 'Error — try again'; btn.disabled = false; }
+                if (btn) { btn.textContent = 'Error â€” try again'; btn.disabled = false; }
             }
         }
 
-        // ── Group assignment counters (AM/PM × Sports/Enrichment) ────────────────
+        // â”€â”€ Group assignment counters (AM/PM Ã— Sports/Enrichment) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         function updateGroupCounters() {
-            // Denominator: total counselor slots requested per AM/PM × side bucket
+            // Denominator: total counselor slots requested per AM/PM Ã— side bucket
             const denom = { am_Sports: 0, am_Enrichment: 0, pm_Sports: 0, pm_Enrichment: 0 };
             OFFERINGS.forEach((act, idx) => {
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
@@ -678,10 +678,10 @@
             });
         }
 
-        // ── Save counselor group assignments (homegroup / bus / schedule) ─────────
+        // â”€â”€ Save counselor group assignments (homegroup / bus / schedule) â”€â”€â”€â”€â”€â”€â”€â”€â”€
         async function saveCounselorGroups() {
             const btn = document.getElementById('saveCGBtn');
-            btn.textContent = 'Saving…'; btn.disabled = true;
+            btn.textContent = 'Savingâ€¦'; btn.disabled = true;
             const counselors = [];
             document.querySelectorAll('.cg-homegroup').forEach(sel => {
                 const cid = parseInt(sel.dataset.cid);
@@ -699,17 +699,17 @@
                     body: JSON.stringify({ counselors })
                 });
                 if (resp.ok) {
-                    btn.textContent = '✓ Saved!';
+                    btn.textContent = 'âœ“ Saved!';
                     setTimeout(() => { btn.textContent = 'Save Group Assignments'; btn.disabled = false; }, 2500);
                 } else {
-                    btn.textContent = 'Error — try again'; btn.disabled = false;
+                    btn.textContent = 'Error â€” try again'; btn.disabled = false;
                 }
             } catch {
-                btn.textContent = 'Error — try again'; btn.disabled = false;
+                btn.textContent = 'Error â€” try again'; btn.disabled = false;
             }
         }
 
-        // ── Auto-Schedule Builder ────────────────────────────────────────────────
+        // â”€â”€ Auto-Schedule Builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         function shuffle(arr) {
             const a = [...arr];
             for (let i = a.length - 1; i > 0; i--) {
@@ -719,11 +719,11 @@
             return a;
         }
 
-        // ── Mirror counselor assignments from another week ───────────────────────
+        // â”€â”€ Mirror counselor assignments from another week â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         async function mirrorWeek(side) {
             const fromWeek = parseInt(document.getElementById('mirrorSourceWeek').value);
             const statusEl = document.getElementById('mirrorStatus');
-            statusEl.textContent = 'Loading…';
+            statusEl.textContent = 'Loadingâ€¦';
 
             let prevRows;
             try {
@@ -734,7 +734,7 @@
                 return;
             }
 
-            // activityName → [counselorIDs] from source week
+            // activityName â†’ [counselorIDs] from source week
             const prevMap = {};
             prevRows.forEach(r => {
                 if (!prevMap[r.ActivityName]) prevMap[r.ActivityName] = [];
@@ -818,7 +818,7 @@
         function buildSchedule() {
             const mode = document.querySelector('input[name="autoMode"]:checked').value;
             const statusEl = document.getElementById('autoStatus');
-            statusEl.textContent = 'Building…';
+            statusEl.textContent = 'Buildingâ€¦';
 
             const prefMap = {};
             PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
@@ -913,7 +913,7 @@
             statusEl.textContent = 'Done! Review and save when ready.';
         }
 
-        // ── Bootstrap ────────────────────────────────────────────────────────────
+        // â”€â”€ Bootstrap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         document.addEventListener('DOMContentLoaded', () => {
             initState();
             renderAllFromState();

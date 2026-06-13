@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -10,12 +10,13 @@
 <body>
     <% if (viewMode === 'admin') { %>
     <nav class="nav-bar">
-        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
         <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="staff">
             <button class="nav-btn" style="cursor:pointer;">Staff View</button>
@@ -27,6 +28,7 @@
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="admin">
             <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
@@ -50,8 +52,42 @@
                    onchange="window.location='/attendance/dismissal-archive?date='+this.value">
         </div>
 
+        <%/* ── Scheduled Pickups ── */%>
+        <h2 style=”font-size:1.05rem; margin:0 0 10px;”>&#128664; Scheduled Pickups</h2>
+        <div class=”late-card table-scroll” style=”margin-bottom:32px;”>
+            <% if (scheduledPickups.length === 0) { %>
+                <div class=”empty-state”>
+                    <span style=”font-size:2rem;”>&#10003;</span>
+                    <p style=”font-weight:600; margin-top:8px;”>No pickups scheduled for this date.</p>
+                </div>
+            <% } else { %>
+            <table class=”late-table”>
+                <thead>
+                    <tr>
+                        <th>Camper</th>
+                        <th>Group</th>
+                        <th>Pickup Time</th>
+                        <th>Notes</th>
+                        <th>Logged By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% scheduledPickups.forEach(function(p) { %>
+                    <tr>
+                        <td><a href=”/search?name=<%= encodeURIComponent(p.FirstName+' '+p.LastName) %>” class=”camper-name-link”><%= p.FirstName %> <%= p.LastName %></a></td>
+                        <td><span class=”tag <%= p.HomeGroupColor %>”><%= p.HomeGroupColor %></span></td>
+                        <td style=”font-weight:600;”><%= p.PickupTime %></td>
+                        <td style=”color:var(--text-muted); font-size:0.85rem;”><%= p.Notes || '' %></td>
+                        <td style=”font-size:0.85rem;”><%= p.CreatedBy || '—' %></td>
+                    </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+            <% } %>
+        </div>
+
         <%/* ── Early Dismissals ── */%>
-        <h2 style="font-size:1.05rem; margin:0 0 10px;">&#128663; Early Dismissals</h2>
+        <h2 style=”font-size:1.05rem; margin:0 0 10px;”>&#128663; Early Dismissals</h2>
         <div class="late-card table-scroll" style="margin-bottom:32px;">
             <% if (dismissals.length === 0) { %>
                 <div class="empty-state">
@@ -75,10 +111,10 @@
                     <tr>
                         <td><a href="/search?name=<%= encodeURIComponent(d.FirstName+' '+d.LastName) %>" class="camper-name-link"><%= d.FirstName %> <%= d.LastName %></a></td>
                         <td><span class="tag <%= d.HomeGroupColor %>"><%= d.HomeGroupColor %></span></td>
-                        <td><%= d.DismissalTime || '—' %></td>
+                        <td><%= d.DismissalTime || 'â€”' %></td>
                         <td style="color:var(--text-muted); font-size:0.85rem;"><%= d.Notes || '' %></td>
-                        <td style="font-size:0.85rem;"><%= d.MarkedBy || '—' %></td>
-                        <td style="font-size:0.8rem; color:var(--text-muted);"><%= d.CreatedAt ? new Date(d.CreatedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—' %></td>
+                        <td style="font-size:0.85rem;"><%= d.MarkedBy || 'â€”' %></td>
+                        <td style=”font-size:0.8rem; color:var(--text-muted);”><%= fmtTimeOnly(d.CreatedAt) %></td>
                     </tr>
                     <% }); %>
                 </tbody>
@@ -86,7 +122,7 @@
             <% } %>
         </div>
 
-        <%/* ── Late Check-ins ── */%>
+        <%/* â”€â”€ Late Check-ins â”€â”€ */%>
         <h2 style="font-size:1.05rem; margin:0 0 10px;">&#9989; Late Arrivals Checked In</h2>
         <div class="late-card table-scroll">
             <% if (checkIns.length === 0) { %>
@@ -109,8 +145,8 @@
                     <tr>
                         <td><a href="/search?name=<%= encodeURIComponent(c.FirstName+' '+c.LastName) %>" class="camper-name-link"><%= c.FirstName %> <%= c.LastName %></a></td>
                         <td><span class="tag <%= c.HomeGroupColor %>"><%= c.HomeGroupColor %></span></td>
-                        <td><%= c.MarkedAt ? new Date(c.MarkedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—' %></td>
-                        <td style="font-size:0.85rem;"><%= c.MarkedBy || '—' %></td>
+                        <td><%= fmtTimeOnly(c.MarkedAt) %></td>
+                        <td style="font-size:0.85rem;"><%= c.MarkedBy || 'â€”' %></td>
                     </tr>
                     <% }); %>
                 </tbody>

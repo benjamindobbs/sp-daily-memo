@@ -149,9 +149,21 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.json());
 
-// Make viewMode available in all templates
+// Make viewMode and timestamp helper available in all templates
 app.use((req, res, next) => {
     res.locals.viewMode = req.cookies.viewMode || 'staff';
+    // SQLite CURRENT_TIMESTAMP is UTC; append 'Z' to force UTC parse, then convert to Eastern.
+    res.locals.fmtTime = (s, dateOnly = false) => {
+        if (!s) return '—';
+        const d = new Date(String(s).includes('Z') || String(s).includes('+') ? s : s + 'Z');
+        const opts = { timeZone: 'America/New_York' };
+        return dateOnly ? d.toLocaleDateString('en-US', opts) : d.toLocaleString('en-US', opts);
+    };
+    res.locals.fmtTimeOnly = (s) => {
+        if (!s) return '—';
+        const d = new Date(String(s).includes('Z') || String(s).includes('+') ? s : s + 'Z');
+        return d.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' });
+    };
     next();
 });
 
@@ -173,6 +185,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/clear-counselor-week', '/counselor-week-assignments',
     '/audit', '/merge-class',
     '/homegroup-assignment',
+    '/attendance/dismissal-archive',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -620,6 +633,19 @@ try {
     if (!edCols.includes('MarkedBy')) db.exec("ALTER TABLE EarlyDismissals ADD COLUMN MarkedBy TEXT");
 } catch(e) { console.error('[migration] EarlyDismissals.MarkedBy:', e.message); }
 try {
+    db.exec(`CREATE TABLE IF NOT EXISTS ScheduledPickups (
+        PickupID   INTEGER PRIMARY KEY AUTOINCREMENT,
+        Date       TEXT    NOT NULL,
+        CamperID   INTEGER NOT NULL,
+        PickupTime TEXT    NOT NULL,
+        Notes      TEXT,
+        CreatedBy  TEXT,
+        CreatedAt  DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (Date, CamperID),
+        FOREIGN KEY (CamperID) REFERENCES Campers(CamperID)
+    )`);
+} catch(e) { console.error('[migration] ScheduledPickups:', e.message); }
+try {
     const woCols = db.prepare("PRAGMA table_info(WeeklyOfferings)").all().map(c => c.name);
     if (!woCols.includes('AllowedGroups')) db.exec("ALTER TABLE WeeklyOfferings ADD COLUMN AllowedGroups TEXT");
 } catch(e) { console.error('[migration] WeeklyOfferings.AllowedGroups:', e.message); }
@@ -782,7 +808,87 @@ app.get('/staff', (req, res) => {
         WHERE p.date = ?
         GROUP BY p.id ORDER BY votes DESC, p.submittedAt ASC LIMIT 1
     `).get(yesterdayStr()) || null;
-    res.render('staff-hub', { selectedCounselorName, announcement, releasedSchedule, releasedSessionLabel, yesterdayWinner });
+
+    // --- Today's activity feed ---
+    const today = todayStr();
+    const aw = getActiveWeek();
+
+    // Build counselor roster camper ID set for filtering (if a counselor is selected)
+    let rosterCamperIds = null;
+    if (cid) {
+        const homeGroupIds = db.prepare(
+            `SELECT CamperID FROM CamperHomeGroups WHERE CounselorID = ? AND WeekNumber = ?`
+        ).all(cid, aw).map(r => r.CamperID);
+
+        const ca = db.prepare(`
+            SELECT COALESCE(cwa.BusRoute, c.BusRoute) AS BusRoute,
+                   COALESCE(cwa.ExtendedHours, c.ExtendedHours) AS ExtendedHours
+            FROM Counselors c
+            LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
+            WHERE c.CounselorID = ?
+        `).get(aw, cid);
+
+        const busIds = ca?.BusRoute
+            ? db.prepare('SELECT CamperID FROM Campers WHERE BusRoute = ?').all(ca.BusRoute).map(r => r.CamperID)
+            : [];
+
+        let extIds = [];
+        if (ca?.ExtendedHours === 'AM')   extIds = db.prepare("SELECT CamperID FROM Campers WHERE ExtendedHours IN ('AM','Both')").all().map(r => r.CamperID);
+        else if (ca?.ExtendedHours === 'PM')   extIds = db.prepare("SELECT CamperID FROM Campers WHERE ExtendedHours IN ('PM','Both')").all().map(r => r.CamperID);
+        else if (ca?.ExtendedHours === 'Both') extIds = db.prepare("SELECT CamperID FROM Campers WHERE ExtendedHours IS NOT NULL").all().map(r => r.CamperID);
+
+        const counselorActivities = db.prepare(
+            'SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ?'
+        ).all(cid, aw);
+        let classIds = [];
+        for (const act of counselorActivities) {
+            db.prepare("SELECT PersonID AS CamperID FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?")
+                .all(act.PeriodNumber, act.ActivityName).forEach(r => classIds.push(r.CamperID));
+        }
+
+        rosterCamperIds = new Set([...homeGroupIds, ...busIds, ...extIds, ...classIds]);
+    }
+
+    const filterByRoster = (rows) => rosterCamperIds ? rows.filter(r => rosterCamperIds.has(r.CamperID)) : rows;
+
+    const allPickups = db.prepare(`
+        SELECT sp.PickupTime, sp.Notes, c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor
+        FROM ScheduledPickups sp JOIN Campers c ON c.CamperID = sp.CamperID
+        WHERE sp.Date = ? ORDER BY sp.PickupTime
+    `).all(today);
+
+    const allLateArrivals = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor, a.MarkedAt
+        FROM Attendance a JOIN Campers c ON c.CamperID = a.CamperID
+        WHERE a.Date = ? AND a.SessionType = 'homegroup_am' AND a.Status = 'late'
+        ORDER BY a.MarkedAt
+    `).all(today);
+
+    const allEarlyDismissals = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
+               ed.DismissalTime, ed.Notes
+        FROM EarlyDismissals ed JOIN Campers c ON c.CamperID = ed.CamperID
+        WHERE ed.Date = ? ORDER BY ed.DismissalTime
+    `).all(today);
+
+    const allScheduleChanges = db.prepare(`
+        SELECT ChangeID, CamperID, CamperName, ColorGroup, PeriodNumber, OldActivity, NewActivity, ChangedAt
+        FROM ScheduleChanges
+        WHERE date(ChangedAt, 'localtime') = ?
+        ORDER BY ChangedAt DESC
+    `).all(today);
+
+    const todayPickups        = filterByRoster(allPickups);
+    const todayLateArrivals   = filterByRoster(allLateArrivals);
+    const todayEarlyDismissals= filterByRoster(allEarlyDismissals);
+    const todayScheduleChanges= rosterCamperIds
+        ? allScheduleChanges.filter(c => rosterCamperIds.has(c.CamperID))
+        : allScheduleChanges;
+
+    res.render('staff-hub', {
+        selectedCounselorName, announcement, releasedSchedule, releasedSessionLabel, yesterdayWinner,
+        todayPickups, todayLateArrivals, todayEarlyDismissals, todayScheduleChanges, today
+    });
 });
 
 app.post('/admin-set-name', (req, res) => {
@@ -1277,12 +1383,25 @@ app.get('/counselor-profile/:id', (req, res) => {
 
 app.get('/camper/:id', (req, res) => {
     try {
+        const aw = getActiveWeek();
         const camper = db.prepare(`
-            SELECT c.*, co.FirstName || ' ' || co.LastName AS HomeCounselorName
+            SELECT c.*,
+                   COALESCE(
+                       (SELECT co2.FirstName || ' ' || co2.LastName
+                        FROM CamperHomeGroups chg
+                        JOIN Counselors co2 ON co2.CounselorID = chg.CounselorID
+                        WHERE chg.CamperID = c.CamperID AND chg.WeekNumber = ?),
+                       (SELECT co3.FirstName || ' ' || co3.LastName
+                        FROM Counselors co3 WHERE co3.CounselorID = c.HomeGroupCounselorID)
+                   ) AS HomeCounselorName,
+                   COALESCE(
+                       (SELECT chg2.CounselorID FROM CamperHomeGroups chg2
+                        WHERE chg2.CamperID = c.CamperID AND chg2.WeekNumber = ?),
+                       c.HomeGroupCounselorID
+                   ) AS ResolvedCounselorID
             FROM Campers c
-            LEFT JOIN Counselors co ON c.HomeGroupCounselorID = co.CounselorID
             WHERE c.CamperID = ?
-        `).get(req.params.id);
+        `).get(aw, aw, req.params.id);
 
         if (!camper) return res.status(404).send('Camper not found');
 
@@ -1939,6 +2058,7 @@ app.get('/swap-tool', (req, res) => {
 // Returns available activity options for a given camper's period
 app.get('/get-options/:camperId/:period', (req, res) => {
     const { camperId, period } = req.params;
+    const week = getActiveWeek();
 
     // Get the camper's home group color
     const camper = db.prepare('SELECT HomeGroupColor FROM Campers WHERE CamperID = ?').get(camperId);
@@ -1952,17 +2072,20 @@ app.get('/get-options/:camperId/:period', (req, res) => {
     `).get(camperId, period);
     const sideOfCamp = currentSlot ? currentSlot.SideOfCamp : null;
 
-    // Only return activities on the same side of camp, accepting this camper's color.
-    // All matching activities are returned (including full ones) so the UI can show waitlist warnings.
+    // Only return activities that are actually offered this period (WeeklyOfferings),
+    // on the same side of camp, accepting this camper's color.
     const options = db.prepare(`
         WITH effective AS (
-            SELECT a.Name, a.SideOfCamp, a.MaxCapacity,
+            SELECT wo.ActivityName AS Name, wo.SideOfCamp,
+                   COALESCE(wo.MaxCapacity, a.MaxCapacity) AS MaxCapacity,
                    COALESCE(apg.AllowedGroups, a.AllowedGroups) AS EffectiveGroups,
                    (SELECT COUNT(*) FROM Schedules s
-                    WHERE s.ActivityName = a.Name AND s.PeriodNumber = @period AND s.PersonType = 'Camper') AS CurrentEnrollment
-            FROM Activities a
+                    WHERE s.ActivityName = wo.ActivityName AND s.PeriodNumber = @period AND s.PersonType = 'Camper') AS CurrentEnrollment
+            FROM WeeklyOfferings wo
+            JOIN Activities a ON a.Name = wo.ActivityName
             LEFT JOIN ActivityPeriodGroups apg
-                   ON apg.ActivityName = a.Name AND apg.PeriodNumber = @period
+                   ON apg.ActivityName = wo.ActivityName AND apg.PeriodNumber = @period
+            WHERE wo.PeriodNumber = @period AND wo.WeekNumber = @week
         )
         SELECT * FROM effective
         WHERE (@sideOfCamp IS NULL OR SideOfCamp = @sideOfCamp)
@@ -1973,7 +2096,7 @@ app.get('/get-options/:camperId/:period', (req, res) => {
               (EffectiveGroups = 'Green-Navy'   AND @color IN ('Green', 'Navy'))
           )
         ORDER BY CurrentEnrollment ASC, Name ASC
-    `).all({ period, color, sideOfCamp });
+    `).all({ period, color, sideOfCamp, week });
 
     res.json({ options, colorGroup: color || 'All', sideOfCamp: sideOfCamp || null });
 });
@@ -2101,6 +2224,13 @@ function getViewerName(req) {
     if (!cid) return 'Staff';
     const c = db.prepare("SELECT FirstName, LastName FROM Counselors WHERE CounselorID=?").get(cid);
     return c ? `${c.FirstName} ${c.LastName}` : 'Staff';
+}
+
+function getScheduledPickupMap(date) {
+    const rows = db.prepare(`SELECT CamperID, PickupTime, Notes FROM ScheduledPickups WHERE Date = ?`).all(date);
+    const map = {};
+    for (const r of rows) map[r.CamperID] = { pickupTime: r.PickupTime, notes: r.Notes };
+    return map;
 }
 
 // Sessions that should show the "absent AM" indicator (i.e. everything after homegroup_am)
@@ -2373,13 +2503,15 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
             .all(date, sessionType).map(r => r.CamperID)
     );
 
+    const pickupMap1 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
         absentBusAM: absentBusAMSet.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
-        seenEarlier: seenEarlierSet.has(c.CamperID)
+        seenEarlier: seenEarlierSet.has(c.CamperID),
+        scheduledPickup: pickupMap1[c.CamperID] || null
     }));
 
     res.render('attendance-form', {
@@ -2419,12 +2551,14 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
             .all(date, sessionType).map(r => r.CamperID)
     );
 
+    const pickupMap2 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
-        seenEarlier: seenEarlierSet.has(c.CamperID)
+        seenEarlier: seenEarlierSet.has(c.CamperID),
+        scheduledPickup: pickupMap2[c.CamperID] || null
     }));
 
     res.render('attendance-form', {
@@ -2466,12 +2600,14 @@ app.get('/attendance/specialty/:color/:session', (req, res) => {
             .all(date, sessionType).map(r => r.CamperID)
     );
 
+    const pickupMap3 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
-        seenEarlier: seenEarlierSet.has(c.CamperID)
+        seenEarlier: seenEarlierSet.has(c.CamperID),
+        scheduledPickup: pickupMap3[c.CamperID] || null
     }));
 
     res.render('attendance-form', {
@@ -2516,12 +2652,14 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
             .all(date, period, activityName).map(r => r.CamperID)
     );
 
+    const pickupMap4 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
-        seenEarlier: seenEarlierSet.has(c.CamperID)
+        seenEarlier: seenEarlierSet.has(c.CamperID),
+        scheduledPickup: pickupMap4[c.CamperID] || null
     }));
 
     const locationRow = db.prepare(
@@ -2582,12 +2720,14 @@ app.get('/attendance/bus/:route/:session', (req, res) => {
             .all(date, sessionType).map(r => r.CamperID)
     );
 
+    const pickupMap5 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
-        seenEarlier: seenEarlierSet.has(c.CamperID)
+        seenEarlier: seenEarlierSet.has(c.CamperID),
+        scheduledPickup: pickupMap5[c.CamperID] || null
     }));
 
     res.render('attendance-form', {
@@ -2628,12 +2768,14 @@ app.get('/attendance/extended/:session', (req, res) => {
             .all(date, sessionType).map(r => r.CamperID)
     );
 
+    const pickupMap6 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
-        seenEarlier: seenEarlierSet.has(c.CamperID)
+        seenEarlier: seenEarlierSet.has(c.CamperID),
+        scheduledPickup: pickupMap6[c.CamperID] || null
     }));
 
     res.render('attendance-form', {
@@ -2735,7 +2877,69 @@ app.get('/attendance/dismissal-archive', (req, res) => {
         WHERE a.Date = ? AND a.SessionType = 'homegroup_am' AND a.Status = 'late'
         ORDER BY a.MarkedAt
     `).all(date);
-    res.render('attendance-dismissal-archive', { date, dismissals, checkIns });
+    const scheduledPickups = db.prepare(`
+        SELECT sp.PickupTime, sp.Notes, sp.CreatedBy,
+               c.FirstName, c.LastName, c.HomeGroupColor
+        FROM ScheduledPickups sp JOIN Campers c ON c.CamperID = sp.CamperID
+        WHERE sp.Date = ? ORDER BY sp.PickupTime
+    `).all(date);
+    res.render('attendance-dismissal-archive', { date, dismissals, checkIns, scheduledPickups });
+});
+
+// --- SCHEDULED PICKUPS / DISMISSALS TOOL ---
+app.get('/dismissals', (req, res) => {
+    const today = todayStr();
+    const q = (req.query.q || '').trim();
+    const selectedId = parseInt(req.query.camperId) || null;
+
+    let searchResults = [];
+    if (q.length >= 2) {
+        searchResults = db.prepare(`
+            SELECT CamperID, FirstName, LastName, HomeGroupColor
+            FROM Campers
+            WHERE FirstName LIKE ? OR LastName LIKE ?
+               OR (FirstName || ' ' || LastName) LIKE ?
+            ORDER BY LastName, FirstName LIMIT 20
+        `).all(`%${q}%`, `%${q}%`, `%${q}%`);
+    }
+
+    let selectedCamper = null;
+    let existingPickup = null;
+    if (selectedId) {
+        selectedCamper = db.prepare(`SELECT * FROM Campers WHERE CamperID = ?`).get(selectedId);
+        existingPickup = db.prepare(`SELECT * FROM ScheduledPickups WHERE CamperID = ? AND Date = ?`).get(selectedId, today);
+    }
+
+    const todayPickups = db.prepare(`
+        SELECT sp.PickupID, sp.PickupTime, sp.Notes, sp.CreatedBy,
+               c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor
+        FROM ScheduledPickups sp
+        JOIN Campers c ON c.CamperID = sp.CamperID
+        WHERE sp.Date = ?
+        ORDER BY sp.PickupTime
+    `).all(today);
+
+    res.render('dismissals', { q, searchResults, selectedCamper, existingPickup, todayPickups, today });
+});
+
+app.post('/dismissals/schedule', (req, res) => {
+    const { camperId, date, pickupTime, notes } = req.body;
+    const createdBy = getViewerName(req);
+    db.prepare(`
+        INSERT INTO ScheduledPickups (Date, CamperID, PickupTime, Notes, CreatedBy)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (Date, CamperID) DO UPDATE SET
+            PickupTime = excluded.PickupTime,
+            Notes = excluded.Notes,
+            CreatedBy = excluded.CreatedBy
+    `).run(date, parseInt(camperId), pickupTime, notes || null, createdBy);
+    res.redirect(`/dismissals?camperId=${camperId}`);
+});
+
+app.post('/dismissals/cancel', (req, res) => {
+    const { pickupId } = req.body;
+    db.prepare(`DELETE FROM ScheduledPickups WHERE PickupID = ?`).run(parseInt(pickupId));
+    res.redirect('/dismissals');
 });
 
 // --- Counselor Scheduling Tool ---

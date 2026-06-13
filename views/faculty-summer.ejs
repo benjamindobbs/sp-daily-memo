@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -80,7 +80,7 @@
 <body>
 
     <nav class="nav-bar">
-        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
@@ -88,6 +88,7 @@
         <a href="/faculty-summer" class="nav-btn primary">&#128197; Full Summer</a>
         <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
     </nav>
 
     <div class="container">
@@ -102,7 +103,7 @@
             <div class="alert"><%= alertMessage %></div>
         <% } %>
 
-        <!-- ── Week Upload Cards ── -->
+        <!-- â”€â”€ Week Upload Cards â”€â”€ -->
         <section style="margin-bottom: 36px;">
             <h2 style="font-size: 1rem; margin-bottom: 12px;">Weekly CSV Uploads</h2>
             <p class="text-muted" style="font-size: 0.78rem; margin-bottom: 14px;">
@@ -126,7 +127,7 @@
                             <form action="/clear-staff-week/<%= w %>" method="POST"
                                   onsubmit="return confirm('Clear all Week <%= w %> schedule data? This cannot be undone.');"
                                   style="margin-top: 6px;">
-                                <button type="submit" class="settings-link-btn" style="font-size: 0.74rem;">🗑️ Clear Week <%= w %></button>
+                                <button type="submit" class="settings-link-btn" style="font-size: 0.74rem;">ðŸ—‘ï¸ Clear Week <%= w %></button>
                             </form>
                         <% } %>
                     </div>
@@ -134,12 +135,12 @@
             </div>
         </section>
 
-        <!-- ── Staff List ── -->
+        <!-- â”€â”€ Staff List â”€â”€ -->
         <section>
             <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 14px; flex-wrap: wrap;">
                 <h2 style="font-size: 1rem; margin: 0;">Staff Schedules</h2>
                 <input type="text" id="staffSearch" class="search-input"
-                       placeholder="Filter by name…" oninput="runSearch()"
+                       placeholder="Filter by nameâ€¦" oninput="runSearch()"
                        style="max-width: 260px; padding: 7px 12px; font-size: 0.85rem;">
             </div>
 
@@ -182,7 +183,7 @@
                                 <div class="staff-name"><%= s.FirstName %> <%= s.LastName %></div>
                             </td>
                             <td>
-                                <span class="staff-type-badge"><%= s.StaffType || '—' %></span>
+                                <span class="staff-type-badge"><%= s.StaffType || 'â€”' %></span>
                             </td>
                             <td>
                                 <% if (s.weeks.length === 0) { %>
@@ -190,7 +191,7 @@
                                 <% } else { %>
                                     <select class="week-selector"
                                             onchange="showWeek(this, 'staff-<%= s.StaffID %>')">
-                                        <option value="">— Select Week —</option>
+                                        <option value="">â€” Select Week â€”</option>
                                         <% s.weeks.forEach(function(wk) { %>
                                             <option value="<%= wk.WeekNumber %>">Week <%= wk.WeekNumber %></option>
                                         <% }); %>

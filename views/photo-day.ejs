@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -10,7 +10,7 @@
 <body>
     <% if (viewMode === 'admin') { %>
     <nav class="nav-bar">
-        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
         <a href="/photo-day" class="nav-btn primary">&#128247; Photo of the Day</a>
         <a href="/photo-gallery" class="nav-btn">&#127775; Gallery</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
@@ -60,7 +60,7 @@
             <form style="opacity:0.5; pointer-events:none;">
                 <div style="margin-bottom:14px;">
                     <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:6px;">Submitting as</label>
-                    <div style="padding:8px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.9rem; background:#f8fafc; color:var(--text-muted);">—</div>
+                    <div style="padding:8px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.9rem; background:#f8fafc; color:var(--text-muted);">â€”</div>
                 </div>
                 <div style="margin-bottom:18px;">
                     <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:6px;">Photo</label>

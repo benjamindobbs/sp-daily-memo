@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -11,13 +11,14 @@
 
     <% if (viewMode === 'admin') { %>
     <nav class="nav-bar">
-        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
         <a href="/master-schedule" class="nav-btn primary">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/counselor-directory" class="nav-btn">&#128100; Counselors</a>
         <a href="/staff-lookup" class="nav-btn">&#128101; Staff Lookup</a>
         <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="staff">
             <button class="nav-btn" style="cursor:pointer;">Staff View</button>
@@ -29,6 +30,7 @@
         <a href="/master-schedule" class="nav-btn primary">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="admin">
             <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
@@ -109,7 +111,7 @@
                             <% } else if (cls.sideOfCamp === 'Enrichment') { %>
                                 <span class="side-pill side-enrichment">Enrichment</span>
                             <% } else { %>
-                                <span class="side-pill" style="background:#f1f5f9; color:#64748b;">—</span>
+                                <span class="side-pill" style="background:#f1f5f9; color:#64748b;">â€”</span>
                             <% } %>
                         </td>
 
@@ -131,7 +133,7 @@
                                     <span class="tag <%= color %>"><%= color %></span>
                                 <% }); %>
                                 <% if (cls.colorGroups.length === 0) { %>
-                                    <span style="color: var(--text-muted); font-size: 0.8rem;">—</span>
+                                    <span style="color: var(--text-muted); font-size: 0.8rem;">â€”</span>
                                 <% } %>
                             </div>
                         </td>
@@ -153,13 +155,13 @@
                                     <% } %>
                                 <% }); %>
                             <% } else { %>
-                                <span style="color: var(--text-muted); font-size: 0.8rem;">—</span>
+                                <span style="color: var(--text-muted); font-size: 0.8rem;">â€”</span>
                             <% } %>
                         </td>
 
                         <td>
                             <span class="mc-label">Location</span>
-                            <span class="location-text"><%= cls.location || '—' %></span>
+                            <span class="location-text"><%= cls.location || 'â€”' %></span>
                         </td>
 
                         <td>
@@ -172,7 +174,7 @@
                                     </a>
                                 <% }); %>
                                 <% if (cls.counselors.length === 0) { %>
-                                    <span style="color: var(--text-muted); font-size: 0.8rem;">—</span>
+                                    <span style="color: var(--text-muted); font-size: 0.8rem;">â€”</span>
                                 <% } %>
                             </div>
                         </td>
