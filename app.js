@@ -2343,29 +2343,62 @@ app.get('/attendance', (req, res) => {
     }
 
     // Homegroup sessions — grouped by counselor
-    const homegroupCounselors = db.prepare(`
-        SELECT co.CounselorID, co.FirstName, co.LastName, co.HomeGroupColor,
-               COUNT(ca.CamperID) as camperCount
-        FROM Counselors co
-        JOIN Campers ca ON ca.HomeGroupCounselorID = co.CounselorID
-        GROUP BY co.CounselorID
-        ORDER BY co.LastName, co.FirstName
-    `).all();
-    const checkHgHandled = db.prepare(`
-        SELECT COUNT(*) as n FROM (
-            SELECT CamperID FROM Attendance
-            WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupCounselorID=?)
-            UNION
-            SELECT CamperID FROM EarlyDismissals WHERE Date=?
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupCounselorID=?)
-        )
-    `);
+    // Mirror getWeekCampersForCounselor: prefer CamperHomeGroups for the active week,
+    // fall back to the legacy HomeGroupCounselorID column if no week data exists.
+    const aw = getActiveWeek();
+    const hasWeekHgData = db.prepare("SELECT 1 FROM CamperHomeGroups WHERE WeekNumber=? LIMIT 1").get(aw);
+
+    let homegroupCounselors;
+    let checkHgHandled;
+    if (hasWeekHgData) {
+        homegroupCounselors = db.prepare(`
+            SELECT co.CounselorID, co.FirstName, co.LastName,
+                   COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) AS HomeGroupColor,
+                   COUNT(chg.CamperID) as camperCount
+            FROM Counselors co
+            JOIN CamperHomeGroups chg ON chg.CounselorID = co.CounselorID AND chg.WeekNumber = ?
+            LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = co.CounselorID AND cwa.WeekNumber = ?
+            GROUP BY co.CounselorID
+            ORDER BY co.LastName, co.FirstName
+        `).all(aw, aw);
+        checkHgHandled = db.prepare(`
+            SELECT COUNT(*) as n FROM (
+                SELECT CamperID FROM Attendance
+                WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
+                  AND CamperID IN (SELECT CamperID FROM CamperHomeGroups WHERE CounselorID=? AND WeekNumber=?)
+                UNION
+                SELECT CamperID FROM EarlyDismissals WHERE Date=?
+                  AND CamperID IN (SELECT CamperID FROM CamperHomeGroups WHERE CounselorID=? AND WeekNumber=?)
+            )
+        `);
+    } else {
+        homegroupCounselors = db.prepare(`
+            SELECT co.CounselorID, co.FirstName, co.LastName, co.HomeGroupColor,
+                   COUNT(ca.CamperID) as camperCount
+            FROM Counselors co
+            JOIN Campers ca ON ca.HomeGroupCounselorID = co.CounselorID
+            GROUP BY co.CounselorID
+            ORDER BY co.LastName, co.FirstName
+        `).all();
+        checkHgHandled = db.prepare(`
+            SELECT COUNT(*) as n FROM (
+                SELECT CamperID FROM Attendance
+                WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
+                  AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupCounselorID=?)
+                UNION
+                SELECT CamperID FROM EarlyDismissals WHERE Date=?
+                  AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupCounselorID=?)
+            )
+        `);
+    }
+
     const homegroupSessions = [];
     for (const counselor of homegroupCounselors) {
         for (const session of ['am', 'pm']) {
             const sessionType = `homegroup_${session}`;
-            const handledCount = checkHgHandled.get(date, sessionType, counselor.CounselorID, date, counselor.CounselorID)?.n || 0;
+            const handledCount = hasWeekHgData
+                ? checkHgHandled.get(date, sessionType, counselor.CounselorID, aw, date, counselor.CounselorID, aw)?.n || 0
+                : checkHgHandled.get(date, sessionType, counselor.CounselorID, date, counselor.CounselorID)?.n || 0;
             homegroupSessions.push({
                 label: `${counselor.FirstName} ${counselor.LastName} — ${session.toUpperCase()}`,
                 counselorId: counselor.CounselorID,
