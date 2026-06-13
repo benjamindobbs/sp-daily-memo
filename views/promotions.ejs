@@ -28,7 +28,7 @@
         </div>
     <% } %>
 
-    <%/* â”€â”€ Ready for Promotion â”€â”€ */%>
+    <%/* ── Ready for Promotion ── */%>
     <div class="promo-container">
         <header style="margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px;">
             <div>
@@ -39,7 +39,7 @@
                 <form action="/promote-all" method="POST"
                     onsubmit="return confirm('Promote all eligible campers at once?')">
                     <button type="submit" class="btn btn-success">
-                        ðŸš€ Promote All Eligible (<%= potentialPromotions.length %>)
+                        &#128640; Promote All Eligible (<%= potentialPromotions.length %>)
                     </button>
                 </form>
             <% } %>
@@ -47,7 +47,7 @@
 
         <% if (potentialPromotions.length === 0) { %>
             <div class="empty-state">
-                <span style="font-size: 3rem;">ðŸŽ‰</span>
+                <span style="font-size: 3rem;">&#127881;</span>
                 <h3>All Clear!</h3>
                 <p>There are no pending promotions at this time.</p>
             </div>
@@ -94,7 +94,7 @@
         <% } %>
     </div>
 
-    <%/* â”€â”€ Waitlist Queue â”€â”€ */%>
+    <%/* ── Waitlist Queue ── */%>
     <div class="promo-container" style="margin-top: 40px;">
         <header style="margin-bottom: 30px;">
             <h1>Waitlist Queue</h1>
@@ -103,7 +103,7 @@
 
         <% if (waitlistQueue.length === 0) { %>
             <div class="empty-state">
-                <span style="font-size: 3rem;">âœ…</span>
+                <span style="font-size: 3rem;">&#9989;</span>
                 <p style="font-weight: 600; margin-top: 10px;">No campers currently waiting.</p>
             </div>
         <% } else { %>

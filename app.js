@@ -87,12 +87,21 @@ function computeClassAttStats(clockBlock, side, today) {
         WHERE s.PersonType = 'Camper' AND s.PeriodNumber = ? AND a.SideOfCamp = ?
     `).all(clockBlock, side);
     if (classes.length === 0) return { total: 0, submitted: 0 };
-    const check = db.prepare(
-        "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?"
-    );
+    const checkTotal   = db.prepare("SELECT COUNT(*) as n FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?");
+    const checkHandled = db.prepare(`
+        SELECT COUNT(*) as n FROM (
+            SELECT CamperID FROM Attendance
+            WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?
+            UNION
+            SELECT CamperID FROM EarlyDismissals WHERE Date=?
+              AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?)
+        )
+    `);
     let submitted = 0;
     for (const c of classes) {
-        if ((check.get(today, clockBlock, c.ActivityName)?.n || 0) > 0) submitted++;
+        const total   = checkTotal.get(clockBlock, c.ActivityName)?.n || 0;
+        const handled = checkHandled.get(today, clockBlock, c.ActivityName, today, clockBlock, c.ActivityName)?.n || 0;
+        if (total > 0 && handled >= total) submitted++;
     }
     return { total: classes.length, submitted };
 }
@@ -164,6 +173,13 @@ app.use((req, res, next) => {
         const d = new Date(String(s).includes('Z') || String(s).includes('+') ? s : s + 'Z');
         return d.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' });
     };
+    res.locals.fmtPickupTime = (t) => {
+        if (!t) return '—';
+        const [h, m] = t.split(':').map(Number);
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const h12 = h % 12 || 12;
+        return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+    };
     next();
 });
 
@@ -186,6 +202,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/audit', '/merge-class',
     '/homegroup-assignment',
     '/attendance/dismissal-archive',
+    '/dismissals',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -646,6 +663,10 @@ try {
     )`);
 } catch(e) { console.error('[migration] ScheduledPickups:', e.message); }
 try {
+    const spCols = db.prepare("PRAGMA table_info(ScheduledPickups)").all().map(c => c.name);
+    if (!spCols.includes('PeriodNumber')) db.exec("ALTER TABLE ScheduledPickups ADD COLUMN PeriodNumber INTEGER");
+} catch(e) { console.error('[migration] ScheduledPickups.PeriodNumber:', e.message); }
+try {
     const woCols = db.prepare("PRAGMA table_info(WeeklyOfferings)").all().map(c => c.name);
     if (!woCols.includes('AllowedGroups')) db.exec("ALTER TABLE WeeklyOfferings ADD COLUMN AllowedGroups TEXT");
 } catch(e) { console.error('[migration] WeeklyOfferings.AllowedGroups:', e.message); }
@@ -867,10 +888,13 @@ app.get('/staff', (req, res) => {
     const filterByRoster = (rows) => rosterCamperIds ? rows.filter(r => rosterCamperIds.has(r.CamperID)) : rows;
 
     const allPickups = db.prepare(`
-        SELECT sp.PickupTime, sp.Notes, c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor
+        SELECT sp.PickupTime, sp.PeriodNumber, sp.Notes, c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
+               s.ActivityName
         FROM ScheduledPickups sp JOIN Campers c ON c.CamperID = sp.CamperID
+        LEFT JOIN Schedules s ON s.PersonType='Camper' AND s.PersonID=sp.CamperID
+            AND s.PeriodNumber=sp.PeriodNumber AND s.WeekNumber=?
         WHERE sp.Date = ? ORDER BY sp.PickupTime
-    `).all(today);
+    `).all(getActiveWeek(), today);
 
     const allLateArrivals = db.prepare(`
         SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor, a.MarkedAt
@@ -1014,7 +1038,7 @@ app.get('/audit', (req, res) => {
                COUNT(s.PeriodNumber) AS classCount
         FROM Campers c
         LEFT JOIN Schedules s ON s.PersonID = c.CamperID AND s.PersonType = 'Camper'
-        WHERE c.HomeGroupColor NOT IN ('LilPlace', 'KinderPlace', 'SPLIT')
+        WHERE c.HomeGroupColor NOT IN ('LilPlace', 'KinderPlace', 'SPLIT', 'SPRC')
           AND c.HomeGroupColor IS NOT NULL AND c.HomeGroupColor != ''
         GROUP BY c.CamperID
         HAVING classCount < 5
@@ -1288,12 +1312,14 @@ app.get('/search', (req, res) => {
         const camperList = db.prepare(`
             SELECT
                 c.*,
+                COALESCE(chg.CounselorID, c.HomeGroupCounselorID) AS HomeGroupCounselorIDResolved,
                 n.FirstName || ' ' || n.LastName AS HomeCounselorName,
                 s1.ActivityName AS P1,
                 s2.ActivityName AS P2,
                 s3.ActivityName AS P3,
                 s4.ActivityName AS P4,
-                s5.ActivityName AS P5
+                s5.ActivityName AS P5,
+                s6.ActivityName AS P6
             FROM Campers c
             LEFT JOIN CamperHomeGroups chg ON chg.CamperID = c.CamperID AND chg.WeekNumber = ?
             LEFT JOIN Counselors n ON COALESCE(chg.CounselorID, c.HomeGroupCounselorID) = n.CounselorID
@@ -1302,6 +1328,7 @@ app.get('/search', (req, res) => {
             LEFT JOIN Schedules s3 ON c.CamperID = s3.PersonID AND s3.PeriodNumber = 3 AND s3.PersonType = 'Camper'
             LEFT JOIN Schedules s4 ON c.CamperID = s4.PersonID AND s4.PeriodNumber = 4 AND s4.PersonType = 'Camper'
             LEFT JOIN Schedules s5 ON c.CamperID = s5.PersonID AND s5.PeriodNumber = 5 AND s5.PersonType = 'Camper'
+            LEFT JOIN Schedules s6 ON c.CamperID = s6.PersonID AND s6.PeriodNumber = 6 AND s6.PersonType = 'Camper'
             WHERE (c.FirstName || ' ' || c.LastName LIKE ?) OR (? = '')
             ORDER BY c.LastName ASC
         `).all(aw, `%${query}%`, query);
@@ -2256,9 +2283,22 @@ function getViewerName(req) {
 }
 
 function getScheduledPickupMap(date) {
-    const rows = db.prepare(`SELECT CamperID, PickupTime, Notes FROM ScheduledPickups WHERE Date = ?`).all(date);
+    const aw = getActiveWeek();
+    const rows = db.prepare(`
+        SELECT sp.CamperID, sp.PickupTime, sp.Notes, sp.PeriodNumber,
+               s.ActivityName
+        FROM ScheduledPickups sp
+        LEFT JOIN Schedules s ON s.PersonType='Camper' AND s.PersonID=sp.CamperID
+            AND s.PeriodNumber=sp.PeriodNumber AND s.WeekNumber=?
+        WHERE sp.Date = ?
+    `).all(aw, date);
     const map = {};
-    for (const r of rows) map[r.CamperID] = { pickupTime: r.PickupTime, notes: r.Notes };
+    for (const r of rows) map[r.CamperID] = {
+        pickupTime: r.PickupTime,
+        notes: r.Notes,
+        periodNumber: r.PeriodNumber,
+        activityName: r.ActivityName
+    };
     return map;
 }
 
@@ -2939,29 +2979,34 @@ app.get('/dismissals', (req, res) => {
         existingPickup = db.prepare(`SELECT * FROM ScheduledPickups WHERE CamperID = ? AND Date = ?`).get(selectedId, today);
     }
 
+    const aw = getActiveWeek();
     const todayPickups = db.prepare(`
-        SELECT sp.PickupID, sp.PickupTime, sp.Notes, sp.CreatedBy,
-               c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor
+        SELECT sp.PickupID, sp.PickupTime, sp.PeriodNumber, sp.Notes, sp.CreatedBy,
+               c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
+               s.ActivityName
         FROM ScheduledPickups sp
         JOIN Campers c ON c.CamperID = sp.CamperID
+        LEFT JOIN Schedules s ON s.PersonType='Camper' AND s.PersonID=sp.CamperID
+            AND s.PeriodNumber=sp.PeriodNumber AND s.WeekNumber=?
         WHERE sp.Date = ?
         ORDER BY sp.PickupTime
-    `).all(today);
+    `).all(aw, today);
 
     res.render('dismissals', { q, searchResults, selectedCamper, existingPickup, todayPickups, today });
 });
 
 app.post('/dismissals/schedule', (req, res) => {
-    const { camperId, date, pickupTime, notes } = req.body;
+    const { camperId, date, pickupTime, periodNumber, notes } = req.body;
     const createdBy = getViewerName(req);
     db.prepare(`
-        INSERT INTO ScheduledPickups (Date, CamperID, PickupTime, Notes, CreatedBy)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO ScheduledPickups (Date, CamperID, PickupTime, PeriodNumber, Notes, CreatedBy)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT (Date, CamperID) DO UPDATE SET
             PickupTime = excluded.PickupTime,
+            PeriodNumber = excluded.PeriodNumber,
             Notes = excluded.Notes,
             CreatedBy = excluded.CreatedBy
-    `).run(date, parseInt(camperId), pickupTime, notes || null, createdBy);
+    `).run(date, parseInt(camperId), pickupTime, periodNumber ? parseInt(periodNumber) : null, notes || null, createdBy);
     res.redirect(`/dismissals?camperId=${camperId}`);
 });
 

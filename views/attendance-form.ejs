@@ -28,7 +28,6 @@
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
-        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="admin">
             <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
@@ -42,7 +41,7 @@
             <span class="pipe-sep">|</span>
             <div class="att-title">
                 <h1><%= title %></h1>
-                <p><%= date.slice(5).replace('-', '/') %><% if (typeof location !== 'undefined' && location) { %> &nbsp;Â·&nbsp; ðŸ“ <%= location %><% } %></p>
+                <p><%= date.slice(5).replace('-', '/') %><% if (typeof location !== 'undefined' && location) { %> &nbsp;·&nbsp; &#128205; <%= location %><% } %></p>
             </div>
         </div>
 
@@ -62,12 +61,12 @@
         <div class="roster-card">
             <div class="roster-card-header">
                 <div>
-                    <strong id="presentCount">â€”</strong> present &nbsp;Â·&nbsp;
-                    <strong id="absentCount">â€”</strong> absent &nbsp;Â·&nbsp;
-                    <strong id="unmarkedCount">â€”</strong> unmarked
-                    <span class="saving-indicator" id="savingIndicator">Savingâ€¦</span>
+                    <strong id="presentCount">—</strong> present &nbsp;·&nbsp;
+                    <strong id="absentCount">—</strong> absent &nbsp;·&nbsp;
+                    <strong id="unmarkedCount">—</strong> unmarked
+                    <span class="saving-indicator" id="savingIndicator">Saving…</span>
                 </div>
-                <input type="text" id="searchInput" class="search-bar" placeholder="Filter by nameâ€¦" oninput="filterRows()">
+                <input type="text" id="searchInput" class="search-bar" placeholder="Filter by name…" oninput="filterRows()">
             </div>
 
             <% if (roster.length === 0) { %>
@@ -85,9 +84,9 @@
                             <% if (c.seenEarlier) { %><span class="badge-seen-earlier">&#10003; Seen Earlier</span><% } %>
                             <% if (c.scheduledPickup) { %>
                                 <button class="badge-pickup"
-                                    onclick="openPickup('<%= c.scheduledPickup.pickupTime %>',<%- JSON.stringify(c.scheduledPickup.notes || '') %>,'<%= c.FirstName %> <%= c.LastName %>')"
+                                    onclick="openPickup(<%- JSON.stringify(fmtPickupTime(c.scheduledPickup.pickupTime)) %>,<%- JSON.stringify(c.scheduledPickup.notes || '') %>,'<%= c.FirstName %> <%= c.LastName %>',<%- JSON.stringify(c.scheduledPickup.periodNumber || null) %>,<%- JSON.stringify(c.scheduledPickup.activityName || null) %>)"
                                     style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;padding:1px 7px;font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;">
-                                    &#128663; Pickup <%= c.scheduledPickup.pickupTime %>
+                                    &#128663; Pickup <%= fmtPickupTime(c.scheduledPickup.pickupTime) %><% if (c.scheduledPickup.periodNumber) { %> &middot; P<%= c.scheduledPickup.periodNumber %><% } %>
                                 </button>
                             <% } %>
                         </div>
@@ -113,6 +112,7 @@
             <h3>&#128663; Scheduled Pickup</h3>
             <p id="pickupModalName" style="margin:0 0 12px; font-weight:600;"></p>
             <p style="margin:0 0 6px;"><span style="color:var(--text-muted); font-size:0.85rem;">Pickup Time</span><br><strong id="pickupModalTime"></strong></p>
+            <p id="pickupModalPeriodRow" style="margin:8px 0 0; display:none;"><span style="color:var(--text-muted); font-size:0.85rem;">During</span><br><span id="pickupModalPeriod"></span></p>
             <p style="margin:8px 0 0;"><span style="color:var(--text-muted); font-size:0.85rem;">Notes</span><br><span id="pickupModalNotes"></span></p>
             <div class="dismiss-actions" style="margin-top:18px;">
                 <button type="button" class="btn-cancel" onclick="closePickup()">Close</button>
@@ -179,7 +179,7 @@
             updateCounts();
 
             // Show saving indicator
-            indicator.textContent = 'Savingâ€¦';
+            indicator.textContent = 'Saving…';
             indicator.classList.add('show');
 
             fetch('/attendance/mark', {
@@ -197,7 +197,7 @@
                 setTimeout(() => indicator.classList.remove('show'), 1200);
             })
             .catch(() => {
-                indicator.textContent = 'Error â€” check connection';
+                indicator.textContent = 'Error — check connection';
             });
         }
 
@@ -221,10 +221,17 @@
             if (e.target === this) closeDismiss();
         });
 
-        function openPickup(time, notes, name) {
+        function openPickup(time, notes, name, period, className) {
             document.getElementById('pickupModalName').textContent = name;
             document.getElementById('pickupModalTime').textContent = time;
             document.getElementById('pickupModalNotes').textContent = notes || '—';
+            const periodRow = document.getElementById('pickupModalPeriodRow');
+            if (period) {
+                document.getElementById('pickupModalPeriod').textContent = 'Period ' + period + (className ? ' · ' + className : '');
+                periodRow.style.display = '';
+            } else {
+                periodRow.style.display = 'none';
+            }
             document.getElementById('pickupModal').classList.add('open');
         }
         function closePickup() {

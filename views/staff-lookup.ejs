@@ -25,7 +25,7 @@
             <p style="color: var(--text-muted); margin: 6px 0 0;">Find staff schedules, activities, and locations.</p>
             <div class="search-bar-container">
                 <input type="text" id="staffSearch" class="search-input"
-                    placeholder="Type a name (e.g. 'Johnson' or 'Mike')â€¦" oninput="runSearch()"
+                    placeholder="Type a name (e.g. 'Johnson' or 'Mike')…" oninput="runSearch()"
                     value="<%= query %>">
                 <button class="btn" style="background: #f1f5f9; color: #475569;" onclick="clearSearch()">Clear</button>
             </div>
@@ -73,7 +73,7 @@
                         <div class="staff-name"><%= s.FirstName %> <%= s.LastName %></div>
                     </td>
                     <td>
-                        <span class="staff-type-badge"><%= s.StaffType || 'â€”' %></span>
+                        <span class="staff-type-badge"><%= s.StaffType || '—' %></span>
                     </td>
                     <td>
                         <div class="mini-sched">

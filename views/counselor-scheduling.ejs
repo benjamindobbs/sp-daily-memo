@@ -152,12 +152,12 @@
                 <span class="counter-chips">
                     <% if (sports.length > 0) { %>
                     <span class="counter-chip sports" data-counter="<%= p %>-Sports">
-                        &#9917; <span data-counter-val="<%= p %>-Sports">â€”</span> / <span data-counter-denom="<%= p %>-Sports">0</span> slots
+                        &#9917; <span data-counter-val="<%= p %>-Sports">—</span> / <span data-counter-denom="<%= p %>-Sports">0</span> slots
                     </span>
                     <% } %>
                     <% if (enrichment.length > 0) { %>
                     <span class="counter-chip enrichment" data-counter="<%= p %>-Enrichment">
-                        &#127912; <span data-counter-val="<%= p %>-Enrichment">â€”</span> / <span data-counter-denom="<%= p %>-Enrichment">0</span> slots
+                        &#127912; <span data-counter-val="<%= p %>-Enrichment">—</span> / <span data-counter-denom="<%= p %>-Enrichment">0</span> slots
                     </span>
                     <% } %>
                     <span class="text-muted" style="font-size:0.78rem; margin-left:4px;"><%= periodOfferings.length %> class<%= periodOfferings.length !== 1 ? 'es' : '' %></span>
@@ -432,7 +432,7 @@
                             </td>
                             <td>
                                 <select class="person-select cg-schedule" data-cid="<%= c.CounselorID %>">
-                                    <option value="">â€” Unassigned â€”</option>
+                                    <option value="">— Unassigned —</option>
                                     <% ['All Sports','All Enrichment','AM Sports / PM Enrichment','AM Enrichment / PM Sports'].forEach(type => { %>
                                     <option value="<%= type %>"<%= c.ScheduleType === type ? ' selected' : '' %>><%= type %></option>
                                     <% }); %>
@@ -454,7 +454,7 @@
                     <form action="/auto-assign-homegroups" method="POST" style="display:inline; margin:0;"
                           onsubmit="return confirm('This will reshuffle homegroup assignments for counselors already marked Red/Carolina/Green/Navy for Week <%= planWeek %>. Continue?')">
                         <input type="hidden" name="weekNumber" value="<%= planWeek %>">
-                        <button type="submit" class="btn btn-secondary">âš¡ Auto Assign Homegroups</button>
+                        <button type="submit" class="btn btn-secondary">&#9889; Auto Assign Homegroups</button>
                     </form>
                 </div>
                 <% } %>
@@ -559,12 +559,12 @@
         const PLAN_WEEK    = <%= planWeek %>;
         const SESSIONS     = <%- JSON.stringify(sessions) %>;
 
-        // â”€â”€ State: state[offerIdx] = { counselors: [id|null,...], staff: [id|null,...] }
+        // ── State: state[offerIdx] = { counselors: [id|null,...], staff: [id|null,...] }
         // Each offering already carries its PeriodNumber, so we don't need a period dimension.
         const state = {};
         OFFERINGS.forEach((_, idx) => { state[idx] = { counselors: [], staff: [] }; });
 
-        // â”€â”€ Restore saved assignments on load â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Restore saved assignments on load ────────────────────────────────────
         function initState() {
             OFFERINGS.forEach((act, idx) => {
                 const key = `${act.PeriodNumber}|${act.ActivityName}`;
@@ -588,7 +588,7 @@
             });
         }
 
-        // â”€â”€ IDs already taken in the same period+side+type (excluding one slot) â”€â”€
+        // ── IDs already taken in the same period+side+type (excluding one slot) ──
         function getUsedElsewhere(offerIdx, type, exceptSlotIdx) {
             const act    = OFFERINGS[offerIdx];
             const period = act.PeriodNumber;
@@ -605,7 +605,7 @@
             return used;
         }
 
-        // â”€â”€ Render dropdown slots for one offering card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Render dropdown slots for one offering card ──────────────────────────
         function renderSlots(offerIdx, type) {
             const card = document.querySelector(`.offering-card[data-offer="${offerIdx}"]`);
             if (!card) return;
@@ -638,7 +638,7 @@
 
                 const sel = document.createElement('select');
                 sel.className = 'person-select';
-                sel.appendChild(new Option('â€” Select â€”', ''));
+                sel.appendChild(new Option('— Select —', ''));
 
                 allPeople.forEach(person => {
                     const id = type === 'counselors' ? person.CounselorID : person.StaffID;
@@ -664,7 +664,7 @@
             });
         }
 
-        // â”€â”€ Count input change â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Count input change ───────────────────────────────────────────────────
         function handleCountChange(offerIdx, type, newCount) {
             const arr = state[offerIdx][type];
             while (arr.length < newCount) arr.push(null);
@@ -675,7 +675,7 @@
             if (type === 'counselors') updateGroupCounters();
         }
 
-        // â”€â”€ Counselor availability per schedule type â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Counselor availability per schedule type ─────────────────────────────
         // Periods 1-3 are AM, 4-6 are PM.
         function isCounselorAvailableFor(scheduleType, periodNum, side) {
             const am = periodNum <= 3;
@@ -692,7 +692,7 @@
             }
         }
 
-        // â”€â”€ Availability counter chip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Availability counter chip ────────────────────────────────────────────
         // Numerator  = counselors available (by group assignment) minus those already placed this period.
         // Denominator = total counselor slots requested across all activities in this period+side.
         function updateCounter(periodNum, side) {
@@ -748,10 +748,10 @@
             });
         }
 
-        // â”€â”€ Save assignments via fetch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Save assignments via fetch ────────────────────────────────────────────
         async function saveAssignments() {
             const btn = document.getElementById('saveBtn');
-            if (btn) { btn.textContent = 'Savingâ€¦'; btn.disabled = true; }
+            if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
 
             const assignments = [];
             OFFERINGS.forEach((act, idx) => {
@@ -773,20 +773,20 @@
                     body: JSON.stringify({ assignments, weekNumber: PLAN_WEEK })
                 });
                 if (resp.ok) {
-                    if (btn) { btn.textContent = 'âœ“ Saved!'; setTimeout(() => { btn.textContent = 'Save Assignments'; btn.disabled = false; }, 2500); }
+                    if (btn) { btn.textContent = '&#10003; Saved!'; setTimeout(() => { btn.textContent = 'Save Assignments'; btn.disabled = false; }, 2500); }
                 } else {
                     const errBody = await resp.json().catch(() => ({}));
                     console.error('[save-counselor-assignments] server error:', errBody.error || resp.status);
                     if (btn) { btn.textContent = 'Error — try again'; btn.disabled = false; }
                 }
             } catch {
-                if (btn) { btn.textContent = 'Error â€” try again'; btn.disabled = false; }
+                if (btn) { btn.textContent = 'Error — try again'; btn.disabled = false; }
             }
         }
 
-        // â”€â”€ Group assignment counters (AM/PM Ã— Sports/Enrichment) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Group assignment counters (AM/PM × Sports/Enrichment) ────────────────
         function updateGroupCounters() {
-            // Denominator: total counselor slots requested per AM/PM Ã— side bucket
+            // Denominator: total counselor slots requested per AM/PM × side bucket
             const denom = { am_Sports: 0, am_Enrichment: 0, pm_Sports: 0, pm_Enrichment: 0 };
             OFFERINGS.forEach((act, idx) => {
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
@@ -829,7 +829,7 @@
         // ── Save counselor group assignments (homegroup / bus / schedule / extended) ─
         async function saveCounselorGroups() {
             const btn = document.getElementById('saveCGBtn');
-            btn.textContent = 'Savingâ€¦'; btn.disabled = true;
+            btn.textContent = 'Saving…'; btn.disabled = true;
             const counselors = [];
 
             // Main camp counselors (have a .cg-homegroup dropdown)
@@ -871,17 +871,17 @@
                     body: JSON.stringify({ counselors, weekNumber: PLAN_WEEK })
                 });
                 if (resp.ok) {
-                    btn.textContent = 'âœ“ Saved!';
+                    btn.textContent = '&#10003; Saved!';
                     setTimeout(() => { btn.textContent = 'Save Group Assignments'; btn.disabled = false; }, 2500);
                 } else {
-                    btn.textContent = 'Error â€” try again'; btn.disabled = false;
+                    btn.textContent = 'Error — try again'; btn.disabled = false;
                 }
             } catch {
-                btn.textContent = 'Error â€” try again'; btn.disabled = false;
+                btn.textContent = 'Error — try again'; btn.disabled = false;
             }
         }
 
-        // â”€â”€ Auto-Schedule Builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Auto-Schedule Builder ────────────────────────────────────────────────
         function shuffle(arr) {
             const a = [...arr];
             for (let i = a.length - 1; i > 0; i--) {
@@ -891,11 +891,11 @@
             return a;
         }
 
-        // â”€â”€ Mirror counselor assignments from another week â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Mirror counselor assignments from another week ───────────────────────
         async function mirrorWeek(side) {
             const fromWeek = parseInt(document.getElementById('mirrorSourceWeek').value);
             const statusEl = document.getElementById('mirrorStatus');
-            statusEl.textContent = 'Loadingâ€¦';
+            statusEl.textContent = 'Loading…';
 
             let prevRows;
             try {
@@ -1050,7 +1050,7 @@
         function buildSchedule() {
             const mode = document.querySelector('input[name="autoMode"]:checked').value;
             const statusEl = document.getElementById('autoStatus');
-            statusEl.textContent = 'Buildingâ€¦';
+            statusEl.textContent = 'Building…';
 
             const prefMap = {};
             PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
@@ -1094,15 +1094,16 @@
 
                 const eligible = avail.filter(c => {
                     if (usedThisPeriod.has(c.CounselorID)) return false;
-                    if (blockUsed[c.CounselorID]?.[block].has(name)) return false;
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     return isCounselorAvailableFor(sched, period, side);
                 });
 
-                const preferred = shuffle(eligible.filter(c => prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
-                const nonPref   = shuffle(eligible.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
-                const pool      = mode === 'pref' ? preferred : [...preferred, ...nonPref];
+                // Priority: already running this activity this block → activity pref → others
+                const alreadyHere = shuffle(eligible.filter(c =>  blockUsed[c.CounselorID]?.[block].has(name)));
+                const preferred   = shuffle(eligible.filter(c => !blockUsed[c.CounselorID]?.[block].has(name) &&  prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
+                const nonPref     = shuffle(eligible.filter(c => !blockUsed[c.CounselorID]?.[block].has(name) && !prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
+                const pool        = mode === 'pref' ? [...alreadyHere, ...preferred] : [...alreadyHere, ...preferred, ...nonPref];
 
                 let poolIdx = 0;
                 for (let slotIdx = 0; slotIdx < state[idx].counselors.length; slotIdx++) {
@@ -1197,9 +1198,14 @@
                     // Re-evaluate after each assignment so the ratio reflects the newly added slot.
                     const newSlots = [];
                     for (const extra of extras) {
-                        const valid = eligibleIdxs.filter(idx =>
+                        // Prefer activities already run this block; fall back to new ones
+                        const alreadyRunning = eligibleIdxs.filter(idx =>
+                             blockUsed[extra.CounselorID][block].has(OFFERINGS[idx].ActivityName)
+                        );
+                        const fresh = eligibleIdxs.filter(idx =>
                             !blockUsed[extra.CounselorID][block].has(OFFERINGS[idx].ActivityName)
                         );
+                        const valid = alreadyRunning.length > 0 ? alreadyRunning : fresh;
                         if (valid.length === 0) continue;
                         const targetIdx = valid.reduce((best, idx) => {
                             const bestRatio = (OFFERINGS[best].PreliminaryEnrollment || 0) / Math.max(state[best].counselors.length, 1);
@@ -1215,15 +1221,18 @@
                     for (const { idx, slotPos } of newSlots) {
                         if (state[idx].counselors[slotPos] != null) continue;
                         const actName = OFFERINGS[idx].ActivityName;
+                        const alreadyHere = shuffle([...remaining].filter(cid =>
+                             blockUsed[cid][block].has(actName)
+                        ));
                         const preferred = shuffle([...remaining].filter(cid =>
                             !blockUsed[cid][block].has(actName) &&
-                            prefMap[cid]?.ActivityPreferences?.includes(actName)
+                             prefMap[cid]?.ActivityPreferences?.includes(actName)
                         ));
                         const nonPref = shuffle([...remaining].filter(cid =>
                             !blockUsed[cid][block].has(actName) &&
                             !prefMap[cid]?.ActivityPreferences?.includes(actName)
                         ));
-                        const chosen = preferred[0] ?? nonPref[0];
+                        const chosen = alreadyHere[0] ?? preferred[0] ?? nonPref[0];
                         if (chosen == null) continue;
                         state[idx].counselors[slotPos] = chosen;
                         usedThisPeriod.add(chosen);
@@ -1266,7 +1275,7 @@
                 : 'Done! Review and save when ready.';
         }
 
-        // â”€â”€ Bootstrap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Bootstrap ────────────────────────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', () => {
             initState();
             renderAllFromState();

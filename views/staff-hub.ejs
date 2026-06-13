@@ -40,7 +40,6 @@
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
-        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <a href="/counselor-preferences" class="nav-btn">&#127381; My Preferences</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="admin">
@@ -106,11 +105,11 @@
                 <div class="hub-card-icon">&#127775;</div>
                 <div class="hub-card-title">Vote: Photo of the Day</div>
             </a>
+            <% if (viewMode === 'admin') { %>
             <a href="/dismissals" class="hub-card">
                 <div class="hub-card-icon">&#128663;</div>
                 <div class="hub-card-title">Dismissals</div>
             </a>
-            <% if (viewMode === 'admin') { %>
             <a href="/attendance/dismissal-archive" class="hub-card">
                 <div class="hub-card-icon">&#128203;</div>
                 <div class="hub-card-title">Daily Arrival &amp; Departure Log</div>
@@ -138,7 +137,7 @@
         <% const hasActivity = todayPickups.length > 0 || todayLateArrivals.length > 0 || todayEarlyDismissals.length > 0 || todayScheduleChanges.length > 0; %>
         <% if (hasActivity) { %>
         <div class="card" style="margin-top:20px;">
-            <h3 style="margin:0 0 16px;">Today's Activity</h3>
+            <h3 style="margin:0 0 16px;">Today's Memo</h3>
 
             <% if (todayPickups.length > 0) { %>
             <div style="margin-bottom:16px;">
@@ -147,7 +146,9 @@
                 <div style="display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-color);">
                     <span class="tag <%= p.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px; flex-shrink:0;"><%= p.HomeGroupColor %></span>
                     <span style="font-weight:500; flex:1;"><%= p.FirstName %> <%= p.LastName %></span>
-                    <span style="font-size:0.82rem; font-weight:700; color:#92400e; background:#fef3c7; padding:2px 8px; border-radius:4px;"><%= p.PickupTime %></span>
+                    <span style="font-size:0.82rem; font-weight:700; color:#92400e; background:#fef3c7; padding:2px 8px; border-radius:4px;">
+                        <%= fmtPickupTime(p.PickupTime) %><% if (p.PeriodNumber) { %> &middot; P<%= p.PeriodNumber %><% if (p.ActivityName) { %> <%= p.ActivityName %><% } %><% } %>
+                    </span>
                     <% if (p.Notes) { %><span style="font-size:0.8rem; color:var(--text-muted); flex:1;">&#128221; <%= p.Notes %></span><% } %>
                 </div>
                 <% }); %>

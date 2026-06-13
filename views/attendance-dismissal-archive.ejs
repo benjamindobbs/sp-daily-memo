@@ -111,9 +111,9 @@
                     <tr>
                         <td><a href="/search?name=<%= encodeURIComponent(d.FirstName+' '+d.LastName) %>" class="camper-name-link"><%= d.FirstName %> <%= d.LastName %></a></td>
                         <td><span class="tag <%= d.HomeGroupColor %>"><%= d.HomeGroupColor %></span></td>
-                        <td><%= d.DismissalTime || 'â€”' %></td>
+                        <td><%= d.DismissalTime || '—' %></td>
                         <td style="color:var(--text-muted); font-size:0.85rem;"><%= d.Notes || '' %></td>
-                        <td style="font-size:0.85rem;"><%= d.MarkedBy || 'â€”' %></td>
+                        <td style="font-size:0.85rem;"><%= d.MarkedBy || '—' %></td>
                         <td style=”font-size:0.8rem; color:var(--text-muted);”><%= fmtTimeOnly(d.CreatedAt) %></td>
                     </tr>
                     <% }); %>
@@ -122,7 +122,7 @@
             <% } %>
         </div>
 
-        <%/* â”€â”€ Late Check-ins â”€â”€ */%>
+        <%/* ── Late Check-ins ── */%>
         <h2 style="font-size:1.05rem; margin:0 0 10px;">&#9989; Late Arrivals Checked In</h2>
         <div class="late-card table-scroll">
             <% if (checkIns.length === 0) { %>
@@ -146,7 +146,7 @@
                         <td><a href="/search?name=<%= encodeURIComponent(c.FirstName+' '+c.LastName) %>" class="camper-name-link"><%= c.FirstName %> <%= c.LastName %></a></td>
                         <td><span class="tag <%= c.HomeGroupColor %>"><%= c.HomeGroupColor %></span></td>
                         <td><%= fmtTimeOnly(c.MarkedAt) %></td>
-                        <td style="font-size:0.85rem;"><%= c.MarkedBy || 'â€”' %></td>
+                        <td style="font-size:0.85rem;"><%= c.MarkedBy || '—' %></td>
                     </tr>
                     <% }); %>
                 </tbody>

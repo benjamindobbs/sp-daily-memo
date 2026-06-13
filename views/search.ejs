@@ -31,7 +31,6 @@
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn primary">&#128269; Camper Lookup</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
-        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="admin">
             <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
@@ -116,9 +115,9 @@
                                 <span class="tag <%= c.HomeGroupColor %>"><%= c.HomeGroupColor %></span>
                             </td>
                             <td>
-                                <% if (c.HomeGroupCounselorID) { %>
-                                    <a href="/counselor-profile/<%= c.HomeGroupCounselorID %>" class="counselor-link">
-                                        ðŸ‘¤ <%= c.HomeCounselorName %>
+                                <% if (c.HomeGroupCounselorIDResolved) { %>
+                                    <a href="/counselor-profile/<%= c.HomeGroupCounselorIDResolved %>" class="counselor-link">
+                                        &#128100; <%= c.HomeCounselorName %>
                                     </a>
                                 <% } else { %>
                                     <span class="text-muted" style="font-style: italic;">Unassigned</span>
@@ -126,13 +125,13 @@
                             </td>
                             <td>
                                 <div style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 2px;">
-                                    <span>ðŸšŒ <%= c.BusRoute || 'Parent' %></span>
-                                    <span class="text-muted" style="font-size: 0.75rem;">â° Ext: <%= c.ExtendedHours || 'No' %></span>
+                                    <span>&#128652; <%= c.BusRoute || 'Parent' %></span>
+                                    <span class="text-muted" style="font-size: 0.75rem;">&#9200; Ext: <%= c.ExtendedHours || 'No' %></span>
                                 </div>
                             </td>
                             <td>
                                 <% if (c.CampLunch === 'Yes') { %>
-                                    <span class="lunch-yes">ðŸ± YES</span>
+                                    <span class="lunch-yes">&#127857; YES</span>
                                 <% } else { %>
                                     <span class="text-muted" style="font-size: 0.75rem;">Packed</span>
                                 <% } %>
@@ -144,10 +143,17 @@
                         <tr class="schedule-row">
                             <td colspan="7">
                                 <div class="mini-schedule">
-                                    <% ['P1', 'P2', 'P3', 'P4', 'P5'].forEach(p => { %>
+                                    <%
+                                    // Red/Carolina have periods 1,2,4,5,6 — remap to display slots P1-P5
+                                    const isRC = c.HomeGroupColor === 'Red' || c.HomeGroupColor === 'Carolina';
+                                    const slots = isRC
+                                        ? [c.P1, c.P2, c.P4, c.P5, c.P6]
+                                        : [c.P1, c.P2, c.P3, c.P4, c.P5];
+                                    %>
+                                    <% slots.forEach(function(activity, i) { %>
                                         <div class="period-box">
-                                            <strong><%= p %></strong>
-                                            <span><%= c[p] || '---' %></span>
+                                            <strong>P<%= i+1 %></strong>
+                                            <span><%= activity || '---' %></span>
                                         </div>
                                     <% }) %>
                                 </div>
@@ -206,7 +212,7 @@
                 applyFilters();
             } else {
                 row.style.display = '';
-                btn.textContent = 'âˆ’ Fewer Filters';
+                btn.textContent = '− Fewer Filters';
             }
         }
 

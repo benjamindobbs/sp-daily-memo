@@ -30,10 +30,10 @@
 
     <nav class="nav-bar">
         <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
-        <a href="/master-schedule" class="nav-btn">ðŸ“… Master Schedule</a>
-        <a href="/search" class="nav-btn">ðŸ” Camper Lookup</a>
-        <a href="/swap-tool" class="nav-btn">ðŸ”„ Swap Tools</a>
-        <a href="/schedule-history" class="nav-btn primary">ðŸ“‹ Change History</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
+        <a href="/schedule-history" class="nav-btn primary">&#128203; Change History</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
         <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
     </nav>
@@ -57,7 +57,7 @@
                         <input type="checkbox" id="selectAll" onchange="toggleAll(this)"> Select all
                     </label>
                     <button type="submit" class="btn primary btn-small">
-                        âœ“ Mark Selected as Updated in CampBrain
+                        &#10003; Mark Selected as Updated in CampBrain
                     </button>
                 </div>
 
@@ -84,7 +84,7 @@
                                         <% if (c.ColorGroup) { %>
                                             <span class="tag <%= c.ColorGroup %>"><%= c.ColorGroup %></span>
                                         <% } else { %>
-                                            <span style="color: #94a3b8;">â€”</span>
+                                            <span style="color: #94a3b8;">—</span>
                                         <% } %>
                                     </td>
                                     <td>P<%= c.PeriodNumber %></td>
@@ -102,8 +102,8 @@
             </form>
         <% } else { %>
             <div class="empty-state">
-                <span>âœ…</span>
-                <p>No pending schedule changes â€” all caught up!</p>
+                <span>&#9989;</span>
+                <p>No pending schedule changes — all caught up!</p>
             </div>
         <% } %>
 
@@ -131,7 +131,7 @@
                                             <% if (c.ColorGroup) { %>
                                                 <span class="tag <%= c.ColorGroup %>" style="opacity: 0.5;"><%= c.ColorGroup %></span>
                                             <% } else { %>
-                                                <span>â€”</span>
+                                                <span>—</span>
                                             <% } %>
                                         </td>
                                         <td>P<%= c.PeriodNumber %></td>

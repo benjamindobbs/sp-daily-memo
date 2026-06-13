@@ -29,7 +29,6 @@
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
-        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <a href="/counselor-preferences" class="nav-btn primary">&#127381; My Preferences</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="admin">
@@ -58,10 +57,10 @@
             <div class="card" style="margin-bottom: 20px;">
                 <h3 style="margin:0 0 18px;">Your Name</h3>
                 <select name="counselorID" id="counselorSelect" required onchange="onCounselorChange(this.value)" style="width:100%; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.95rem; background:white;">
-                    <option value="">â€” Select your name â€”</option>
+                    <option value="">— Select your name —</option>
                     <% counselors.forEach(function(c) { %>
                         <option value="<%= c.CounselorID %>" data-role="<%= c.StaffRole %>" <%= selectedCounselorId === c.CounselorID ? 'selected' : '' %>>
-                            <%= c.FirstName %> <%= c.LastName %><% if (c.HomeGroupColor) { %> (<%= c.HomeGroupColor %>)<% } %> â€” <%= c.StaffRole %>
+                            <%= c.FirstName %> <%= c.LastName %><% if (c.HomeGroupColor) { %> (<%= c.HomeGroupColor %>)<% } %> — <%= c.StaffRole %>
                         </option>
                     <% }); %>
                 </select>
@@ -103,7 +102,7 @@
                         { value: 'All Enrichment',              label: 'All Enrichment',              desc: 'Enrichment activities across all periods' },
                         { value: 'AM Sports / PM Enrichment',   label: 'AM Sports / PM Enrichment',   desc: 'Sports in the morning, Enrichment in the afternoon' },
                         { value: 'AM Enrichment / PM Sports',   label: 'AM Enrichment / PM Sports',   desc: 'Enrichment in the morning, Sports in the afternoon' },
-                        { value: 'No Preference',               label: 'No Preference',               desc: 'No preference â€” assign wherever needed' }
+                        { value: 'No Preference',               label: 'No Preference',               desc: 'No preference — assign wherever needed' }
                     ].forEach(function(opt) { %>
                         <label style="display:flex; align-items:flex-start; gap:12px; padding:12px 16px; border:1px solid var(--border-color); border-radius:8px; cursor:pointer; background:white;">
                             <input type="radio" name="schedulePreference" value="<%= opt.value %>" required style="margin-top:2px; flex-shrink:0;" <%= existingPrefs && existingPrefs.SchedulePreference === opt.value ? 'checked' : '' %>>

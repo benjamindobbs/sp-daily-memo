@@ -128,6 +128,15 @@
                             <input type="time" name="pickupTime" value="<%= existingPickup ? existingPickup.PickupTime : '' %>" required>
                         </div>
                         <div class="form-field">
+                            <label>During Period (optional)</label>
+                            <select name="periodNumber" style="width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-size:0.95rem; font-family:inherit; box-sizing:border-box;">
+                                <option value="">— Unknown —</option>
+                                <% [1,2,3,4,5,6].forEach(function(n) { %>
+                                <option value="<%= n %>"<%= existingPickup && existingPickup.PeriodNumber == n ? ' selected' : '' %>>Period <%= n %></option>
+                                <% }); %>
+                            </select>
+                        </div>
+                        <div class="form-field">
                             <label>Notes (pickup person, location, etc.)</label>
                             <input type="text" name="notes"
                                 value="<%= existingPickup ? existingPickup.Notes || '' : '' %>"
@@ -163,8 +172,11 @@
                                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
                                         <span class="tag <%= p.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px;"><%= p.HomeGroupColor %></span>
                                         <strong><%= p.FirstName %> <%= p.LastName %></strong>
-                                        <span class="pickup-time" style="margin-left:auto;"><%= p.PickupTime %></span>
+                                        <span class="pickup-time" style="margin-left:auto;"><%= fmtPickupTime(p.PickupTime) %></span>
                                     </div>
+                                    <% if (p.PeriodNumber) { %>
+                                        <div class="pickup-meta">P<%= p.PeriodNumber %><% if (p.ActivityName) { %> &middot; <%= p.ActivityName %><% } %></div>
+                                    <% } %>
                                     <% if (p.Notes) { %>
                                         <div class="pickup-meta">&#128221; <%= p.Notes %></div>
                                     <% } %>

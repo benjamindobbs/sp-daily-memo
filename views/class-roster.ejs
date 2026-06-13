@@ -28,7 +28,6 @@
         <a href="/master-schedule" class="nav-btn primary">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
-        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="admin">
             <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
@@ -63,13 +62,13 @@
                             <form action="/update-class-location" method="POST" style="display:flex; gap:5px; align-items:center; margin:0;">
                                 <input type="hidden" name="activityName" value="<%= activityName %>">
                                 <input type="hidden" name="periodNumber" value="<%= periodNumber %>">
-                                <input type="text" name="location" value="<%= location || '' %>" placeholder="Add locationâ€¦"
+                                <input type="text" name="location" value="<%= location || '' %>" placeholder="Add location…"
                                     style="width:130px; padding:3px 7px; border:1px solid #cbd5e1; border-radius:5px; font-size:0.82rem; font-family:inherit;">
                                 <button type="submit" title="Save location"
                                     style="background:none; border:none; cursor:pointer; font-size:0.95rem; padding:0; color:var(--primary);">&#10003;</button>
                             </form>
                             <% } else { %>
-                            <span class="info-value"><%= location || 'â€”' %></span>
+                            <span class="info-value"><%= location || '—' %></span>
                             <% } %>
                         </div>
                         <div class="info-row"><span class="info-label">&#128101; Enrolled</span><span class="info-value"><%= campers.length %><% if (maxCapacity) { %> / <%= maxCapacity %><% } %></span></div>
@@ -118,7 +117,7 @@
                             <% campers.forEach(function(c) { %>
                             <tr class="roster-row" data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>">
                                 <td><a class="camper-name-link" href="/search?name=<%= encodeURIComponent(c.FirstName + ' ' + c.LastName) %>"><%= c.FirstName %> <%= c.LastName %></a></td>
-                                <td style="color: var(--text-muted);"><%= c.Grade || 'â€”' %></td>
+                                <td style="color: var(--text-muted);"><%= c.Grade || '—' %></td>
                                 <td><span class="tag <%= c.HomeGroupColor %>"><%= c.HomeGroupColor %></span></td>
                                 <td>
                                     <% if (c.CounselorID) { %>

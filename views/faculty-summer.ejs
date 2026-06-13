@@ -102,7 +102,7 @@
             <div class="alert"><%= alertMessage %></div>
         <% } %>
 
-        <!-- â”€â”€ Week Upload Cards â”€â”€ -->
+        <!-- ── Week Upload Cards ── -->
         <section style="margin-bottom: 36px;">
             <h2 style="font-size: 1rem; margin-bottom: 12px;">Weekly CSV Uploads</h2>
             <p class="text-muted" style="font-size: 0.78rem; margin-bottom: 14px;">
@@ -126,7 +126,7 @@
                             <form action="/clear-staff-week/<%= w %>" method="POST"
                                   onsubmit="return confirm('Clear all Week <%= w %> schedule data? This cannot be undone.');"
                                   style="margin-top: 6px;">
-                                <button type="submit" class="settings-link-btn" style="font-size: 0.74rem;">ðŸ—‘ï¸ Clear Week <%= w %></button>
+                                <button type="submit" class="settings-link-btn" style="font-size: 0.74rem;">&#128465;&#65039; Clear Week <%= w %></button>
                             </form>
                         <% } %>
                     </div>
@@ -134,12 +134,12 @@
             </div>
         </section>
 
-        <!-- â”€â”€ Staff List â”€â”€ -->
+        <!-- ── Staff List ── -->
         <section>
             <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 14px; flex-wrap: wrap;">
                 <h2 style="font-size: 1rem; margin: 0;">Staff Schedules</h2>
                 <input type="text" id="staffSearch" class="search-input"
-                       placeholder="Filter by nameâ€¦" oninput="runSearch()"
+                       placeholder="Filter by name…" oninput="runSearch()"
                        style="max-width: 260px; padding: 7px 12px; font-size: 0.85rem;">
             </div>
 
@@ -182,7 +182,7 @@
                                 <div class="staff-name"><%= s.FirstName %> <%= s.LastName %></div>
                             </td>
                             <td>
-                                <span class="staff-type-badge"><%= s.StaffType || 'â€”' %></span>
+                                <span class="staff-type-badge"><%= s.StaffType || '—' %></span>
                             </td>
                             <td>
                                 <% if (s.weeks.length === 0) { %>
@@ -190,7 +190,7 @@
                                 <% } else { %>
                                     <select class="week-selector"
                                             onchange="showWeek(this, 'staff-<%= s.StaffID %>')">
-                                        <option value="">â€” Select Week â€”</option>
+                                        <option value="">— Select Week —</option>
                                         <% s.weeks.forEach(function(wk) { %>
                                             <option value="<%= wk.WeekNumber %>">Week <%= wk.WeekNumber %></option>
                                         <% }); %>

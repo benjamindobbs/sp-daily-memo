@@ -43,7 +43,6 @@
         <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
         <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
         <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
-        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="admin">
             <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
@@ -59,7 +58,7 @@
         <div class="date-bar">
             <label for="datePicker">Date:</label>
             <input type="date" id="datePicker" value="<%= date %>" onchange="window.location='/attendance?date='+this.value">
-            <input type="text" id="attSearch" class="att-search-input" placeholder="Search counselors or classesâ€¦" oninput="filterCards()">
+            <input type="text" id="attSearch" class="att-search-input" placeholder="Search counselors or classes…" oninput="filterCards()">
             <% if (!counselorFilterActive) { %>
             <% if (lateCount > 0) { %>
                 <a href="/attendance/late-arrivals?date=<%= date %>" class="late-warning-link">
@@ -121,18 +120,18 @@
 
         <% if (counselorFilterActive) { %>
 
-        <%/* â”€â”€ FLAT VIEW: sequential list for identified counselors â”€â”€ */%>
+        <%/* ── FLAT VIEW: sequential list for identified counselors ── */%>
         <%
             const flatItems = [];
-            extAM.forEach(s => flatItems.push({ icon: 'â°', cat: 'Extended AM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
-            busAM.forEach(s => flatItems.push({ icon: 'ðŸšŒ', cat: 'Bus AM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
-            hgAM.forEach(s => flatItems.push({ icon: 'ðŸ ', cat: 'Home Group AM', label: s.label.split('â€”')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
-            spAM.forEach(s => flatItems.push({ icon: 'â­', cat: 'Specialty AM', label: s.label.split('â€”')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
-            classSessions.forEach(s => flatItems.push({ icon: 'ðŸƒ', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null }));
-            spPM.forEach(s => flatItems.push({ icon: 'â­', cat: 'Specialty PM', label: s.label.split('â€”')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
-            hgPM.forEach(s => flatItems.push({ icon: 'ðŸ ', cat: 'Home Group PM', label: s.label.split('â€”')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
-            busPM.forEach(s => flatItems.push({ icon: 'ðŸšŒ', cat: 'Bus PM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
-            extPM.forEach(s => flatItems.push({ icon: 'â°', cat: 'Extended PM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
+            extAM.forEach(s => flatItems.push({ icon: '&#9200;', cat: 'Extended AM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
+            busAM.forEach(s => flatItems.push({ icon: '&#128652;', cat: 'Bus AM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
+            hgAM.forEach(s => flatItems.push({ icon: '&#127968;', cat: 'Home Group AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
+            spAM.forEach(s => flatItems.push({ icon: '&#11088;', cat: 'Specialty AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
+            classSessions.forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null }));
+            spPM.forEach(s => flatItems.push({ icon: '&#11088;', cat: 'Specialty PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
+            hgPM.forEach(s => flatItems.push({ icon: '&#127968;', cat: 'Home Group PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
+            busPM.forEach(s => flatItems.push({ icon: '&#128652;', cat: 'Bus PM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
+            extPM.forEach(s => flatItems.push({ icon: '&#9200;', cat: 'Extended PM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
         %>
         <div class="att-flat-list">
             <% flatItems.forEach(function(item) { %>
@@ -146,7 +145,7 @@
                         <%= item.label %>
                     </div>
                 </div>
-                <span class="<%= item.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= item.submitted ? 'âœ“ Submitted' : 'Pending' %></span>
+                <span class="<%= item.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= item.submitted ? '&#10003; Submitted' : 'Pending' %></span>
             </a>
             <% }); %>
             <% if (flatItems.length === 0) { %>
@@ -156,7 +155,7 @@
 
         <% } else { %>
 
-        <%/* â”€â”€ PERIOD FILTER BAR â”€â”€ */%>
+        <%/* ── PERIOD FILTER BAR ── */%>
         <% if (hasAMServices || activePeriodKeys.length > 0 || hasPMServices) { %>
         <div class="period-filter-bar" id="periodFilterBar">
             <button class="period-pill active" data-filter="all" onclick="setPeriodFilter('all',this)">All</button>
@@ -172,9 +171,9 @@
         </div>
         <% } %>
 
-        <%/* â”€â”€ DROPDOWN VIEW: full overview with collapsible sections â”€â”€ */%>
+        <%/* ── DROPDOWN VIEW: full overview with collapsible sections ── */%>
 
-        <%/* â”€â”€ Extended AM â”€â”€ */%>
+        <%/* ── Extended AM ── */%>
         <% if (extAM.length > 0) { %>
         <% const extAMStat = secStat(extAM); %>
         <details class="att-section" id="section-ext-am" data-section="am-services">
@@ -200,7 +199,7 @@
         </details>
         <% } %>
 
-        <%/* â”€â”€ Busses AM â”€â”€ */%>
+        <%/* ── Busses AM ── */%>
         <% if (busAM.length > 0) { %>
         <% const busAMStat = secStat(busAM); %>
         <details class="att-section" id="section-bus-am" data-section="am-services">
@@ -226,7 +225,7 @@
         </details>
         <% } %>
 
-        <%/* â”€â”€ Home Groups AM â”€â”€ */%>
+        <%/* ── Home Groups AM ── */%>
         <% if (hgAM.length > 0) { %>
         <% const hgAMStat = secStat(hgAM); %>
         <details class="att-section" id="section-hg-am" data-section="am-services">
@@ -253,7 +252,7 @@
                     <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>" data-search="<%= s.label.toLowerCase() %>" data-color="<%= s.color %>">
                         <div class="att-card-label">
                             <span class="tag <%= s.color %>" style="font-size:0.68rem; padding:1px 7px; margin-right:6px;"><%= s.color %></span>
-                            <%= s.label.split('â€”')[0].trim() %>
+                            <%= s.label.split('—')[0].trim() %>
                         </div>
                         <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
                     </a>
@@ -263,7 +262,7 @@
         </details>
         <% } %>
 
-        <%/* â”€â”€ Specialty Camps AM â”€â”€ */%>
+        <%/* ── Specialty Camps AM ── */%>
         <% if (spAM.length > 0) { %>
         <% const spAMStat = secStat(spAM); %>
         <details class="att-section" id="section-sp-am" data-section="am-services">
@@ -281,7 +280,7 @@
                     <% spAM.forEach(function(s) { %>
                     <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>" data-search="<%= s.label.toLowerCase() %>">
                         <div class="att-card-label">
-                            <span class="tag <%= s.color %>" style="font-size:0.68rem; padding:1px 7px; margin-right:6px;"><%= s.label.split('â€”')[0].trim() %></span>
+                            <span class="tag <%= s.color %>" style="font-size:0.68rem; padding:1px 7px; margin-right:6px;"><%= s.label.split('—')[0].trim() %></span>
                         </div>
                         <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
                     </a>
@@ -291,7 +290,7 @@
         </details>
         <% } %>
 
-        <%/* â”€â”€ Class Periods (clock blocks 1-6) â”€â”€ */%>
+        <%/* ── Class Periods (clock blocks 1-6) ── */%>
         <% periodOrder.forEach(function(pk) { %>
         <% if (byPeriod[pk]) { %>
         <% const pStat = secStat(byPeriod[pk].sessions); %>
@@ -319,7 +318,7 @@
         <% } %>
         <% }); %>
 
-        <%/* â”€â”€ Home Groups PM â”€â”€ */%>
+        <%/* ── Home Groups PM ── */%>
         <% if (hgPM.length > 0) { %>
         <% const hgPMStat = secStat(hgPM); %>
         <details class="att-section" id="section-hg-pm" data-section="pm-services">
@@ -346,7 +345,7 @@
                     <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>" data-search="<%= s.label.toLowerCase() %>" data-color="<%= s.color %>">
                         <div class="att-card-label">
                             <span class="tag <%= s.color %>" style="font-size:0.68rem; padding:1px 7px; margin-right:6px;"><%= s.color %></span>
-                            <%= s.label.split('â€”')[0].trim() %>
+                            <%= s.label.split('—')[0].trim() %>
                         </div>
                         <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
                     </a>
@@ -356,7 +355,7 @@
         </details>
         <% } %>
 
-        <%/* â”€â”€ Specialty Camps PM â”€â”€ */%>
+        <%/* ── Specialty Camps PM ── */%>
         <% if (spPM.length > 0) { %>
         <% const spPMStat = secStat(spPM); %>
         <details class="att-section" id="section-sp-pm" data-section="pm-services">
@@ -374,7 +373,7 @@
                     <% spPM.forEach(function(s) { %>
                     <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>" data-search="<%= s.label.toLowerCase() %>">
                         <div class="att-card-label">
-                            <span class="tag <%= s.color %>" style="font-size:0.68rem; padding:1px 7px; margin-right:6px;"><%= s.label.split('â€”')[0].trim() %></span>
+                            <span class="tag <%= s.color %>" style="font-size:0.68rem; padding:1px 7px; margin-right:6px;"><%= s.label.split('—')[0].trim() %></span>
                         </div>
                         <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
                     </a>
@@ -384,7 +383,7 @@
         </details>
         <% } %>
 
-        <%/* â”€â”€ Busses PM â”€â”€ */%>
+        <%/* ── Busses PM ── */%>
         <% if (busPM.length > 0) { %>
         <% const busPMStat = secStat(busPM); %>
         <details class="att-section" id="section-bus-pm" data-section="pm-services">
@@ -410,7 +409,7 @@
         </details>
         <% } %>
 
-        <%/* â”€â”€ Extended PM â”€â”€ */%>
+        <%/* ── Extended PM ── */%>
         <% if (extPM.length > 0) { %>
         <% const extPMStat = secStat(extPM); %>
         <details class="att-section" id="section-ext-pm" data-section="pm-services">

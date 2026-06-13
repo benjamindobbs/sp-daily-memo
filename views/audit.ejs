@@ -48,12 +48,12 @@
 
     <p class="audit-meta">
         Checking data integrity for
-        <strong><%= activeSession ? activeSession.label : 'Week ' + (activeSession?.weekNumber ?? 'â€”') %></strong>.
+        <strong><%= activeSession ? activeSession.label : 'Week ' + (activeSession?.weekNumber ?? '—') %></strong>.
         Flags identify missing or mismatched data that should be resolved before the week begins.
         Li'l Place, Kinder Place, and SPLIT campers are excluded from camper checks.
     </p>
 
-    <%/* â”€â”€ Camper Flags â”€â”€ */%>
+    <%/* ── Camper Flags ── */%>
     <div class="audit-section">
         <h2>
             Camper Flags
@@ -138,7 +138,7 @@
         </div>
     </div>
 
-    <%/* â”€â”€ Class Name Suspects â”€â”€ */%>
+    <%/* ── Class Name Suspects ── */%>
     <div class="audit-section">
         <h2>
             Class Name Suspects
@@ -148,7 +148,7 @@
                 <span class="count-pill count-ok">All clear</span>
             <% } %>
         </h2>
-        <p class="audit-meta" style="margin-top:-8px;">Classes with 3 or fewer campers enrolled â€” likely typos or accidental duplicates. Merging moves all enrolled campers into the target class and removes the suspect entry.</p>
+        <p class="audit-meta" style="margin-top:-8px;">Classes with 3 or fewer campers enrolled — likely typos or accidental duplicates. Merging moves all enrolled campers into the target class and removes the suspect entry.</p>
 
         <% if (suspects.length === 0) { %>
             <div class="card">
@@ -172,7 +172,7 @@
                           onsubmit="return confirm('Merge \'' + this.fromName.value + '\' into \'' + this.toName.value + '\'? This cannot be undone.');">
                         <input type="hidden" name="fromName" value="<%= s.activityName %>">
                         <select name="toName" required style="padding:6px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; min-width:200px;">
-                            <option value="">â€” Merge into â€”</option>
+                            <option value="">— Merge into —</option>
                             <% if (s.suggestions.length > 0) { %>
                                 <optgroup label="Suggested">
                                     <% s.suggestions.forEach(sug => { %>
@@ -194,7 +194,7 @@
         <% } %>
     </div>
 
-    <%/* â”€â”€ Counselor Flags â”€â”€ */%>
+    <%/* ── Counselor Flags ── */%>
     <div class="audit-section">
         <h2>
             Counselor Flags

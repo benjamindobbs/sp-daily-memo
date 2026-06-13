@@ -41,6 +41,10 @@
         .group-dot.Carolina { background: #2563eb; }
         .group-dot.Green { background: #16a34a; }
         .group-dot.Navy { background: #1e3a5f; }
+        .group-dot.LilPlace { background: #6ee7b7; }
+        .group-dot.KinderPlace { background: #fef08a; }
+        .group-dot.SPLIT { background: #fbbf24; }
+        .group-dot.SPRC { background: #94a3b8; }
         .hub-num-amber  { color: #f59e0b; }
         .hub-num-purple { color: #8b5cf6; }
         .hub-num-muted  { color: #94a3b8; }
@@ -287,13 +291,16 @@
                             <td><%= groupCounts.Navy || 0 %></td>
                         </tr>
                         <% if (groupCounts.LilPlace) { %>
-                        <tr><td>Li'l Place</td><td><%= groupCounts.LilPlace %></td></tr>
+                        <tr><td><span class="group-dot LilPlace"></span>Li'l Place</td><td><%= groupCounts.LilPlace %></td></tr>
                         <% } %>
                         <% if (groupCounts.KinderPlace) { %>
-                        <tr><td>Kinder Place</td><td><%= groupCounts.KinderPlace %></td></tr>
+                        <tr><td><span class="group-dot KinderPlace"></span>Kinder Place</td><td><%= groupCounts.KinderPlace %></td></tr>
                         <% } %>
                         <% if (groupCounts.SPLIT) { %>
-                        <tr><td>SPLIT</td><td><%= groupCounts.SPLIT %></td></tr>
+                        <tr><td><span class="group-dot SPLIT"></span>SPLIT</td><td><%= groupCounts.SPLIT %></td></tr>
+                        <% } %>
+                        <% if (groupCounts.SPRC) { %>
+                        <tr><td><span class="group-dot SPRC"></span>SPRC</td><td><%= groupCounts.SPRC %></td></tr>
                         <% } %>
                     </tbody>
                 </table>
