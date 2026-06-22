@@ -197,13 +197,23 @@
         %>
         <% if (anyAbsent) { %>
         <div class="card" style="margin-top:20px;">
-            <h4 style="margin:0 0 12px; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Absent — AM Homegroup</h4>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h4 style="margin:0; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Attendance at a Glance</h4>
+                <button id="attGlanceToggle" onclick="toggleAttGlance()" class="btn btn-small" style="font-size:0.72rem; padding:3px 10px;">Hide</button>
+            </div>
+            <div id="attGlanceGrid">
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
                 <% ['Navy','Green','Carolina','Red'].forEach(function(color) { %>
                 <div style="background:#f8fafc; border-radius:8px; padding:10px 14px;">
                     <div style="font-size:0.75rem; font-weight:600; margin-bottom:6px;"><span class="tag <%= color %>"><%= color %></span></div>
                     <% (absentByGroup[color] || []).forEach(function(cam) { %>
+                        <% if (cam.Status === 'late') { %>
+                        <div style="font-size:0.82rem; padding:2px 0; color:var(--text-muted); text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } else if (cam.Status === 'dismissed') { %>
+                        <div style="font-size:0.82rem; padding:2px 0; color:#b45309; text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } else { %>
                         <div style="font-size:0.82rem; padding:2px 0;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } %>
                     <% }); %>
                     <% if (!(absentByGroup[color] || []).length) { %><div style="font-size:0.78rem; color:var(--text-muted); font-style:italic;">None absent</div><% } %>
                 </div>
@@ -214,13 +224,36 @@
                 <div style="background:#f8fafc; border-radius:8px; padding:10px 14px;">
                     <div style="font-size:0.75rem; font-weight:600; margin-bottom:6px;"><span class="tag <%= pair[0] %>" style="font-size:0.65rem;"><%= pair[1] %></span></div>
                     <% (absentByGroup[pair[0]] || []).forEach(function(cam) { %>
+                        <% if (cam.Status === 'late') { %>
+                        <div style="font-size:0.82rem; padding:2px 0; color:var(--text-muted); text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } else if (cam.Status === 'dismissed') { %>
+                        <div style="font-size:0.82rem; padding:2px 0; color:#b45309; text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } else { %>
                         <div style="font-size:0.82rem; padding:2px 0;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } %>
                     <% }); %>
                     <% if (!(absentByGroup[pair[0]] || []).length) { %><div style="font-size:0.78rem; color:var(--text-muted); font-style:italic;">None</div><% } %>
                 </div>
                 <% }); %>
             </div>
+            </div><%/* end attGlanceGrid */%>
         </div>
+        <script>
+        (function() {
+            if (localStorage.getItem('attGlanceHidden') === '1') {
+                document.getElementById('attGlanceGrid').style.display = 'none';
+                document.getElementById('attGlanceToggle').textContent = 'Show';
+            }
+        })();
+        function toggleAttGlance() {
+            const grid = document.getElementById('attGlanceGrid');
+            const btn  = document.getElementById('attGlanceToggle');
+            const hiding = grid.style.display !== 'none';
+            grid.style.display = hiding ? 'none' : '';
+            btn.textContent = hiding ? 'Show' : 'Hide';
+            localStorage.setItem('attGlanceHidden', hiding ? '1' : '0');
+        }
+        </script>
         <% } %>
 
         <%/* ── Director Notes ── */%>

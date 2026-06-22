@@ -51,7 +51,7 @@
 
         <% if (alertMessage) { %>
             <div class="alert" style="<%= alertMessage === 'Saved' ? '' : 'background:#fee2e2; color:#991b1b; border-color:#fca5a5;' %>">
-                <%= alertMessage === 'Saved' ? '&#10003; Changes saved successfully.' : alertMessage %>
+                <% if (alertMessage === 'Saved') { %>&#10003; Changes saved successfully.<% } else { %><%= alertMessage %><% } %>
             </div>
         <% } %>
 

@@ -127,13 +127,25 @@ function computeBusAttStats(session, today) {
 }
 
 function getAbsentByGroup(today, camperIdSet) {
-    const rows = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor
+    const attRows = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor, a.Status
         FROM Attendance a JOIN Campers c ON c.CamperID = a.CamperID
-        WHERE a.Date = ? AND a.SessionType = 'homegroup_am' AND a.Status = 'absent'
-        ORDER BY c.HomeGroupColor, c.LastName
+        WHERE a.Date = ? AND a.SessionType = 'homegroup_am' AND a.Status IN ('absent', 'late')
     `).all(today);
-    const filtered = camperIdSet ? rows.filter(r => camperIdSet.has(r.CamperID)) : rows;
+    const dismissalRows = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor, 'dismissed' AS Status
+        FROM EarlyDismissals ed JOIN Campers c ON c.CamperID = ed.CamperID
+        WHERE ed.Date = ?
+    `).all(today);
+    const byId = new Map();
+    for (const r of attRows) byId.set(r.CamperID, r);
+    for (const r of dismissalRows) byId.set(r.CamperID, r); // dismissed overwrites absent/late
+    const all = [...byId.values()];
+    const filtered = camperIdSet ? all.filter(r => camperIdSet.has(r.CamperID)) : all;
+    filtered.sort((a, b) =>
+        (a.HomeGroupColor || '').localeCompare(b.HomeGroupColor || '') ||
+        a.LastName.localeCompare(b.LastName)
+    );
     const map = {};
     for (const r of filtered) {
         if (!map[r.HomeGroupColor]) map[r.HomeGroupColor] = [];
@@ -1766,9 +1778,11 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
     catch (e) { return res.redirect('/settings?message=File+Read+Error'); }
     finally { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); }
 
-    // Split into pages at "ACR-005 Attendance Roster by Cabin //" page-break lines.
-    // Each page contains one group/specialty-camp section.
-    const pages = rawText.split(/ACR-005 Attendance Roster by Cabin \/\//);
+    // Split into pages at each occurrence of "ACR-005 Attendance Roster by Cabin".
+    // Handles both CSV format (title followed by commas) and text/MD format (title followed by //).
+    // Extra empty segments (from the footer+header pair in MD format) are harmlessly dropped
+    // when no Camper,Color header is found (headerIdx === -1).
+    const pages = rawText.split(/(?:\r?\n|^)ACR-005 Attendance Roster by Cabin(?:,| \/\/|$)/m);
 
     // Labels that identify session/cabin header rows (not counselor names)
     const SESSION_PREFIXES = ['SP Week', 'KP Week', 'LP Week', 'LIT Session', 'Robotics', 'Unassigned Cabin'];
@@ -1792,7 +1806,9 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
             const fields = parseCsvLine(l);
             const row = {};
             headerFields.forEach((h, idx) => { row[h.trim()] = (fields[idx] || '').trim(); });
-            if (row['Camper']) dataRows.push(row);
+            // Camper names are always "Last, First" — rows without a comma are page headers,
+            // counselor names, session labels, or column header repetitions.
+            if (row['Camper'] && row['Camper'].includes(',')) dataRows.push(row);
         }
         if (dataRows.length === 0) continue;
 

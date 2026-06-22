@@ -145,7 +145,7 @@
                         <%= item.label %>
                     </div>
                 </div>
-                <span class="<%= item.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= item.submitted ? '&#10003; Submitted' : 'Pending' %></span>
+                <span class="<%= item.submitted ? 'badge-submitted' : 'badge-pending' %>"><% if (item.submitted) { %>&#10003; Submitted<% } else { %>Pending<% } %></span>
             </a>
             <% }); %>
             <% if (flatItems.length === 0) { %>
