@@ -126,6 +126,22 @@ function computeBusAttStats(session, today) {
     return { total, submitted };
 }
 
+function getAbsentByGroup(today, camperIdSet) {
+    const rows = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor
+        FROM Attendance a JOIN Campers c ON c.CamperID = a.CamperID
+        WHERE a.Date = ? AND a.SessionType = 'homegroup_am' AND a.Status = 'absent'
+        ORDER BY c.HomeGroupColor, c.LastName
+    `).all(today);
+    const filtered = camperIdSet ? rows.filter(r => camperIdSet.has(r.CamperID)) : rows;
+    const map = {};
+    for (const r of filtered) {
+        if (!map[r.HomeGroupColor]) map[r.HomeGroupColor] = [];
+        map[r.HomeGroupColor].push(r);
+    }
+    return map;
+}
+
 function computeHomegroupAttStats(session, today) {
     const total = db.prepare(`
         SELECT COUNT(DISTINCT co.CounselorID) as n
@@ -924,9 +940,11 @@ app.get('/staff', (req, res) => {
         ? allScheduleChanges.filter(c => rosterCamperIds.has(c.CamperID))
         : allScheduleChanges;
 
+    const absentByGroup = getAbsentByGroup(today, rosterCamperIds);
+
     res.render('staff-hub', {
         selectedCounselorName, announcement, releasedSchedule, releasedSessionLabel, yesterdayWinner,
-        todayPickups, todayLateArrivals, todayEarlyDismissals, todayScheduleChanges, today
+        todayPickups, todayLateArrivals, todayEarlyDismissals, todayScheduleChanges, today, absentByGroup
     });
 });
 
@@ -1007,13 +1025,15 @@ app.get('/admin', (req, res) => {
     const adminName  = req.cookies.adminName || null;
     const adminUsers = db.prepare("SELECT name FROM AdminUsers ORDER BY name").all().map(r => r.name);
 
+    const absentByGroup = getAbsentByGroup(today);
+
     res.render('index', {
         camperTotal, activityCount, groupCounts,
         pendingChanges, waitlistCount,
         hubStats, today,
         alertMessage: req.query.message,
         announcement, directorNotes, sessions,
-        adminName, adminUsers
+        adminName, adminUsers, absentByGroup
     });
 });
 
@@ -1450,9 +1470,15 @@ app.get('/camper/:id', (req, res) => {
             ORDER BY s.PeriodNumber ASC
         `).all(req.params.id);
 
-        const counselors = db.prepare(
-            'SELECT CounselorID, FirstName, LastName, HomeGroupColor FROM Counselors ORDER BY HomeGroupColor, LastName ASC'
-        ).all();
+        const counselors = db.prepare(`
+            SELECT c.CounselorID, c.FirstName, c.LastName,
+                COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
+            FROM Counselors c
+            LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
+            WHERE c.StaffRole = 'Counselor'
+              AND COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) IN ('Red','Carolina','Green','Navy')
+            ORDER BY COALESCE(cwa.HomeGroupColor, c.HomeGroupColor), c.LastName
+        `).all(getActiveWeek());
 
         res.render('camper-profile', { camper, schedule, counselors, alertMessage: req.query.message || null });
     } catch (err) {
@@ -1703,6 +1729,21 @@ function parseLastFirst(raw) {
     };
 }
 
+// Synchronous CSV line parser — handles quoted fields with embedded commas.
+function parseCsvLine(line) {
+    const fields = [];
+    let field = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') { inQuotes = !inQuotes; }
+        else if (c === ',' && !inQuotes) { fields.push(field); field = ''; }
+        else { field += c; }
+    }
+    fields.push(field);
+    return fields;
+}
+
 // Color mapping from ACR-005 display values to DB values.
 const COLOR_MAP = {
     'kinderplace': 'KinderPlace',
@@ -1715,6 +1756,7 @@ function mapColor(raw) {
 }
 
 // ACR-005 roster upload: upserts campers with color, lunch, shirt.
+// Parses homegroup section headers to assign CamperHomeGroups for the active week.
 // Does NOT touch Grade, BusRoute, ExtendedHours, or Schedules.
 app.post('/upload-campers', upload.single('file'), (req, res) => {
     if (!req.file) return res.redirect('/settings?message=No+file+uploaded');
@@ -1724,31 +1766,77 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
     catch (e) { return res.redirect('/settings?message=File+Read+Error'); }
     finally { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); }
 
-    // Find the real header row (contains "Camper,Color")
-    const lines = rawText.split(/\r?\n/);
-    const headerIdx = lines.findIndex(l => l.startsWith('Camper,Color') || l.startsWith('"Camper","Color"'));
-    if (headerIdx === -1) return res.redirect('/settings?message=Invalid+file+format+(ACR-005+expected)');
-    const csvSlice = lines.slice(headerIdx).join('\n');
+    // Split into pages at "ACR-005 Attendance Roster by Cabin //" page-break lines.
+    // Each page contains one group/specialty-camp section.
+    const pages = rawText.split(/ACR-005 Attendance Roster by Cabin \/\//);
 
-    const results = [];
-    const Readable = require('stream').Readable;
-    const s = new Readable(); s.push(csvSlice); s.push(null);
-    s.pipe(csv())
-     .on('data', d => results.push(d))
-     .on('end', () => {
-        const safeTrim = v => { const s = (v && typeof v === 'string') ? v.trim() : ''; return s.toLowerCase() === 'null' ? '' : s; };
-        const findCamper   = db.prepare("SELECT CamperID, CampLunch FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
-        const insertCamper = db.prepare("INSERT INTO Campers (FirstName, LastName, HomeGroupColor, ShirtSize, CampLunch) VALUES (?,?,?,?,?)");
-        const updateCamper = db.prepare("UPDATE Campers SET HomeGroupColor=?, ShirtSize=?, CampLunch=? WHERE CamperID=?");
+    // Labels that identify session/cabin header rows (not counselor names)
+    const SESSION_PREFIXES = ['SP Week', 'KP Week', 'LP Week', 'LIT Session', 'Robotics', 'Unassigned Cabin'];
 
-        try {
-            db.transaction((rows) => {
-                for (const row of rows) {
+    const sections = [];
+    for (const page of pages) {
+        const lines = page.split(/\r?\n/);
+
+        // Find the "Camper,Color,..." data header row
+        const headerIdx = lines.findIndex(l =>
+            l.trim().startsWith('Camper,Color') || l.trim().startsWith('"Camper","Color"')
+        );
+        if (headerIdx === -1) continue;
+
+        // Parse data rows synchronously
+        const headerFields = parseCsvLine(lines[headerIdx].trim());
+        const dataRows = [];
+        for (let i = headerIdx + 1; i < lines.length; i++) {
+            const l = lines[i].trim();
+            if (!l) continue;
+            const fields = parseCsvLine(l);
+            const row = {};
+            headerFields.forEach((h, idx) => { row[h.trim()] = (fields[idx] || '').trim(); });
+            if (row['Camper']) dataRows.push(row);
+        }
+        if (dataRows.length === 0) continue;
+
+        // Detect homegroup sections — they have a "Home Group-" line before the data header.
+        // Structure: "Home Group- Week 1" → "SP Week 1" → [Counselor Name] → ",,,Week 1" → header
+        let counselorName = null;
+        const hgIdx = lines.findIndex(l => l.trim().startsWith('Home Group-'));
+        if (hgIdx !== -1) {
+            for (let i = hgIdx + 1; i < headerIdx; i++) {
+                const l = lines[i].trim();
+                // Skip empty, comma-only (e.g. ",,,Week 1,..."), and session label lines
+                if (!l || l.startsWith(',') || l.startsWith('ACR-005')) continue;
+                if (SESSION_PREFIXES.some(p => l.startsWith(p))) continue;
+                // First remaining line is the counselor name
+                const name = parseCsvLine(l)[0].trim();
+                if (name) { counselorName = name; break; }
+            }
+        }
+
+        sections.push({ counselorName, dataRows });
+    }
+
+    if (sections.length === 0) return res.redirect('/settings?message=Invalid+file+format+(ACR-005+expected)');
+
+    const safeTrim = v => { const s = (v && typeof v === 'string') ? v.trim() : ''; return s.toLowerCase() === 'null' ? '' : s; };
+    const findCamper    = db.prepare("SELECT CamperID, CampLunch FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
+    const insertCamper  = db.prepare("INSERT INTO Campers (FirstName, LastName, HomeGroupColor, ShirtSize, CampLunch) VALUES (?,?,?,?,?)");
+    const updateCamper  = db.prepare("UPDATE Campers SET HomeGroupColor=?, ShirtSize=?, CampLunch=? WHERE CamperID=?");
+    const findCounselor = db.prepare("SELECT CounselorID FROM Counselors WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
+    const upsertHg      = db.prepare("INSERT OR REPLACE INTO CamperHomeGroups (CamperID, WeekNumber, CounselorID) VALUES (?,?,?)");
+    const aw = getActiveWeek();
+
+    try {
+        db.transaction(() => {
+            for (const section of sections) {
+                // Resolve counselor ID once per section (null for specialty/unassigned sections)
+                let counselorId = null;
+                if (section.counselorName) {
+                    counselorId = findCounselor.get(section.counselorName)?.CounselorID || null;
+                }
+
+                for (const row of section.dataRows) {
                     const camperRaw = safeTrim(row['Camper']);
-                    // Skip blank rows and repeated section/header rows
-                    if (!camperRaw || camperRaw === 'Camper' || camperRaw.startsWith('ACR-005') ||
-                        camperRaw.startsWith('To go') || camperRaw.startsWith('Filter') ||
-                        camperRaw.startsWith('((')) continue;
+                    if (!camperRaw) continue;
 
                     const { firstName, lastName } = parseLastFirst(camperRaw);
                     if (!firstName && !lastName) continue;
@@ -1759,22 +1847,28 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
                     const fullName = `${firstName} ${lastName}`;
                     const existing = findCamper.get(fullName);
 
+                    let camperId;
                     if (existing) {
-                        // Preserve Allergy if already set
                         const lunch = existing.CampLunch === 'Allergy' ? 'Allergy' : (lunchRaw || 'No');
                         updateCamper.run(color, shirt, lunch, existing.CamperID);
+                        camperId = existing.CamperID;
                     } else {
-                        insertCamper.run(firstName, lastName, color, shirt, lunchRaw || 'No');
+                        const info = insertCamper.run(firstName, lastName, color, shirt, lunchRaw || 'No');
+                        camperId = info.lastInsertRowid;
+                    }
+
+                    if (counselorId && camperId) {
+                        upsertHg.run(camperId, aw, counselorId);
                     }
                 }
-            })(results);
+            }
+        })();
 
-            res.redirect('/settings?message=Camper+Roster+Import+Success');
-        } catch (err) {
-            console.error('ACR-005 upload error:', err);
-            res.redirect('/settings?message=Database+Error+Check+Console');
-        }
-     });
+        res.redirect('/settings?message=Camper+Roster+Import+Success');
+    } catch (err) {
+        console.error('ACR-005 upload error:', err);
+        res.redirect('/settings?message=Database+Error+Check+Console');
+    }
 });
 
 // Master Schedule upload: enriches existing campers with grade, bus, extended hours, and P1–P5 schedules.

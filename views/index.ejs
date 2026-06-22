@@ -192,6 +192,37 @@
 
         </div>
 
+        <%
+        const anyAbsent = Object.values(absentByGroup).some(arr => arr.length > 0);
+        %>
+        <% if (anyAbsent) { %>
+        <div class="card" style="margin-top:20px;">
+            <h4 style="margin:0 0 12px; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Absent — AM Homegroup</h4>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
+                <% ['Navy','Green','Carolina','Red'].forEach(function(color) { %>
+                <div style="background:#f8fafc; border-radius:8px; padding:10px 14px;">
+                    <div style="font-size:0.75rem; font-weight:600; margin-bottom:6px;"><span class="tag <%= color %>"><%= color %></span></div>
+                    <% (absentByGroup[color] || []).forEach(function(cam) { %>
+                        <div style="font-size:0.82rem; padding:2px 0;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                    <% }); %>
+                    <% if (!(absentByGroup[color] || []).length) { %><div style="font-size:0.78rem; color:var(--text-muted); font-style:italic;">None absent</div><% } %>
+                </div>
+                <% }); %>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px;">
+                <% [['SPLIT','SPLIT'],['KinderPlace','Kinder Place'],['LilPlace',"Li'l Place"],['SPRC','SPRC']].forEach(function(pair) { %>
+                <div style="background:#f8fafc; border-radius:8px; padding:10px 14px;">
+                    <div style="font-size:0.75rem; font-weight:600; margin-bottom:6px;"><span class="tag <%= pair[0] %>" style="font-size:0.65rem;"><%= pair[1] %></span></div>
+                    <% (absentByGroup[pair[0]] || []).forEach(function(cam) { %>
+                        <div style="font-size:0.82rem; padding:2px 0;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                    <% }); %>
+                    <% if (!(absentByGroup[pair[0]] || []).length) { %><div style="font-size:0.78rem; color:var(--text-muted); font-style:italic;">None</div><% } %>
+                </div>
+                <% }); %>
+            </div>
+        </div>
+        <% } %>
+
         <%/* ── Director Notes ── */%>
         <div class="card" style="margin-bottom:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">

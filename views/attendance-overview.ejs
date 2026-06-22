@@ -137,7 +137,7 @@
             <% flatItems.forEach(function(item) { %>
             <a href="<%= item.link %>" class="att-flat-item">
                 <div>
-                    <div class="att-flat-cat"><%= item.icon %> <%= item.cat %></div>
+                    <div class="att-flat-cat"><%- item.icon %> <%= item.cat %></div>
                     <div class="att-flat-name">
                         <% if (item.color) { %>
                         <span class="tag <%= item.color %>" style="font-size:0.65rem; padding:1px 6px;"><%= item.color %></span>

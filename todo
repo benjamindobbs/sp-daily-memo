@@ -1,0 +1,4 @@
+Add attendance overview with 2x2 grid for main camp, and a 1x4 grid for specialty camps to hub page of admin and staff views
+Fix Symbols not showing on staff attendance view, currently showing '&#127939;' etc.
+Camper details for Home Counselor shows '[Counsleor Name ()]', remove trailing parentheses.
+Dropdown for Home Counselor in Camper Detail Few no formatting
