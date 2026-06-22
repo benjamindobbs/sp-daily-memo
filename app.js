@@ -2193,6 +2193,9 @@ app.post('/clear-campers', (req, res) => {
     db.prepare("DELETE FROM Waitlists").run();
     db.prepare("DELETE FROM Attendance").run();
     db.prepare("DELETE FROM EarlyDismissals").run();
+    db.prepare("DELETE FROM ScheduledPickups").run();
+    db.prepare("DELETE FROM ScheduleChanges").run();
+    db.prepare("DELETE FROM CamperHomeGroups").run();
     db.prepare("DELETE FROM Campers").run();
     res.redirect('/settings?message=Campers+Cleared');
 });
