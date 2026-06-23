@@ -130,7 +130,7 @@ function getAbsentByGroup(today, camperIdSet) {
     const attRows = db.prepare(`
         SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor, a.Status
         FROM Attendance a JOIN Campers c ON c.CamperID = a.CamperID
-        WHERE a.Date = ? AND a.SessionType = 'homegroup_am' AND a.Status IN ('absent', 'late')
+        WHERE a.Date = ? AND a.SessionType = 'homegroup_am' AND a.Status IN ('absent', 'late', 'nurse')
     `).all(today);
     const dismissalRows = db.prepare(`
         SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor, 'dismissed' AS Status
@@ -152,6 +152,13 @@ function getAbsentByGroup(today, camperIdSet) {
         map[r.HomeGroupColor].push(r);
     }
     return map;
+}
+
+function getNurseAMSet(date) {
+    return new Set(
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='nurse'")
+            .all(date).map(r => r.CamperID)
+    );
 }
 
 function computeHomegroupAttStats(session, today) {
@@ -231,6 +238,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/homegroup-assignment',
     '/attendance/dismissal-archive',
     '/dismissals',
+    '/nurse',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -720,6 +728,20 @@ try {
     if (!cCols.includes('Phone')) db.exec("ALTER TABLE Counselors ADD COLUMN Phone TEXT");
     if (!cCols.includes('Email')) db.exec("ALTER TABLE Counselors ADD COLUMN Email TEXT");
 } catch(e) { console.error('[migration] Counselors.Phone/Email:', e.message); }
+
+try {
+    db.exec(`CREATE TABLE IF NOT EXISTS NurseLog (
+        VisitID      INTEGER PRIMARY KEY AUTOINCREMENT,
+        Date         TEXT    NOT NULL,
+        CamperID     INTEGER NOT NULL,
+        CheckInTime  TEXT    NOT NULL,
+        CheckOutTime TEXT,
+        Notes        TEXT,
+        Dismissed    INTEGER DEFAULT 0,
+        CreatedBy    TEXT,
+        FOREIGN KEY (CamperID) REFERENCES Campers(CamperID)
+    )`);
+} catch(e) { console.error('[migration] NurseLog:', e.message); }
 
 // Migrate Staff rows into Counselors (one-time; skips if already present by name)
 try {
@@ -2197,6 +2219,7 @@ app.post('/clear-campers', (req, res) => {
     db.prepare("DELETE FROM ScheduledPickups").run();
     db.prepare("DELETE FROM ScheduleChanges").run();
     db.prepare("DELETE FROM CamperHomeGroups").run();
+    db.prepare("DELETE FROM NurseLog").run();
     db.prepare("DELETE FROM Campers").run();
     res.redirect('/settings?message=Campers+Cleared');
 });
@@ -2643,7 +2666,7 @@ app.get('/attendance', (req, res) => {
 
     // Late arrivals count
     const lateCount = db.prepare(
-        "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='absent'"
+        "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status IN ('absent','nurse')"
     ).get(date)?.n || 0;
 
     let filteredHomegroupSessions = homegroupSessions;
@@ -2697,7 +2720,7 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
-        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='absent'")
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status IN ('absent','nurse')")
             .all(date).forEach(r => absentAMSet.add(r.CamperID));
     }
     const absentBusAMSet = new Set(
@@ -2718,12 +2741,14 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
             .all(date, sessionType).map(r => r.CamperID)
     );
 
+    const nurseAMSet1 = getNurseAMSet(date);
     const pickupMap1 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
         absentBusAM: absentBusAMSet.has(c.CamperID),
+        nurseAM: nurseAMSet1.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
         seenEarlier: seenEarlierSet.has(c.CamperID),
         scheduledPickup: pickupMap1[c.CamperID] || null
@@ -2749,7 +2774,7 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
-        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='absent'")
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status IN ('absent','nurse')")
             .all(date).forEach(r => absentAMSet.add(r.CamperID));
     }
     const dismissedSet = new Set(
@@ -2766,11 +2791,13 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
             .all(date, sessionType).map(r => r.CamperID)
     );
 
+    const nurseAMSet2 = getNurseAMSet(date);
     const pickupMap2 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
+        nurseAM: nurseAMSet2.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
         seenEarlier: seenEarlierSet.has(c.CamperID),
         scheduledPickup: pickupMap2[c.CamperID] || null
@@ -2815,11 +2842,13 @@ app.get('/attendance/specialty/:color/:session', (req, res) => {
             .all(date, sessionType).map(r => r.CamperID)
     );
 
+    const nurseAMSet3 = getNurseAMSet(date);
     const pickupMap3 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
+        nurseAM: nurseAMSet3.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
         seenEarlier: seenEarlierSet.has(c.CamperID),
         scheduledPickup: pickupMap3[c.CamperID] || null
@@ -2850,7 +2879,7 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
     `).all(period, activityName);
 
     const absentAMSet = new Set(
-        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='absent'")
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status IN ('absent','nurse')")
             .all(date).map(r => r.CamperID)
     );
     const dismissedSet = new Set(
@@ -2867,11 +2896,13 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
             .all(date, period, activityName).map(r => r.CamperID)
     );
 
+    const nurseAMSet4 = getNurseAMSet(date);
     const pickupMap4 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
+        nurseAM: nurseAMSet4.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
         seenEarlier: seenEarlierSet.has(c.CamperID),
         scheduledPickup: pickupMap4[c.CamperID] || null
@@ -2918,7 +2949,7 @@ app.get('/attendance/bus/:route/:session', (req, res) => {
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
-        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='absent'")
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status IN ('absent','nurse')")
             .all(date).forEach(r => absentAMSet.add(r.CamperID));
     }
     const dismissedSet = new Set(
@@ -2935,11 +2966,13 @@ app.get('/attendance/bus/:route/:session', (req, res) => {
             .all(date, sessionType).map(r => r.CamperID)
     );
 
+    const nurseAMSet5 = getNurseAMSet(date);
     const pickupMap5 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
+        nurseAM: nurseAMSet5.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
         seenEarlier: seenEarlierSet.has(c.CamperID),
         scheduledPickup: pickupMap5[c.CamperID] || null
@@ -2966,7 +2999,7 @@ app.get('/attendance/extended/:session', (req, res) => {
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
-        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='absent'")
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status IN ('absent','nurse')")
             .all(date).forEach(r => absentAMSet.add(r.CamperID));
     }
     const dismissedSet = new Set(
@@ -2983,11 +3016,13 @@ app.get('/attendance/extended/:session', (req, res) => {
             .all(date, sessionType).map(r => r.CamperID)
     );
 
+    const nurseAMSet6 = getNurseAMSet(date);
     const pickupMap6 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
+        nurseAM: nurseAMSet6.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
         seenEarlier: seenEarlierSet.has(c.CamperID),
         scheduledPickup: pickupMap6[c.CamperID] || null
@@ -3099,6 +3134,88 @@ app.get('/attendance/dismissal-archive', (req, res) => {
         WHERE sp.Date = ? ORDER BY sp.PickupTime
     `).all(date);
     res.render('attendance-dismissal-archive', { date, dismissals, checkIns, scheduledPickups });
+});
+
+// --- NURSE LOG ---
+function nowTimeStr() {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+app.get('/nurse', (req, res) => {
+    const today = todayStr();
+    const visits = db.prepare(`
+        SELECT n.VisitID, n.CheckInTime, n.CheckOutTime, n.Notes, n.Dismissed, n.CreatedBy,
+               c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor
+        FROM NurseLog n JOIN Campers c ON c.CamperID = n.CamperID
+        WHERE n.Date = ?
+        ORDER BY n.CheckInTime DESC
+    `).all(today);
+    const campers = db.prepare(
+        "SELECT CamperID, FirstName, LastName, HomeGroupColor FROM Campers ORDER BY LastName, FirstName"
+    ).all();
+    const message = req.query.message || null;
+    res.render('nurse', { visits, campers, today, message, viewMode: req.cookies.viewMode || 'admin' });
+});
+
+app.post('/nurse/checkin', (req, res) => {
+    const { camperId, notes } = req.body;
+    if (!camperId) return res.redirect('/nurse');
+    const today = todayStr();
+    const checkInTime = nowTimeStr();
+    const createdBy = getViewerName(req);
+    db.prepare(`
+        INSERT INTO NurseLog (Date, CamperID, CheckInTime, Notes, CreatedBy)
+        VALUES (?, ?, ?, ?, ?)
+    `).run(today, camperId, checkInTime, notes || null, createdBy);
+    // Mark homegroup_am attendance as 'nurse' (absent for headcount, labeled for rosters)
+    db.prepare(`
+        INSERT INTO Attendance (Date, CamperID, SessionType, PeriodNumber, ActivityName, Status, MarkedBy)
+        VALUES (?, ?, 'homegroup_am', 0, '', 'nurse', ?)
+        ON CONFLICT (Date, CamperID, SessionType, PeriodNumber, ActivityName) DO UPDATE SET
+            Status = 'nurse', MarkedBy = excluded.MarkedBy
+    `).run(today, camperId, createdBy);
+    res.redirect('/nurse');
+});
+
+app.post('/nurse/checkout/:visitId', (req, res) => {
+    const visitId = parseInt(req.params.visitId);
+    const checkOutTime = nowTimeStr();
+    db.prepare("UPDATE NurseLog SET CheckOutTime = ? WHERE VisitID = ?").run(checkOutTime, visitId);
+    res.redirect('/nurse');
+});
+
+app.post('/nurse/dismiss/:visitId', (req, res) => {
+    const visitId = parseInt(req.params.visitId);
+    const visit = db.prepare("SELECT * FROM NurseLog WHERE VisitID = ?").get(visitId);
+    if (!visit) return res.redirect('/nurse');
+    const today = todayStr();
+    const dismissalTime = nowTimeStr();
+    const markedBy = getViewerName(req);
+    // Check out if not already
+    if (!visit.CheckOutTime) {
+        db.prepare("UPDATE NurseLog SET CheckOutTime = ?, Dismissed = 1 WHERE VisitID = ?")
+            .run(dismissalTime, visitId);
+    } else {
+        db.prepare("UPDATE NurseLog SET Dismissed = 1 WHERE VisitID = ?").run(visitId);
+    }
+    // Insert into EarlyDismissals so they're marked dismissed on all attendance forms
+    db.prepare(`
+        INSERT INTO EarlyDismissals (Date, CamperID, DismissalTime, Notes, MarkedBy)
+        VALUES (?, ?, ?, 'Dismissed from nurse', ?)
+        ON CONFLICT (Date, CamperID) DO UPDATE SET
+            DismissalTime = excluded.DismissalTime,
+            Notes = excluded.Notes,
+            MarkedBy = excluded.MarkedBy
+    `).run(today, visit.CamperID, dismissalTime, markedBy);
+    res.redirect('/nurse');
+});
+
+app.post('/nurse/update-notes/:visitId', (req, res) => {
+    const visitId = parseInt(req.params.visitId);
+    const { notes } = req.body;
+    db.prepare("UPDATE NurseLog SET Notes = ? WHERE VisitID = ?").run(notes || null, visitId);
+    res.redirect('/nurse');
 });
 
 // --- SCHEDULED PICKUPS / DISMISSALS TOOL ---

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nurse Log | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .nurse-section-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin: 24px 0 10px;
+        }
+        .nurse-card {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .nurse-card.active {
+            border-left: 4px solid #ef4444;
+        }
+        .nurse-card.checked-out {
+            border-left: 4px solid #10b981;
+            opacity: 0.85;
+        }
+        .nurse-card.dismissed {
+            border-left: 4px solid #6366f1;
+            opacity: 0.75;
+        }
+        .nurse-card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .nurse-card-name {
+            font-weight: 700;
+            font-size: 1rem;
+            color: #1e293b;
+        }
+        .nurse-time-row {
+            display: flex;
+            gap: 16px;
+            font-size: 0.83rem;
+            color: var(--text-muted);
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .nurse-time-row strong { color: #1e293b; }
+        .nurse-badge {
+            display: inline-block;
+            padding: 2px 9px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+        .badge-active   { background: #fee2e2; color: #991b1b; }
+        .badge-out      { background: #d1fae5; color: #065f46; }
+        .badge-dismissed{ background: #ede9fe; color: #5b21b6; }
+        .nurse-notes-form {
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+        }
+        .nurse-notes-form textarea {
+            flex: 1;
+            padding: 6px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.83rem;
+            resize: vertical;
+            min-height: 48px;
+        }
+        .nurse-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .btn-nurse-out {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #6ee7b7;
+            padding: 5px 14px;
+            border-radius: 8px;
+            font-size: 0.83rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-nurse-dismiss {
+            background: #ede9fe;
+            color: #5b21b6;
+            border: 1px solid #c4b5fd;
+            padding: 5px 14px;
+            border-radius: 8px;
+            font-size: 0.83rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-nurse-notes {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-size: 0.83rem;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .checkin-form {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 4px;
+        }
+        .checkin-form h3 { margin: 0 0 16px; font-size: 0.95rem; }
+        .checkin-fields { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+        .checkin-fields select, .checkin-fields textarea {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.88rem;
+            background: white;
+        }
+        .checkin-fields select { min-width: 220px; }
+        .checkin-fields textarea { flex: 1; min-width: 180px; resize: none; height: 38px; }
+        .empty-state { text-align: center; padding: 24px; color: var(--text-muted); font-size: 0.88rem; }
+        .duration-chip { font-size: 0.72rem; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">&#128101; Staff Directory</a>
+        <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
+        <a href="/nurse" class="nav-btn primary">&#128137; Nurse</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
+        <a href="/logout" class="nav-btn" style="color:#ef4444;">Log Out</a>
+    </nav>
+
+    <div class="container-md">
+
+        <div class="page-header">
+            <div>
+                <h1 style="margin:0;">&#128137; Nurse Log</h1>
+                <p class="text-muted" style="margin:2px 0 0;"><%= today %></p>
+            </div>
+        </div>
+
+        <% if (message) { %>
+            <div class="alert"><%= message %></div>
+        <% } %>
+
+        <!-- CHECK-IN FORM -->
+        <div class="checkin-form">
+            <h3>Check Camper In</h3>
+            <form action="/nurse/checkin" method="POST">
+                <div class="checkin-fields">
+                    <select name="camperId" required>
+                        <option value="">— Select Camper —</option>
+                        <% campers.forEach(function(c) { %>
+                            <option value="<%= c.CamperID %>"><%= c.LastName %>, <%= c.FirstName %> (<%= c.HomeGroupColor %>)</option>
+                        <% }); %>
+                    </select>
+                    <textarea name="notes" placeholder="Notes (optional)"></textarea>
+                    <button type="submit" class="btn btn-primary">&#128137; Check In</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- CURRENTLY IN NURSE -->
+        <%
+        const activeVisits = visits.filter(v => !v.CheckOutTime && !v.Dismissed);
+        const completedVisits = visits.filter(v => v.CheckOutTime || v.Dismissed);
+        %>
+
+        <p class="nurse-section-title">Currently in Nurse (<%= activeVisits.length %>)</p>
+
+        <% if (activeVisits.length === 0) { %>
+            <div class="empty-state">No campers currently in the nurse&#39;s office.</div>
+        <% } else { %>
+            <% activeVisits.forEach(function(v) { %>
+            <div class="nurse-card active">
+                <div class="nurse-card-header">
+                    <span class="tag <%= v.HomeGroupColor %>"><%= v.HomeGroupColor %></span>
+                    <span class="nurse-card-name"><%= v.FirstName %> <%= v.LastName %></span>
+                    <span class="nurse-badge badge-active">&#128137; In Nurse</span>
+                </div>
+                <div class="nurse-time-row">
+                    <span>Checked in: <strong><%= v.CheckInTime %></strong></span>
+                    <% if (v.CreatedBy) { %><span class="duration-chip">by <%= v.CreatedBy %></span><% } %>
+                </div>
+                <% if (v.Notes) { %>
+                    <div style="font-size:0.85rem; color:#374151; background:#f8fafc; padding:6px 10px; border-radius:6px;"><%= v.Notes %></div>
+                <% } %>
+                <div class="nurse-actions">
+                    <form action="/nurse/checkout/<%= v.VisitID %>" method="POST" style="margin:0;">
+                        <button type="submit" class="btn-nurse-out">&#10003; Check Out</button>
+                    </form>
+                    <form action="/nurse/dismiss/<%= v.VisitID %>" method="POST" style="margin:0;"
+                          onsubmit="return confirm('Dismiss <%= v.FirstName %> <%= v.LastName %> from camp for the rest of the day?')">
+                        <button type="submit" class="btn-nurse-dismiss">&#128663; Dismiss from Camp</button>
+                    </form>
+                </div>
+                <!-- Inline notes update -->
+                <form action="/nurse/update-notes/<%= v.VisitID %>" method="POST" class="nurse-notes-form">
+                    <textarea name="notes" placeholder="Add / update notes…"><%= v.Notes || '' %></textarea>
+                    <button type="submit" class="btn-nurse-notes">Save Notes</button>
+                </form>
+            </div>
+            <% }); %>
+        <% } %>
+
+        <!-- TODAY'S LOG -->
+        <% if (completedVisits.length > 0) { %>
+        <p class="nurse-section-title">Today&#39;s Log — Previous Visits (<%= completedVisits.length %>)</p>
+
+        <% completedVisits.forEach(function(v) {
+            const cardClass = v.Dismissed ? 'dismissed' : 'checked-out';
+        %>
+        <div class="nurse-card <%= cardClass %>">
+            <div class="nurse-card-header">
+                <span class="tag <%= v.HomeGroupColor %>"><%= v.HomeGroupColor %></span>
+                <span class="nurse-card-name"><%= v.FirstName %> <%= v.LastName %></span>
+                <% if (v.Dismissed) { %>
+                    <span class="nurse-badge badge-dismissed">&#128663; Dismissed</span>
+                <% } else { %>
+                    <span class="nurse-badge badge-out">&#10003; Checked Out</span>
+                <% } %>
+            </div>
+            <div class="nurse-time-row">
+                <span>In: <strong><%= v.CheckInTime %></strong></span>
+                <% if (v.CheckOutTime) { %><span>Out: <strong><%= v.CheckOutTime %></strong></span><% } %>
+                <% if (v.CreatedBy) { %><span class="duration-chip">by <%= v.CreatedBy %></span><% } %>
+            </div>
+            <% if (v.Notes) { %>
+                <div style="font-size:0.85rem; color:#374151; background:#f8fafc; padding:6px 10px; border-radius:6px;"><%= v.Notes %></div>
+            <% } %>
+            <!-- Allow notes update and dismiss even on completed visits -->
+            <div class="nurse-actions">
+                <% if (!v.Dismissed) { %>
+                <form action="/nurse/dismiss/<%= v.VisitID %>" method="POST" style="margin:0;"
+                      onsubmit="return confirm('Dismiss <%= v.FirstName %> <%= v.LastName %> from camp for the rest of the day?')">
+                    <button type="submit" class="btn-nurse-dismiss">&#128663; Dismiss from Camp</button>
+                </form>
+                <% } %>
+            </div>
+            <form action="/nurse/update-notes/<%= v.VisitID %>" method="POST" class="nurse-notes-form">
+                <textarea name="notes" placeholder="Add / update notes…"><%= v.Notes || '' %></textarea>
+                <button type="submit" class="btn-nurse-notes">Save Notes</button>
+            </form>
+        </div>
+        <% }); %>
+        <% } %>
+
+    </div>
+
+</body>
+</html>
