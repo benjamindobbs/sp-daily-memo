@@ -125,7 +125,7 @@
                             </td>
                             <td>
                                 <div style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 2px;">
-                                    <span>&#128652; <%= c.BusRoute || 'Parent' %></span>
+                                    <span>&#128652; <% var _b = c.BusRoute; var _bn = parseFloat(_b); %><%= (_b && _b.toLowerCase() !== 'null') ? (isNaN(_bn) ? _b : Math.round(_bn)) : 'Parent' %></span>
                                     <span class="text-muted" style="font-size: 0.75rem;">&#9200; Ext: <%= c.ExtendedHours || 'No' %></span>
                                 </div>
                             </td>
