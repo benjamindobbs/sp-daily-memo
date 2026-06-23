@@ -1,1 +1,6 @@
-No ability to change homegroups
+Nurse log timestamps are in the wrong timezone
+Add searchbar to nurse camper checkin
+Add syringe emoji symbol next to camper names in attendance grid if in nurse
+Hide dismiss from camp button once camper checked out
+Campers checked out of nurse are not falling off the absent list in attendance grid
+Campers checked out of nurse still are locked as absent and showing in nurse pill. Campers should be returned to neutral when checked out of nurse so counselors can update attendance on arrival.

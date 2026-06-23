@@ -117,8 +117,9 @@
 
     <script>
         const WEEK         = <%- week %>;
-        const COUNSELORS           = <%- JSON.stringify(counselors) %>;
-        const SPECIALTY_COUNSELORS = <%- JSON.stringify(specialtyCounselors) %>;
+        const COUNSELORS             = <%- JSON.stringify(counselors) %>;
+        const SPECIALTY_COUNSELORS   = <%- JSON.stringify(specialtyCounselors) %>;
+        const UNASSIGNED_COUNSELORS  = <%- JSON.stringify(unassignedCounselors) %>;
         const CAMPERS      = <%- JSON.stringify(campers) %>;
 
         const COLORS = ['Red', 'Carolina', 'Green', 'Navy'];
@@ -144,6 +145,12 @@
         for (const c of SPECIALTY_COUNSELORS) {
             extendedHoursMap[c.CounselorID] = c.ExtendedHours || '';
         }
+        for (const c of UNASSIGNED_COUNSELORS) {
+            extendedHoursMap[c.CounselorID] = c.ExtendedHours || '';
+        }
+
+        // Group color assignments for currently-unassigned counselors
+        const groupColorMap = {};
 
         // Group counselors and campers by color
         const counselorsByColor = {};
@@ -193,7 +200,65 @@
                 updateUnassignedCount(color);
             }
 
+            if (UNASSIGNED_COUNSELORS.length > 0) buildUnassignedCounselorSection(container);
             if (SPECIALTY_COUNSELORS.length > 0) buildSpecialtyCounselorSection(container);
+        }
+
+        function buildUnassignedCounselorSection(container) {
+            const section = document.createElement('div');
+            section.className = 'hga-group-section';
+            section.style.marginTop = '32px';
+
+            const header = document.createElement('div');
+            header.className = 'hga-group-header';
+            header.style.cssText = 'border-left: 4px solid #dc2626;';
+            header.innerHTML = `
+                <span style="font-weight:700; font-size:0.9rem; color:#dc2626;">&#9888; Unassigned Counselors (${UNASSIGNED_COUNSELORS.length})</span>
+                <span class="hga-group-stats">Select a home group for each counselor below, then Save &mdash; page will reload to show them in their groups.</span>
+            `;
+            section.appendChild(header);
+
+            for (const c of UNASSIGNED_COUNSELORS) {
+                const block = document.createElement('div');
+                block.className = 'hga-counselor-block';
+                block.style.cssText = 'display:flex; align-items:center; gap:14px; flex-wrap:wrap;';
+
+                const nameEl = document.createElement('span');
+                nameEl.className = 'hga-counselor-name';
+                nameEl.textContent = `${c.FirstName} ${c.LastName}`;
+                block.appendChild(nameEl);
+
+                const colorSel = document.createElement('select');
+                colorSel.style.cssText = 'padding:5px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; font-family:inherit; background:white;';
+                colorSel.dataset.counselorId = c.CounselorID;
+                for (const [val, label] of [['','— Assign Group —'],['Red','Red'],['Carolina','Carolina'],['Green','Green'],['Navy','Navy']]) {
+                    const o = document.createElement('option');
+                    o.value = val; o.textContent = label;
+                    colorSel.appendChild(o);
+                }
+                colorSel.addEventListener('change', function() {
+                    groupColorMap[this.dataset.counselorId] = this.value;
+                });
+                block.appendChild(colorSel);
+
+                const extSel = document.createElement('select');
+                extSel.style.cssText = 'padding:3px 7px; border:1px solid var(--border-color); border-radius:6px; font-size:0.78rem; font-family:inherit; color:var(--text-muted); margin-left:auto;';
+                extSel.dataset.counselorId = c.CounselorID;
+                for (const [val, label] of [['','No Ext'],['AM','AM Ext'],['PM','PM Ext'],['Both','AM+PM']]) {
+                    const o = document.createElement('option');
+                    o.value = val; o.textContent = label;
+                    if ((extendedHoursMap[c.CounselorID] || '') === val) o.selected = true;
+                    extSel.appendChild(o);
+                }
+                extSel.addEventListener('change', function() {
+                    extendedHoursMap[parseInt(this.dataset.counselorId)] = this.value;
+                });
+                block.appendChild(extSel);
+
+                section.appendChild(block);
+            }
+
+            container.appendChild(section);
         }
 
         function buildSpecialtyCounselorSection(container) {
@@ -442,17 +507,23 @@
                 extPayload[cId] = val || '';
             }
 
+            const hasGroupChanges = Object.values(groupColorMap).some(v => v);
+
             fetch('/homegroup-assignment/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `weekNumber=${WEEK}&assignments=${encodeURIComponent(JSON.stringify(pairs))}&extendedHours=${encodeURIComponent(JSON.stringify(extPayload))}`
+                body: `weekNumber=${WEEK}&assignments=${encodeURIComponent(JSON.stringify(pairs))}&extendedHours=${encodeURIComponent(JSON.stringify(extPayload))}&groupColors=${encodeURIComponent(JSON.stringify(groupColorMap))}`
             })
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    const toast = document.getElementById('saveToast');
-                    toast.style.display = 'block';
-                    setTimeout(() => { toast.style.display = 'none'; }, 2500);
+                    if (hasGroupChanges) {
+                        location.reload();
+                    } else {
+                        const toast = document.getElementById('saveToast');
+                        toast.style.display = 'block';
+                        setTimeout(() => { toast.style.display = 'none'; }, 2500);
+                    }
                 }
             });
         }

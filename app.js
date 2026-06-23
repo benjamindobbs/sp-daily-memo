@@ -3142,6 +3142,19 @@ function nowTimeStr() {
     return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
+app.get('/debug-hg', (req, res) => {
+    if (req.cookies.adminAuth !== 'true') return res.status(403).json({ error: 'admin only' });
+    const week = parseInt(req.query.week) || getActiveWeek();
+    const counselorColors = db.prepare("SELECT HomeGroupColor, COUNT(*) as cnt FROM Counselors WHERE StaffRole='Counselor' GROUP BY HomeGroupColor ORDER BY HomeGroupColor").all();
+    const camperColors    = db.prepare("SELECT HomeGroupColor, COUNT(*) as cnt FROM Campers GROUP BY HomeGroupColor ORDER BY HomeGroupColor").all();
+    const chgCounts       = db.prepare("SELECT WeekNumber, COUNT(*) as cnt FROM CamperHomeGroups GROUP BY WeekNumber ORDER BY WeekNumber").all();
+    const cwaCount        = db.prepare("SELECT COUNT(*) as cnt FROM CounselorWeekAttributes WHERE WeekNumber=?").get(week);
+    const cwaColored      = db.prepare("SELECT COUNT(*) as cnt FROM CounselorWeekAttributes WHERE WeekNumber=? AND HomeGroupColor IN ('Red','Carolina','Green','Navy')").get(week);
+    const unassigned      = db.prepare("SELECT FirstName, LastName FROM Counselors co LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID=co.CounselorID AND cwa.WeekNumber=? WHERE co.StaffRole='Counselor' AND COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) IS NULL ORDER BY co.LastName").all(week);
+    const activeWeek      = db.prepare("SELECT weekNumber, label FROM Sessions WHERE isActive=1").get();
+    res.json({ activeWeek, queriedWeek: week, counselorColors, camperColors, chgCounts, cwaCount, cwaColored, unassignedCounselors: unassigned });
+});
+
 app.get('/nurse', (req, res) => {
     const today = todayStr();
     const visits = db.prepare(`
@@ -4023,6 +4036,16 @@ app.get('/homegroup-assignment', (req, res) => {
         ORDER BY COALESCE(cwa.HomeGroupColor, co.HomeGroupColor), co.LastName, co.FirstName
     `).all(week);
 
+    const unassignedCounselors = db.prepare(`
+        SELECT co.CounselorID, co.FirstName, co.LastName,
+               cwa.ExtendedHours AS ExtendedHours
+        FROM Counselors co
+        LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = co.CounselorID AND cwa.WeekNumber = ?
+        WHERE co.StaffRole = 'Counselor'
+          AND COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) IS NULL
+        ORDER BY co.LastName, co.FirstName
+    `).all(week);
+
     const campers = db.prepare(`
         SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
                chg.CounselorID AS AssignedCounselorID
@@ -4033,7 +4056,7 @@ app.get('/homegroup-assignment', (req, res) => {
     `).all(week);
 
     res.render('homegroup-assignment', {
-        week, sessions, counselors, specialtyCounselors, campers,
+        week, sessions, counselors, specialtyCounselors, unassignedCounselors, campers,
         activeWeek: getActiveWeek()
     });
 });
@@ -4042,13 +4065,20 @@ app.post('/homegroup-assignment/save', (req, res) => {
     const week = parseInt(req.body.weekNumber) || getActiveWeek();
     let assignments = [];
     let extHours = {};
-    try { assignments = JSON.parse(req.body.assignments || '[]'); } catch { /* bad JSON */ }
-    try { extHours  = JSON.parse(req.body.extendedHours || '{}'); } catch { /* bad JSON */ }
+    let groupColors = {};
+    try { assignments  = JSON.parse(req.body.assignments   || '[]'); } catch { /* bad JSON */ }
+    try { extHours     = JSON.parse(req.body.extendedHours || '{}'); } catch { /* bad JSON */ }
+    try { groupColors  = JSON.parse(req.body.groupColors   || '{}'); } catch { /* bad JSON */ }
 
     const upsertAttr = db.prepare(`
         INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
         VALUES (?, ?, NULL, NULL, NULL, ?)
         ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET ExtendedHours = excluded.ExtendedHours
+    `);
+    const upsertColor = db.prepare(`
+        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
+        VALUES (?, ?, ?, NULL, NULL, NULL)
+        ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET HomeGroupColor = excluded.HomeGroupColor
     `);
 
     db.transaction(() => {
@@ -4062,9 +4092,13 @@ app.post('/homegroup-assignment/save', (req, res) => {
         for (const [cId, ext] of Object.entries(extHours)) {
             upsertAttr.run(parseInt(cId), week, ext || null);
         }
+        for (const [cId, color] of Object.entries(groupColors)) {
+            if (color) upsertColor.run(parseInt(cId), week, color);
+        }
     })();
 
-    res.json({ success: true });
+    const hasGroupChanges = Object.values(groupColors).some(v => v);
+    res.json({ success: true, hasGroupChanges });
 });
 
 app.post('/homegroup-assignment/mirror', (req, res) => {
