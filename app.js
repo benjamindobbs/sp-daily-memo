@@ -1276,16 +1276,18 @@ app.get('/class-roster/:period/:activity', (req, res) => {
 
         const activity = db.prepare('SELECT * FROM Activities WHERE Name = ?').get(activityName);
 
+        const activeWeek = getActiveWeek();
         const campers = db.prepare(`
-            SELECT c.CamperID, c.FirstName, c.LastName, c.Age, c.HomeGroupColor,
+            SELECT c.CamperID, c.FirstName, c.LastName, c.Grade, c.HomeGroupColor,
                    c.BusRoute, c.ExtendedHours,
                    n.CounselorID, n.FirstName AS CounselorFirstName, n.LastName AS CounselorLastName
             FROM Campers c
             JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper'
-            LEFT JOIN Counselors n ON c.HomeGroupCounselorID = n.CounselorID
+            LEFT JOIN CamperHomeGroups chg ON chg.CamperID = c.CamperID AND chg.WeekNumber = ?
+            LEFT JOIN Counselors n ON n.CounselorID = COALESCE(chg.CounselorID, c.HomeGroupCounselorID)
             WHERE s.PeriodNumber = ? AND s.ActivityName = ?
             ORDER BY c.HomeGroupColor, c.LastName
-        `).all(period, activityName);
+        `).all(activeWeek, period, activityName);
 
         const colorGroups = [...new Set(campers.map(c => c.HomeGroupColor).filter(Boolean))];
 
@@ -1300,7 +1302,6 @@ app.get('/class-roster/:period/:activity', (req, res) => {
             WHERE s.PeriodNumber = ? AND s.ActivityName = ?
         `).all(period, activityName);
 
-        const activeWeek = getActiveWeek();
         const counselors = db.prepare(`
             SELECT c.CounselorID, c.FirstName, c.LastName,
                    COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
