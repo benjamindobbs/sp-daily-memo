@@ -177,12 +177,17 @@
             <h3>Check Camper In</h3>
             <form action="/nurse/checkin" method="POST">
                 <div class="checkin-fields">
-                    <select name="camperId" required>
-                        <option value="">— Select Camper —</option>
-                        <% campers.forEach(function(c) { %>
-                            <option value="<%= c.CamperID %>"><%= c.LastName %>, <%= c.FirstName %> (<%= c.HomeGroupColor %>)</option>
-                        <% }); %>
-                    </select>
+                    <div style="display:flex; flex-direction:column; gap:4px; min-width:220px;">
+                        <input type="text" id="camperSearch" placeholder="Search camper…" autocomplete="off"
+                            oninput="filterNurseCampers(this.value)"
+                            style="padding:8px 12px; border:1px solid var(--border-color); border-radius:8px; font-size:0.88rem; font-family:inherit;">
+                        <select name="camperId" id="camperSelect" required>
+                            <option value="">— Select Camper —</option>
+                            <% campers.forEach(function(c) { %>
+                                <option value="<%= c.CamperID %>"><%= c.LastName %>, <%= c.FirstName %> (<%= c.HomeGroupColor %>)</option>
+                            <% }); %>
+                        </select>
+                    </div>
                     <textarea name="notes" placeholder="Notes (optional)"></textarea>
                     <button type="submit" class="btn btn-primary">&#128137; Check In</button>
                 </div>
@@ -257,15 +262,6 @@
             <% if (v.Notes) { %>
                 <div style="font-size:0.85rem; color:#374151; background:#f8fafc; padding:6px 10px; border-radius:6px;"><%= v.Notes %></div>
             <% } %>
-            <!-- Allow notes update and dismiss even on completed visits -->
-            <div class="nurse-actions">
-                <% if (!v.Dismissed) { %>
-                <form action="/nurse/dismiss/<%= v.VisitID %>" method="POST" style="margin:0;"
-                      onsubmit="return confirm('Dismiss <%= v.FirstName %> <%= v.LastName %> from camp for the rest of the day?')">
-                    <button type="submit" class="btn-nurse-dismiss">&#128663; Dismiss from Camp</button>
-                </form>
-                <% } %>
-            </div>
             <form action="/nurse/update-notes/<%= v.VisitID %>" method="POST" class="nurse-notes-form">
                 <textarea name="notes" placeholder="Add / update notes…"><%= v.Notes || '' %></textarea>
                 <button type="submit" class="btn-nurse-notes">Save Notes</button>
@@ -276,5 +272,16 @@
 
     </div>
 
+    <script>
+        function filterNurseCampers(term) {
+            const lower = term.trim().toLowerCase();
+            const sel = document.getElementById('camperSelect');
+            for (const opt of sel.options) {
+                if (!opt.value) { opt.hidden = false; continue; }
+                opt.hidden = lower.length > 0 && !opt.textContent.toLowerCase().includes(lower);
+            }
+            if (sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex].hidden) sel.value = '';
+        }
+    </script>
 </body>
 </html>

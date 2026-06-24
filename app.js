@@ -783,6 +783,51 @@ db.exec(`UPDATE Campers SET BusRoute = CAST(CAST(BusRoute AS INTEGER) AS TEXT) W
 // Remove group color names erroneously stored as bus routes
 db.exec(`UPDATE Campers SET BusRoute = NULL WHERE BusRoute IN ('Red','Carolina','Green','Navy','LilPlace','KinderPlace','SPLIT','SPRC','Swim')`);
 
+// Clear any invalid HomeGroupColor values on Counselors (e.g. role names stored in the wrong column)
+db.exec(`UPDATE Counselors SET HomeGroupColor = NULL WHERE HomeGroupColor NOT IN ('Red','Carolina','Green','Navy','LilPlace','KinderPlace','SPLIT','SPRC','Swim') AND HomeGroupColor IS NOT NULL`);
+
+// Auto-infer counselor HomeGroupColor from CamperHomeGroups when no color assignments exist for a week.
+// This handles databases where counselors were imported without colors but campers were already assigned.
+try {
+    const upsertCWAColor = db.prepare(`
+        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
+        VALUES (?, ?, ?, NULL, NULL, NULL)
+        ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET HomeGroupColor = excluded.HomeGroupColor
+    `);
+    const weeksWithAssignments = db.prepare(
+        "SELECT DISTINCT WeekNumber FROM CamperHomeGroups"
+    ).all().map(r => r.WeekNumber);
+
+    for (const weekNumber of weeksWithAssignments) {
+        const alreadyColored = db.prepare(
+            "SELECT COUNT(*) as cnt FROM CounselorWeekAttributes WHERE WeekNumber=? AND HomeGroupColor IN ('Red','Carolina','Green','Navy')"
+        ).get(weekNumber).cnt;
+        if (alreadyColored > 0) continue;
+
+        // Find each counselor's most common camper color for this week
+        const rows = db.prepare(`
+            SELECT chg.CounselorID, c.HomeGroupColor, COUNT(*) as cnt
+            FROM CamperHomeGroups chg
+            JOIN Campers c ON c.CamperID = chg.CamperID
+            WHERE chg.WeekNumber = ? AND c.HomeGroupColor IN ('Red','Carolina','Green','Navy')
+            GROUP BY chg.CounselorID, c.HomeGroupColor
+        `).all(weekNumber);
+
+        const best = {};
+        for (const r of rows) {
+            if (!best[r.CounselorID] || r.cnt > best[r.CounselorID].cnt) {
+                best[r.CounselorID] = { color: r.HomeGroupColor, cnt: r.cnt };
+            }
+        }
+        for (const [cId, { color }] of Object.entries(best)) {
+            upsertCWAColor.run(parseInt(cId), weekNumber, color);
+        }
+        if (Object.keys(best).length) {
+            console.log(`[migration] inferred home group colors for ${Object.keys(best).length} counselors in week ${weekNumber}`);
+        }
+    }
+} catch(e) { console.error('[migration] infer counselor group colors:', e.message); }
+
 // --- WEEK HELPERS ---
 function getActiveWeek() {
     return db.prepare("SELECT weekNumber FROM Sessions WHERE isActive=1 LIMIT 1").get()?.weekNumber ?? 1;
@@ -2404,7 +2449,8 @@ app.post('/archive-schedule-changes', (req, res) => {
 // Helper: today's date as YYYY-MM-DD in local time
 function todayStr() {
     const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const eastern = new Date(d.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    return `${eastern.getFullYear()}-${String(eastern.getMonth()+1).padStart(2,'0')}-${String(eastern.getDate()).padStart(2,'0')}`;
 }
 function yesterdayStr() {
     const d = new Date();
@@ -3139,7 +3185,8 @@ app.get('/attendance/dismissal-archive', (req, res) => {
 // --- NURSE LOG ---
 function nowTimeStr() {
     const d = new Date();
-    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const eastern = new Date(d.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    return `${String(eastern.getHours()).padStart(2,'0')}:${String(eastern.getMinutes()).padStart(2,'0')}`;
 }
 
 app.get('/debug-hg', (req, res) => {
@@ -3193,8 +3240,13 @@ app.post('/nurse/checkin', (req, res) => {
 
 app.post('/nurse/checkout/:visitId', (req, res) => {
     const visitId = parseInt(req.params.visitId);
-    const checkOutTime = nowTimeStr();
-    db.prepare("UPDATE NurseLog SET CheckOutTime = ? WHERE VisitID = ?").run(checkOutTime, visitId);
+    const visit = db.prepare("SELECT * FROM NurseLog WHERE VisitID = ?").get(visitId);
+    if (!visit) return res.redirect('/nurse');
+    db.prepare("UPDATE NurseLog SET CheckOutTime = ? WHERE VisitID = ?").run(nowTimeStr(), visitId);
+    // Clear the nurse attendance so the camper returns to unmarked and counselors can re-mark them
+    db.prepare(
+        "DELETE FROM Attendance WHERE Date=? AND CamperID=? AND SessionType='homegroup_am' AND Status='nurse'"
+    ).run(visit.Date, visit.CamperID);
     res.redirect('/nurse');
 });
 

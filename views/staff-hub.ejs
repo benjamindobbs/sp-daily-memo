@@ -136,6 +136,8 @@
                         <div style="font-size:0.82rem; padding:2px 0; color:var(--text-muted); text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
                         <% } else if (cam.Status === 'dismissed') { %>
                         <div style="font-size:0.82rem; padding:2px 0; color:#b45309; text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } else if (cam.Status === 'nurse') { %>
+                        <div style="font-size:0.82rem; padding:2px 0; color:#991b1b;">&#128137; <%= cam.FirstName %> <%= cam.LastName %></div>
                         <% } else { %>
                         <div style="font-size:0.82rem; padding:2px 0;"><%= cam.FirstName %> <%= cam.LastName %></div>
                         <% } %>
@@ -153,6 +155,8 @@
                         <div style="font-size:0.82rem; padding:2px 0; color:var(--text-muted); text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
                         <% } else if (cam.Status === 'dismissed') { %>
                         <div style="font-size:0.82rem; padding:2px 0; color:#b45309; text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } else if (cam.Status === 'nurse') { %>
+                        <div style="font-size:0.82rem; padding:2px 0; color:#991b1b;">&#128137; <%= cam.FirstName %> <%= cam.LastName %></div>
                         <% } else { %>
                         <div style="font-size:0.82rem; padding:2px 0;"><%= cam.FirstName %> <%= cam.LastName %></div>
                         <% } %>
