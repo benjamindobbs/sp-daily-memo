@@ -73,6 +73,18 @@ function getActivePeriod(schedule, estMins) {
     return active;
 }
 
+// Given a pickup time (HH:MM) and a camper's HomeGroupColor, returns the clock block
+// they will be in. Green/Navy do Sports in the morning and Enrichment in the afternoon;
+// Red/Carolina do the reverse. Specialty camps return null (can't infer).
+function inferPeriodFromTime(timeMins, homeGroupColor) {
+    if (!homeGroupColor || SPECIALTY_CAMP_COLORS.includes(homeGroupColor)) return null;
+    if (timeMins < CAMP_DAY_START_MINS || timeMins >= CAMP_DAY_END_MINS) return null;
+    const isGreenNavy = homeGroupColor === 'Green' || homeGroupColor === 'Navy';
+    const isMorning   = timeMins < 13 * 60;
+    const schedule    = (isGreenNavy === isMorning) ? SPORTS_PERIODS : ENRICHMENT_PERIODS;
+    return getActivePeriod(schedule, timeMins)?.clockBlock ?? null;
+}
+
 function getHubMode(estMins) {
     if (estMins < CAMP_DAY_START_MINS) return 'precamp';
     if (estMins >= CAMP_DAY_END_MINS)  return 'postcamp';
@@ -3327,8 +3339,14 @@ app.get('/dismissals', (req, res) => {
 });
 
 app.post('/dismissals/schedule', (req, res) => {
-    const { camperId, date, pickupTime, periodNumber, notes } = req.body;
+    const { camperId, date, pickupTime, notes } = req.body;
     const createdBy = getViewerName(req);
+    const camper = db.prepare("SELECT HomeGroupColor FROM Campers WHERE CamperID = ?").get(parseInt(camperId));
+    let periodNumber = null;
+    if (pickupTime && camper) {
+        const [h, m] = pickupTime.split(':').map(Number);
+        periodNumber = inferPeriodFromTime(h * 60 + m, camper.HomeGroupColor);
+    }
     db.prepare(`
         INSERT INTO ScheduledPickups (Date, CamperID, PickupTime, PeriodNumber, Notes, CreatedBy)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -3337,7 +3355,7 @@ app.post('/dismissals/schedule', (req, res) => {
             PeriodNumber = excluded.PeriodNumber,
             Notes = excluded.Notes,
             CreatedBy = excluded.CreatedBy
-    `).run(date, parseInt(camperId), pickupTime, periodNumber ? parseInt(periodNumber) : null, notes || null, createdBy);
+    `).run(date, parseInt(camperId), pickupTime, periodNumber, notes || null, createdBy);
     res.redirect(`/dismissals?camperId=${camperId}`);
 });
 

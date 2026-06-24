@@ -1,0 +1,31 @@
+Counselor Scheduling Tool Bugs/Issues:
+1. Dropdowns not showing available Counselors prior to running schedule builder
+2. When running full auto in preference only mode, the expected behavior is that counselors are only assigned to classes they have specifically requested. Currently counselors are being assigned to classes that they have not requested.
+3. Counselors are being assigned after build schedule is run. Build schedule should only assigned the defaulted quanitity of slots to each class.
+4. Counselors are being scheduled to repeat classes in the same block (AM or PM)
+5. Please confirm that manually assigned counselors will not be written over by the auto scheduler.
+
+Move "Daily Memo" section above announcements window
+
+Add symbol for allergy lunch in camper lookup/profile
+
+Include home group counselor, bus route, extended hours, and camp lunch (Section called Camper Details on Admin view) in counselor view of camper profile. This needs to be read only. 
+
+For Future Update Disregard Below:
+Add printable report view with the following reports:
+Schedule by Counselor: 
+Produces PDF with all attendance rosters. Attendance rosters will have a header with the counselor name, class name, location if provided, and period, and a row for each camper plus a column for each day of the week. Each roster should get it's own page and pages should be collated by counselor for each of distribution.
+
+Camper Name Cards:
+Produce PDF with a 3x5" rectangle with each campers name (First Last) and a new line for each of their classes. These should all be ceneter aligned. It should be possible to print a 2x2 grid of these
+
+Add PDF Viewer for following:
+-Camper Notes
+-ICP Notes
+In data management add new upload section for PDFs for both options.
+In staff view add links to nav for Camper Notes and ICP notes.
+These will be password protected PDF files, if this is an issue let me know. 
+
+SPLIT Scheduler:
+Context-
+SPLITs are CITs, they work exclusively with Reds/Carolinas, and have a unique schedule. They follow the Red/Carolina Schedule with the exception of they do not have a period 4.

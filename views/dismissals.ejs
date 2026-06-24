@@ -126,16 +126,11 @@
                         </div>
                         <div class="form-field">
                             <label>Pickup Time</label>
-                            <input type="time" name="pickupTime" value="<%= existingPickup ? existingPickup.PickupTime : '' %>" required>
-                        </div>
-                        <div class="form-field">
-                            <label>During Period (optional)</label>
-                            <select name="periodNumber" style="width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-size:0.95rem; font-family:inherit; box-sizing:border-box;">
-                                <option value="">— Unknown —</option>
-                                <% [1,2,3,4,5,6].forEach(function(n) { %>
-                                <option value="<%= n %>"<%= existingPickup && existingPickup.PeriodNumber == n ? ' selected' : '' %>>Period <%= n %></option>
-                                <% }); %>
-                            </select>
+                            <input type="time" name="pickupTime" id="pickupTimeInput"
+                                value="<%= existingPickup ? existingPickup.PickupTime : '' %>"
+                                oninput="updatePeriodPreview(this.value)"
+                                required>
+                            <div id="periodPreview" style="margin-top:5px; font-size:0.82rem; color:var(--text-muted);"></div>
                         </div>
                         <div class="form-field">
                             <label>Notes (pickup person, location, etc.)</label>
@@ -197,5 +192,59 @@
             </div>
         </div>
     </div>
+    <% if (selectedCamper) { %>
+    <script>
+        const SPORTS_PERIODS     = <%- JSON.stringify([
+            {startH:9,  startM:0,  clockBlock:1},
+            {startH:10, startM:0,  clockBlock:2},
+            {startH:11, startM:0,  clockBlock:3},
+            {startH:13, startM:0,  clockBlock:4},
+            {startH:14, startM:20, clockBlock:5},
+            {startH:15, startM:30, clockBlock:6}
+        ]) %>;
+        const ENRICHMENT_PERIODS = <%- JSON.stringify([
+            {startH:9,  startM:0,  clockBlock:1},
+            {startH:10, startM:35, clockBlock:2},
+            {startH:13, startM:0,  clockBlock:4},
+            {startH:14, startM:40, clockBlock:5}
+        ]) %>;
+        const SPECIALTY_COLORS   = <%- JSON.stringify(['LilPlace','KinderPlace','SPLIT','SPRC','Swim']) %>;
+        const camperColor        = '<%- selectedCamper.HomeGroupColor || "" %>';
+
+        function inferPeriod(timeStr) {
+            if (!timeStr || !camperColor || SPECIALTY_COLORS.includes(camperColor)) return null;
+            const [h, m] = timeStr.split(':').map(Number);
+            const mins = h * 60 + m;
+            if (mins < 9 * 60 || mins >= 16 * 60 + 5) return null;
+            const isGreenNavy = camperColor === 'Green' || camperColor === 'Navy';
+            const isMorning   = mins < 13 * 60;
+            const schedule    = (isGreenNavy === isMorning) ? SPORTS_PERIODS : ENRICHMENT_PERIODS;
+            let active = null;
+            for (const p of schedule) {
+                if (mins >= p.startH * 60 + p.startM) active = p;
+                else break;
+            }
+            return active ? active.clockBlock : null;
+        }
+
+        function updatePeriodPreview(timeStr) {
+            const el = document.getElementById('periodPreview');
+            const period = inferPeriod(timeStr);
+            if (period !== null) {
+                el.textContent = '→ Will leave during Period ' + period;
+                el.style.color = 'var(--primary)';
+            } else if (timeStr) {
+                el.textContent = '→ Outside scheduled periods — period will not be recorded';
+                el.style.color = 'var(--text-muted)';
+            } else {
+                el.textContent = '';
+            }
+        }
+
+        // Run once on load in case the form is pre-filled (existing pickup)
+        const existingTime = document.getElementById('pickupTimeInput').value;
+        if (existingTime) updatePeriodPreview(existingTime);
+    </script>
+    <% } %>
 </body>
 </html>

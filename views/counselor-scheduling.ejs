@@ -678,6 +678,7 @@
         // ── Counselor availability per schedule type ─────────────────────────────
         // Periods 1-3 are AM, 4-6 are PM.
         function isCounselorAvailableFor(scheduleType, periodNum, side) {
+            if (!scheduleType) return true;
             const am = periodNum <= 3;
             switch (scheduleType) {
                 case 'All Sports':                return side === 'Sports';
@@ -1092,18 +1093,21 @@
                     }
                 }
 
+                const oppBlock = block === 'am' ? 'pm' : 'am';
                 const eligible = avail.filter(c => {
                     if (usedThisPeriod.has(c.CounselorID)) return false;
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
-                    return isCounselorAvailableFor(sched, period, side);
+                    if (!isCounselorAvailableFor(sched, period, side)) return false;
+                    if (blockUsed[c.CounselorID]?.[block].has(name)) return false;
+                    if (blockUsed[c.CounselorID]?.[oppBlock].has(name) &&
+                        !prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)) return false;
+                    return true;
                 });
 
-                // Priority: already running this activity this block → activity pref → others
-                const alreadyHere = shuffle(eligible.filter(c =>  blockUsed[c.CounselorID]?.[block].has(name)));
-                const preferred   = shuffle(eligible.filter(c => !blockUsed[c.CounselorID]?.[block].has(name) &&  prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
-                const nonPref     = shuffle(eligible.filter(c => !blockUsed[c.CounselorID]?.[block].has(name) && !prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
-                const pool        = mode === 'pref' ? [...alreadyHere, ...preferred] : [...alreadyHere, ...preferred, ...nonPref];
+                const preferred = shuffle(eligible.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
+                const nonPref   = shuffle(eligible.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
+                const pool      = mode === 'pref' ? [...preferred] : [...preferred, ...nonPref];
 
                 let poolIdx = 0;
                 for (let slotIdx = 0; slotIdx < state[idx].counselors.length; slotIdx++) {
@@ -1152,6 +1156,7 @@
 
             const prefMap = {};
             PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
+            const mode = document.querySelector('input[name="autoMode"]:checked').value;
 
             // Rebuild blockUsed from the current fully-built state
             const blockUsed = {};
@@ -1168,6 +1173,7 @@
 
             for (let period = 1; period <= 6; period++) {
                 const block = period <= 3 ? 'am' : 'pm';
+                const oppBlock = block === 'am' ? 'pm' : 'am';
 
                 // Build usedThisPeriod from current state
                 const usedThisPeriod = new Set();
@@ -1194,18 +1200,42 @@
                     });
                     if (eligibleIdxs.length === 0) continue;
 
-                    // For each extra counselor, add one slot to the offering with the highest camper:counselor ratio.
-                    // Re-evaluate after each assignment so the ratio reflects the newly added slot.
+                    // Phase 1: Fill existing null slots before adding new ones
+                    const extrasPool = [...extras];
+                    for (const eligIdx of eligibleIdxs) {
+                        if (extrasPool.length === 0) break;
+                        const actName = OFFERINGS[eligIdx].ActivityName;
+                        state[eligIdx].counselors.forEach((id, slotPos) => {
+                            if (id !== null || extrasPool.length === 0) return;
+                            const eligible_e = extrasPool.filter(c => {
+                                if (blockUsed[c.CounselorID]?.[block].has(actName)) return false;
+                                if (blockUsed[c.CounselorID]?.[oppBlock].has(actName) &&
+                                    !prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)) return false;
+                                return true;
+                            });
+                            const preferred = shuffle(eligible_e.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
+                            const nonPref   = shuffle(eligible_e.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
+                            const chosen    = mode === 'pref' ? (preferred[0] ?? null) : (preferred[0] ?? nonPref[0]);
+                            if (!chosen) return;
+                            state[eligIdx].counselors[slotPos] = chosen.CounselorID;
+                            usedThisPeriod.add(chosen.CounselorID);
+                            blockUsed[chosen.CounselorID][block].add(actName);
+                            extrasPool.splice(extrasPool.indexOf(chosen), 1);
+                            totalAdded++;
+                        });
+                    }
+
+                    // Phase 2: For remaining extras, add new slots
                     const newSlots = [];
-                    for (const extra of extras) {
-                        // Prefer activities already run this block; fall back to new ones
-                        const alreadyRunning = eligibleIdxs.filter(idx =>
-                             blockUsed[extra.CounselorID][block].has(OFFERINGS[idx].ActivityName)
-                        );
-                        const fresh = eligibleIdxs.filter(idx =>
-                            !blockUsed[extra.CounselorID][block].has(OFFERINGS[idx].ActivityName)
-                        );
-                        const valid = alreadyRunning.length > 0 ? alreadyRunning : fresh;
+                    for (const extra of extrasPool) {
+                        // Only target activities not already run in this block; cross-block repeat only if preferred
+                        const valid = eligibleIdxs.filter(idx => {
+                            const actName = OFFERINGS[idx].ActivityName;
+                            if (blockUsed[extra.CounselorID][block].has(actName)) return false;
+                            if (blockUsed[extra.CounselorID][oppBlock].has(actName) &&
+                                !prefMap[extra.CounselorID]?.ActivityPreferences?.includes(actName)) return false;
+                            return true;
+                        });
                         if (valid.length === 0) continue;
                         const targetIdx = valid.reduce((best, idx) => {
                             const bestRatio = (OFFERINGS[best].PreliminaryEnrollment || 0) / Math.max(state[best].counselors.length, 1);
@@ -1216,23 +1246,20 @@
                         newSlots.push({ idx: targetIdx, slotPos: state[targetIdx].counselors.length - 1 });
                     }
 
-                    // Fill new slots — preference first, then random among remaining extras
-                    const remaining = new Set(extras.map(c => c.CounselorID));
+                    // Fill new slots
+                    const remaining = new Set(extrasPool.map(c => c.CounselorID));
                     for (const { idx, slotPos } of newSlots) {
                         if (state[idx].counselors[slotPos] != null) continue;
                         const actName = OFFERINGS[idx].ActivityName;
-                        const alreadyHere = shuffle([...remaining].filter(cid =>
-                             blockUsed[cid][block].has(actName)
-                        ));
-                        const preferred = shuffle([...remaining].filter(cid =>
-                            !blockUsed[cid][block].has(actName) &&
-                             prefMap[cid]?.ActivityPreferences?.includes(actName)
-                        ));
-                        const nonPref = shuffle([...remaining].filter(cid =>
-                            !blockUsed[cid][block].has(actName) &&
-                            !prefMap[cid]?.ActivityPreferences?.includes(actName)
-                        ));
-                        const chosen = alreadyHere[0] ?? preferred[0] ?? nonPref[0];
+                        const eligible_r = [...remaining].filter(cid => {
+                            if (blockUsed[cid]?.[block].has(actName)) return false;
+                            if (blockUsed[cid]?.[oppBlock].has(actName) &&
+                                !prefMap[cid]?.ActivityPreferences?.includes(actName)) return false;
+                            return true;
+                        });
+                        const preferred = shuffle(eligible_r.filter(cid =>  prefMap[cid]?.ActivityPreferences?.includes(actName)));
+                        const nonPref   = shuffle(eligible_r.filter(cid => !prefMap[cid]?.ActivityPreferences?.includes(actName)));
+                        const chosen    = mode === 'pref' ? (preferred[0] ?? null) : (preferred[0] ?? nonPref[0]);
                         if (chosen == null) continue;
                         state[idx].counselors[slotPos] = chosen;
                         usedThisPeriod.add(chosen);
