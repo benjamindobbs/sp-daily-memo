@@ -131,6 +131,60 @@
                     </form>
                 </div>
             </div>
+            <% } else { %>
+            <!-- Left column: read-only details (staff view) -->
+            <div>
+                <div class="card">
+                    <h3 style="margin:0 0 20px;">Camper Details</h3>
+
+                    <div class="info-row">
+                        <span class="info-label">Home Counselor</span>
+                        <span class="info-value">
+                            <% if (camper.HomeCounselorName) { %>
+                                &#128100; <%= camper.HomeCounselorName %>
+                            <% } else { %>
+                                <span class="text-muted" style="font-style:italic;">Unassigned</span>
+                            <% } %>
+                        </span>
+                    </div>
+
+                    <div class="info-row" style="margin-top:12px;">
+                        <span class="info-label">Bus Route</span>
+                        <span class="info-value">
+                            <% var _br = camper.BusRoute; %>
+                            <% if (_br && _br.toLowerCase() !== 'null') { %>
+                                &#128652; <%= _br %>
+                            <% } else { %>
+                                <span class="text-muted">Parent Pickup</span>
+                            <% } %>
+                        </span>
+                    </div>
+
+                    <div class="info-row" style="margin-top:12px;">
+                        <span class="info-label">Extended Hours</span>
+                        <span class="info-value">
+                            <% if (camper.ExtendedHours && camper.ExtendedHours.toLowerCase() !== 'null') { %>
+                                &#9200; <%= camper.ExtendedHours %>
+                            <% } else { %>
+                                <span class="text-muted">No</span>
+                            <% } %>
+                        </span>
+                    </div>
+
+                    <div class="info-row" style="margin-top:12px;">
+                        <span class="info-label">Camp Lunch</span>
+                        <span class="info-value">
+                            <% if (camper.CampLunch === 'Yes') { %>
+                                &#127857; Yes
+                            <% } else if (camper.CampLunch === 'Allergy') { %>
+                                <span style="color:#b45309; font-weight:600;">&#9888; Allergy Meal</span>
+                            <% } else { %>
+                                <span class="text-muted">No (Packed)</span>
+                            <% } %>
+                        </span>
+                    </div>
+                </div>
+            </div>
             <% } %>
 
             <!-- Right column: schedule -->

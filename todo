@@ -1,15 +1,16 @@
-Counselor Scheduling Tool Bugs/Issues:
-1. Dropdowns not showing available Counselors prior to running schedule builder
-2. When running full auto in preference only mode, the expected behavior is that counselors are only assigned to classes they have specifically requested. Currently counselors are being assigned to classes that they have not requested.
-3. Counselors are being assigned after build schedule is run. Build schedule should only assigned the defaulted quanitity of slots to each class.
-4. Counselors are being scheduled to repeat classes in the same block (AM or PM)
-5. Please confirm that manually assigned counselors will not be written over by the auto scheduler.
-
-Move "Daily Memo" section above announcements window
-
-Add symbol for allergy lunch in camper lookup/profile
-
-Include home group counselor, bus route, extended hours, and camp lunch (Section called Camper Details on Admin view) in counselor view of camper profile. This needs to be read only. 
+Active To Do:
+SPLIT Features:
+Context-
+SPLITs are CITs, they work exclusively with Reds/Carolinas, and have a unique schedule. They follow the Red/Carolina Schedule with the exception of they do not have a period 4.
+Requests:
+1. Add a new view and link it next to "Staff View" and call it "SPLIT View"
+1a. This view will need a barebones copy of the build counselor schedule view. 1b. This copy will just need to show Periods 1,2,5, and 6, only only Red/Carolina classes (Enrichment AM, and Sports PM).
+1c. It should let me set the amount of SPLIT slots per class (Enrollment/8, min of 1).
+1d. In place of Unit Leader/Instructor, it should just list the Unit Leader/Instructor plus the counselors assigned to the class
+1e. Do not include the auto scheduler, or builder, as this will be done manually with the SPLITs.
+2. I would like to be able to mark all SPLITs as "Field Trip" for a given day. This option should appear at the top of the SPLIT AM attendance sheet, and an accompanying "Returned" button should clear this marker on other attendance sheets. Marking as Field Trip should not prevent marking as present or absent individually. 
+2a. SPLITs should have a schoolbus icon appear next to their names on attendance sheets if the group has been marked Field Trip. 
+2b. The values set here should set their schedule, SPLITs should appear on attendance sheets, but should not be able to be marked as absent, present, or dismissed. Their attendance will exclusively be taken in the Specialty Camps AM/PM sheets. Whatever is set their should be displayed on all other sheets. This is only to inform the counselors if they should be expecting SPLITs to arrive. 
 
 For Future Update Disregard Below:
 Add printable report view with the following reports:
@@ -26,6 +27,3 @@ In data management add new upload section for PDFs for both options.
 In staff view add links to nav for Camper Notes and ICP notes.
 These will be password protected PDF files, if this is an issue let me know. 
 
-SPLIT Scheduler:
-Context-
-SPLITs are CITs, they work exclusively with Reds/Carolinas, and have a unique schedule. They follow the Red/Carolina Schedule with the exception of they do not have a period 4.

@@ -133,6 +133,8 @@
                             <td>
                                 <% if (c.CampLunch === 'Yes') { %>
                                     <span class="lunch-yes">&#127857; YES</span>
+                                <% } else if (c.CampLunch === 'Allergy') { %>
+                                    <span style="color:#b45309; font-size:0.82rem; font-weight:600;">&#9888; Allergy</span>
                                 <% } else { %>
                                     <span class="text-muted" style="font-size: 0.75rem;">Packed</span>
                                 <% } %>
