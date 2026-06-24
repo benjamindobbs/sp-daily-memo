@@ -251,6 +251,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/attendance/dismissal-archive',
     '/dismissals',
     '/nurse',
+    '/split-scheduling', '/save-split-assignments',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -839,6 +840,12 @@ try {
         }
     }
 } catch(e) { console.error('[migration] infer counselor group colors:', e.message); }
+
+// SPLIT field trip flag table
+db.exec(`CREATE TABLE IF NOT EXISTS SplitFieldTrip (
+    Date     TEXT PRIMARY KEY,
+    MarkedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
 
 // --- WEEK HELPERS ---
 function getActiveWeek() {
@@ -2912,12 +2919,19 @@ app.get('/attendance/specialty/:color/:session', (req, res) => {
         scheduledPickup: pickupMap3[c.CamperID] || null
     }));
 
+    const isSplitAM = color === 'SPLIT' && session === 'am';
+    const fieldTripActive = isSplitAM
+        ? !!db.prepare("SELECT 1 FROM SplitFieldTrip WHERE Date=?").get(date)
+        : false;
+
     res.render('attendance-form', {
         title: `${HOME_GROUP_LABELS[color] || color} — ${session.toUpperCase()}`,
         sessionType, date,
         periodNumber: 0, activityName: '',
         backLink: `/attendance?date=${date}`,
-        roster
+        roster,
+        isSplitAM, fieldTripActive,
+        splitColor: color
     });
 });
 
@@ -2956,15 +2970,32 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
 
     const nurseAMSet4 = getNurseAMSet(date);
     const pickupMap4 = getScheduledPickupMap(date);
-    const roster = campers.map(c => ({
-        ...c,
-        currentStatus: statusMap[c.CamperID] || null,
-        absentAM: absentAMSet.has(c.CamperID),
-        nurseAM: nurseAMSet4.has(c.CamperID),
-        dismissed: dismissedSet.has(c.CamperID),
-        seenEarlier: seenEarlierSet.has(c.CamperID),
-        scheduledPickup: pickupMap4[c.CamperID] || null
-    }));
+
+    // SPLIT campers in this class are read-only; their status comes from specialty_am
+    const splitIds4 = campers.filter(c => c.HomeGroupColor === 'SPLIT').map(c => c.CamperID);
+    const splitSpecialtyStatus4 = {};
+    if (splitIds4.length > 0) {
+        const ph4 = splitIds4.map(() => '?').join(',');
+        db.prepare(`SELECT CamperID, Status FROM Attendance WHERE Date=? AND SessionType='specialty_am' AND CamperID IN (${ph4})`).all(date, ...splitIds4)
+            .forEach(r => { splitSpecialtyStatus4[r.CamperID] = r.Status; });
+    }
+    const classFieldTrip4 = splitIds4.length > 0 ? !!db.prepare("SELECT 1 FROM SplitFieldTrip WHERE Date=?").get(date) : false;
+
+    const roster = campers.map(c => {
+        const isSplit = c.HomeGroupColor === 'SPLIT';
+        return {
+            ...c,
+            currentStatus: isSplit ? splitSpecialtyStatus4[c.CamperID] || null : statusMap[c.CamperID] || null,
+            absentAM: absentAMSet.has(c.CamperID),
+            nurseAM: nurseAMSet4.has(c.CamperID),
+            dismissed: dismissedSet.has(c.CamperID),
+            seenEarlier: seenEarlierSet.has(c.CamperID),
+            scheduledPickup: pickupMap4[c.CamperID] || null,
+            isSplit,
+            fieldTripActive: isSplit ? classFieldTrip4 : false
+        };
+    });
+    const hasSplits = splitIds4.length > 0;
 
     const locationRow = db.prepare(
         "SELECT Location FROM Schedules WHERE PersonType='Instructor' AND PeriodNumber=? AND ActivityName=? AND Location IS NOT NULL AND Location!='' LIMIT 1"
@@ -2992,7 +3023,8 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
         location: locationRow ? locationRow.Location : null,
         staffRows, counselorRows,
         backLink: `/attendance?date=${date}`,
-        roster
+        roster,
+        hasSplits, fieldTripActive: classFieldTrip4
     });
 });
 
@@ -4189,6 +4221,122 @@ app.post('/homegroup-assignment/mirror', (req, res) => {
     `).run(toWeek, fromWeek);
 
     res.json({ mirrored: result.changes });
+});
+
+// ─── SPLIT SCHEDULING ────────────────────────────────────────────────────────
+
+app.get('/split-scheduling', (req, res) => {
+    const aw = getActiveWeek();
+    const alertMessage = req.query.message || null;
+
+    // RC-relevant offerings: Enrichment in blocks 1,2 and Sports in blocks 5,6
+    const offerings = db.prepare(`
+        SELECT ActivityName, PeriodNumber, SideOfCamp, PreliminaryEnrollment, Location
+        FROM WeeklyOfferings
+        WHERE WeekNumber = ?
+          AND ((PeriodNumber IN (1,2) AND SideOfCamp = 'Enrichment')
+            OR (PeriodNumber IN (5,6) AND SideOfCamp = 'Sports'))
+        ORDER BY PeriodNumber, ActivityName
+    `).all(aw);
+
+    const splitCampers = db.prepare(
+        "SELECT CamperID, FirstName, LastName FROM Campers WHERE HomeGroupColor='SPLIT' ORDER BY LastName, FirstName"
+    ).all();
+    const splitIds = splitCampers.map(c => c.CamperID);
+
+    // Enrollment per class (non-SPLIT campers currently in Schedules)
+    const enrollmentMap = {};
+    for (const o of offerings) {
+        let n;
+        if (splitIds.length > 0) {
+            const ph = splitIds.map(() => '?').join(',');
+            n = db.prepare(`SELECT COUNT(*) as n FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=? AND PersonID NOT IN (${ph})`).get(o.PeriodNumber, o.ActivityName, ...splitIds)?.n || 0;
+        } else {
+            n = db.prepare("SELECT COUNT(*) as n FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?").get(o.PeriodNumber, o.ActivityName)?.n || 0;
+        }
+        enrollmentMap[`${o.PeriodNumber}|${o.ActivityName}`] = n;
+    }
+
+    // Existing SPLIT assignments keyed by "period|activity" → [camperID, ...]
+    const assignedByKey = {};
+    if (splitIds.length > 0) {
+        const ph = splitIds.map(() => '?').join(',');
+        db.prepare(`SELECT PersonID, PeriodNumber, ActivityName FROM Schedules WHERE PersonType='Camper' AND PersonID IN (${ph})`).all(...splitIds)
+            .forEach(r => {
+                const k = `${r.PeriodNumber}|${r.ActivityName}`;
+                if (!assignedByKey[k]) assignedByKey[k] = [];
+                assignedByKey[k].push(r.PersonID);
+            });
+    }
+
+    // Instructor(s) per class for context display
+    const instructorMap = {};
+    db.prepare(`
+        SELECT s.PeriodNumber, s.ActivityName, c.FirstName, c.LastName
+        FROM Schedules s JOIN Counselors c ON c.CounselorID = s.PersonID
+        WHERE s.PersonType = 'Instructor'
+    `).all().forEach(r => {
+        const k = `${r.PeriodNumber}|${r.ActivityName}`;
+        if (!instructorMap[k]) instructorMap[k] = [];
+        instructorMap[k].push(`${r.FirstName} ${r.LastName}`);
+    });
+
+    // Counselors per class for context display (active week)
+    const counselorMap = {};
+    db.prepare(`
+        SELECT cws.PeriodNumber, cws.ActivityName, c.FirstName, c.LastName
+        FROM CounselorWeekSchedules cws JOIN Counselors c ON c.CounselorID = cws.CounselorID
+        WHERE cws.WeekNumber = ?
+        ORDER BY c.LastName
+    `).all(aw).forEach(r => {
+        const k = `${r.PeriodNumber}|${r.ActivityName}`;
+        if (!counselorMap[k]) counselorMap[k] = [];
+        counselorMap[k].push(`${r.FirstName} ${r.LastName}`);
+    });
+
+    res.render('split-scheduling', {
+        offerings, splitCampers, enrollmentMap, assignedByKey,
+        instructorMap, counselorMap, alertMessage
+    });
+});
+
+app.post('/save-split-assignments', (req, res) => {
+    const { assignments } = req.body;
+    if (!Array.isArray(assignments)) return res.status(400).json({ error: 'Invalid payload' });
+
+    const splitIds = db.prepare("SELECT CamperID FROM Campers WHERE HomeGroupColor='SPLIT'").all().map(c => c.CamperID);
+    if (splitIds.length === 0) return res.json({ ok: true });
+
+    const ph = splitIds.map(() => '?').join(',');
+    try {
+        db.transaction(() => {
+            db.prepare(`DELETE FROM Schedules WHERE PersonType='Camper' AND PersonID IN (${ph})`).run(...splitIds);
+            const ins = db.prepare("INSERT OR IGNORE INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName) VALUES (?,?,?,?)");
+            for (const a of assignments) {
+                if (a.camperID && a.periodNumber && a.activityName) {
+                    ins.run(a.camperID, 'Camper', a.periodNumber, a.activityName);
+                }
+            }
+        })();
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[save-split-assignments]', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── SPLIT FIELD TRIP ─────────────────────────────────────────────────────────
+
+app.post('/split-field-trip/mark', (req, res) => {
+    const date = req.body.date || todayStr();
+    db.prepare("INSERT OR REPLACE INTO SplitFieldTrip (Date) VALUES (?)").run(date);
+    res.redirect(req.body.returnTo || `/attendance/specialty/SPLIT/am?date=${date}`);
+});
+
+app.post('/split-field-trip/clear', (req, res) => {
+    const date = req.body.date || todayStr();
+    db.prepare("DELETE FROM SplitFieldTrip WHERE Date=?").run(date);
+    res.redirect(req.body.returnTo || `/attendance/specialty/SPLIT/am?date=${date}`);
 });
 
 const PORT = process.env.PORT || 3000;

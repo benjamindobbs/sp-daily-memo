@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPLIT Scheduling | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .period-details { border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 16px; overflow: hidden; background: white; box-shadow: var(--shadow); }
+        .period-summary { display: flex; align-items: center; gap: 12px; padding: 14px 20px; cursor: pointer; user-select: none; list-style: none; flex-wrap: wrap; }
+        .period-summary::-webkit-details-marker { display: none; }
+        .period-label { font-size: 1rem; font-weight: 700; color: var(--text); flex-shrink: 0; }
+        .period-body { padding: 16px 20px 20px; border-top: 1px solid var(--border-color); }
+        .offering-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+        .offering-card { border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; background: #fafafa; }
+        .offering-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 4px; }
+        .enrollment-pill { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: #f1f5f9; color: var(--text-muted); margin-bottom: 10px; }
+        .split-slots-label { font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 5px; display: flex; align-items: center; gap: 8px; }
+        .count-input { width: 56px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; font-family: inherit; text-align: center; }
+        .slot-dropdowns { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+        .person-select { width: 100%; padding: 5px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.82rem; font-family: inherit; background: white; }
+        .context-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid #f1f5f9; font-size: 0.78rem; color: var(--text-muted); line-height: 1.5; }
+        .context-row strong { color: var(--text); }
+        .no-offerings { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .side-heading { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9; }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">&#128101; Staff Directory</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/split-scheduling" class="nav-btn primary">&#127820; SPLIT Scheduling</a>
+        <a href="/settings" class="nav-btn">&#9881;&#65039; Settings</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
+    </nav>
+
+    <div class="container-xl">
+
+        <div class="page-header" style="margin-bottom: 16px;">
+            <div>
+                <h1 style="margin:0;">SPLIT Scheduling</h1>
+                <p class="text-muted" style="margin:4px 0 0;">Assign SPLIT campers to Red / Carolina classes for the active week. Periods 1, 2, 5, and 6 only.</p>
+            </div>
+        </div>
+
+        <% if (alertMessage) { %>
+            <div class="alert"><%= alertMessage %></div>
+        <% } %>
+
+        <% if (offerings.length === 0) { %>
+            <div class="no-offerings">
+                <div style="font-size:3rem; margin-bottom:12px;">&#128197;</div>
+                <h3 style="margin:0 0 8px;">No offerings loaded for the active week</h3>
+                <p style="margin:0;">Upload a weekly offerings CSV via <a href="/counselor-scheduling">Counselor Scheduling</a> first.</p>
+            </div>
+        <% } else if (splitCampers.length === 0) { %>
+            <div class="no-offerings">
+                <div style="font-size:3rem; margin-bottom:12px;">&#128100;</div>
+                <h3 style="margin:0 0 8px;">No SPLIT campers found</h3>
+                <p style="margin:0;">Upload campers with HomeGroupColor = SPLIT to use this page.</p>
+            </div>
+        <% } else { %>
+
+        <div style="margin-bottom: 20px;">
+            <button id="saveBtn" class="btn btn-primary" onclick="saveAssignments()">Save Assignments</button>
+            <span class="text-muted" style="font-size:0.82rem; margin-left:12px;"><%= splitCampers.length %> SPLIT camper<%= splitCampers.length !== 1 ? 's' : '' %></span>
+            <span id="saveStatus" style="font-size:0.82rem; margin-left:12px; color:var(--text-muted);"></span>
+        </div>
+
+        <%
+        const PERIODS = [1, 2, 5, 6];
+        const PERIOD_LABELS = { 1: 'Period 1 — Enrichment AM', 2: 'Period 2 — Enrichment AM', 5: 'Period 5 — Sports PM', 6: 'Period 6 — Sports PM' };
+        const PERIOD_SIDES  = { 1: 'Enrichment', 2: 'Enrichment', 5: 'Sports', 6: 'Sports' };
+        %>
+
+        <% PERIODS.forEach(function(p) {
+            const pOffs = offerings.filter(o => o.PeriodNumber === p);
+            if (pOffs.length === 0) return;
+        %>
+        <details class="period-details" open>
+            <summary class="period-summary">
+                <span class="period-label"><%= PERIOD_LABELS[p] || ('Period ' + p) %></span>
+                <span class="text-muted" style="font-size:0.78rem;"><%= pOffs.length %> class<%= pOffs.length !== 1 ? 'es' : '' %></span>
+            </summary>
+            <div class="period-body">
+                <p class="side-heading"><%= PERIOD_SIDES[p] === 'Enrichment' ? '&#127912; Enrichment' : '&#9917; Sports' %></p>
+                <div class="offering-grid">
+                <% pOffs.forEach(function(act) {
+                    const key = p + '|' + act.ActivityName;
+                    const enrollment = enrollmentMap[key] || 0;
+                    const defaultSlots = Math.max(1, Math.ceil(enrollment / 8));
+                    const existing = assignedByKey[key] || [];
+                    const instrs = instructorMap[key] || [];
+                    const couns = counselorMap[key] || [];
+                %>
+                    <div class="offering-card" data-period="<%= p %>" data-activity="<%= act.ActivityName %>">
+                        <div class="offering-name"><%= act.ActivityName %></div>
+                        <span class="enrollment-pill"><%= enrollment %> enrolled &rarr; <%= defaultSlots %> SPLIT slot<%= defaultSlots !== 1 ? 's' : '' %></span>
+
+                        <div class="split-slots-label">
+                            SPLIT Slots
+                            <input type="number" class="count-input" min="0" max="<%= splitCampers.length %>"
+                                   value="<%= Math.max(existing.length, defaultSlots) %>"
+                                   oninput="handleSlotCount(this)">
+                        </div>
+                        <div class="slot-dropdowns">
+                            <%
+                            const slotCount = Math.max(existing.length, defaultSlots);
+                            for (let i = 0; i < slotCount; i++) {
+                                const assignedId = existing[i] || '';
+                            %>
+                            <select class="person-select split-slot" data-period="<%= p %>" data-activity="<%= act.ActivityName %>">
+                                <option value="">— Unassigned —</option>
+                                <% splitCampers.forEach(function(sc) { %>
+                                <option value="<%= sc.CamperID %>" <%= (parseInt(assignedId) === sc.CamperID) ? 'selected' : '' %>>
+                                    <%= sc.LastName %>, <%= sc.FirstName %>
+                                </option>
+                                <% }); %>
+                            </select>
+                            <% } %>
+                        </div>
+
+                        <% if (instrs.length > 0 || couns.length > 0) { %>
+                        <div class="context-row">
+                            <% if (instrs.length > 0) { %>
+                            <div><strong>Instructor:</strong> <%= instrs.join(', ') %></div>
+                            <% } %>
+                            <% if (couns.length > 0) { %>
+                            <div><strong>Counselors:</strong> <%= couns.join(', ') %></div>
+                            <% } %>
+                        </div>
+                        <% } %>
+                    </div>
+                <% }); %>
+                </div>
+            </div>
+        </details>
+        <% }); %>
+
+        <% } %>
+    </div>
+
+    <script>
+        const SPLIT_CAMPERS = <%- JSON.stringify(splitCampers) %>;
+
+        function handleSlotCount(input) {
+            const card = input.closest('.offering-card');
+            const container = card.querySelector('.slot-dropdowns');
+            const period = parseInt(card.dataset.period);
+            const activity = card.dataset.activity;
+            const target = Math.max(0, parseInt(input.value) || 0);
+            const current = container.querySelectorAll('.split-slot').length;
+
+            if (target > current) {
+                for (let i = current; i < target; i++) {
+                    const sel = document.createElement('select');
+                    sel.className = 'person-select split-slot';
+                    sel.dataset.period = period;
+                    sel.dataset.activity = activity;
+                    sel.innerHTML = '<option value="">— Unassigned —</option>' +
+                        SPLIT_CAMPERS.map(sc => `<option value="${sc.CamperID}">${sc.LastName}, ${sc.FirstName}</option>`).join('');
+                    container.appendChild(sel);
+                }
+            } else {
+                const slots = container.querySelectorAll('.split-slot');
+                for (let i = slots.length - 1; i >= target; i--) slots[i].remove();
+            }
+        }
+
+        async function saveAssignments() {
+            const btn = document.getElementById('saveBtn');
+            const status = document.getElementById('saveStatus');
+            btn.disabled = true;
+            status.textContent = 'Saving…';
+
+            const assignments = [];
+            document.querySelectorAll('.split-slot').forEach(sel => {
+                const camperID = parseInt(sel.value);
+                const periodNumber = parseInt(sel.dataset.period);
+                const activityName = sel.dataset.activity;
+                if (camperID && periodNumber && activityName) {
+                    assignments.push({ camperID, periodNumber, activityName });
+                }
+            });
+
+            try {
+                const resp = await fetch('/save-split-assignments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ assignments })
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    status.textContent = '✓ Saved';
+                    status.style.color = 'var(--success, #16a34a)';
+                } else {
+                    status.textContent = 'Error: ' + (data.error || 'Unknown');
+                    status.style.color = '#dc2626';
+                }
+            } catch (e) {
+                status.textContent = 'Network error';
+                status.style.color = '#dc2626';
+            }
+            btn.disabled = false;
+            setTimeout(() => { status.textContent = ''; }, 4000);
+        }
+    </script>
+</body>
+</html>
