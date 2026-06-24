@@ -329,7 +329,7 @@
 
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn btn-primary" onclick="buildSchedule()">Build Schedule</button>
-                <button class="btn btn-primary" onclick="autoAssignHomeGroups(); autoCalculateSlots(); buildSchedule(); fillExtraCounselors();" style="background:var(--success, #16a34a);">⚡ Full Auto Build</button>
+                <button class="btn btn-primary" onclick="autoAssignHomeGroups(); buildSchedule(); fillExtraCounselors();" style="background:var(--success, #16a34a);">⚡ Full Auto Build</button>
                 <span id="autoStatus" style="font-size:0.82rem; color:var(--text-muted); margin-left:4px;"></span>
             </div>
             <% if (sessions.filter(s => s.weekNumber !== planWeek).length > 0) { %>
@@ -1053,49 +1053,103 @@
             const statusEl = document.getElementById('autoStatus');
             statusEl.textContent = 'Building…';
 
+            // Step 1: Set slot counts from slot calculation rules (all start as null)
+            autoCalculateSlots();
+
             const prefMap = {};
             PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
 
-            // Track which activities a counselor has been placed in per AM/PM block
+            // Track activity names a counselor has been placed in per AM/PM block
             const blockUsed = {};
             COUNSELORS.forEach(c => { blockUsed[c.CounselorID] = { am: new Set(), pm: new Set() }; });
 
-            // Pre-load existing (manually set) counselor assignments into blockUsed
+            // Pre-load any non-null slots into blockUsed (autoCalculateSlots sets all to null,
+            // so this handles any slots pre-populated before calling buildSchedule)
             OFFERINGS.forEach((act, idx) => {
                 if (!act.PeriodNumber) return;
                 const block = act.PeriodNumber <= 3 ? 'am' : 'pm';
                 state[idx].counselors.forEach(id => {
-                    if (id && blockUsed[id]) blockUsed[id][block].add(act.ActivityName);
+                    if (id && id !== -1 && blockUsed[id]) blockUsed[id][block].add(act.ActivityName);
                 });
             });
 
+            // Track which counselors are already placed in each period
+            const usedThisPeriod = {};
+            for (let p = 1; p <= 6; p++) usedThisPeriod[p] = new Set();
             OFFERINGS.forEach((act, idx) => {
-                if (!act.PeriodNumber || !act.SideOfCamp) return;
-                const { PeriodNumber: period, SideOfCamp: side, ActivityName: name } = act;
-                const block = period <= 3 ? 'am' : 'pm';
-                const avail = COUNSELORS; // use full roster; eligibility filter applies ScheduleType check
+                if (!act.PeriodNumber) return;
+                state[idx].counselors.forEach(id => { if (id && id !== -1) usedThisPeriod[act.PeriodNumber].add(id); });
+            });
 
-                // Counselors already placed in this period (across all sides)
-                const usedThisPeriod = new Set();
-                OFFERINGS.forEach((a, i) => {
-                    if (a.PeriodNumber === period) {
-                        state[i].counselors.forEach(id => { if (id) usedThisPeriod.add(id); });
+            // Pre-fill: assign the same counselors across ALL periods of triple-period activities
+            // (e.g. "Sports Pals (triple period)") before the greedy loop runs, so it can't
+            // scatter different counselors into each period.
+            const tripleGroupsPre = {};
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.ActivityName.toLowerCase().includes('triple period')) return;
+                if (!tripleGroupsPre[act.ActivityName]) tripleGroupsPre[act.ActivityName] = [];
+                tripleGroupsPre[act.ActivityName].push(idx);
+            });
+            for (const [tName, tIndices] of Object.entries(tripleGroupsPre)) {
+                if (tIndices.length < 2) continue;
+                tIndices.sort((a, b) => OFFERINGS[a].PeriodNumber - OFFERINGS[b].PeriodNumber);
+                const srcIdx    = tIndices[0];
+                const srcPeriod = OFFERINGS[srcIdx].PeriodNumber;
+                const tSide     = OFFERINGS[srcIdx].SideOfCamp;
+                const tBlock    = srcPeriod <= 3 ? 'am' : 'pm';
+                const slotCount = state[srcIdx].counselors.length;
+                // Eligible for the source period (skip same-name blockUsed; repeat is intentional)
+                const tEligible = COUNSELORS.filter(c => {
+                    if (usedThisPeriod[srcPeriod].has(c.CounselorID)) return false;
+                    const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                    const sched = sel ? sel.value : (c.ScheduleType || '');
+                    return isCounselorAvailableFor(sched, srcPeriod, tSide);
+                });
+                const tPreferred = shuffle(tEligible.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(tName)));
+                const tNonPref   = shuffle(tEligible.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(tName)));
+                const tPool = mode === 'pref' ? [...tPreferred] : [...tPreferred, ...tNonPref];
+                for (let slot = 0; slot < slotCount; slot++) {
+                    if (!tPool[slot]) break;
+                    const chosen = tPool[slot];
+                    for (const tidx of tIndices) {
+                        while (state[tidx].counselors.length <= slot) state[tidx].counselors.push(null);
+                        state[tidx].counselors[slot] = chosen.CounselorID;
+                        usedThisPeriod[OFFERINGS[tidx].PeriodNumber].add(chosen.CounselorID);
                     }
+                    blockUsed[chosen.CounselorID][tBlock].add(tName);
+                }
+            }
+
+            // Step 2: Greedy fill — each iteration places one counselor in the class with the
+            // highest enrollment / placed-counselors ratio (highest need first).
+            // Zero-placed classes always take priority; among those, higher enrollment wins.
+            // Slots that cannot be filled are marked -1 (sentinel) and restored to null at the end.
+            let madeProgress = true;
+            while (madeProgress) {
+                madeProgress = false;
+
+                let bestIdx = -1, bestRatio = -Infinity;
+                OFFERINGS.forEach((act, idx) => {
+                    if (!act.PeriodNumber || !act.SideOfCamp) return;
+                    if (!state[idx].counselors.some(id => id === null)) return;
+                    const placed = state[idx].counselors.filter(id => id !== null && id !== -1).length;
+                    const enrollment = act.PreliminaryEnrollment || 0;
+                    const ratio = placed === 0 ? (1e9 + enrollment) : (enrollment / placed);
+                    if (ratio > bestRatio) { bestRatio = ratio; bestIdx = idx; }
                 });
 
-                // Ensure at least 1 slot if there are currently none
-                if (state[idx].counselors.length === 0) {
-                    state[idx].counselors.push(null);
-                    const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
-                    if (card) {
-                        const cInput = card.querySelector('[data-count-type="counselors"]');
-                        if (cInput) cInput.value = 1;
-                    }
-                }
+                if (bestIdx === -1) break;
 
+                const act    = OFFERINGS[bestIdx];
+                const period = act.PeriodNumber;
+                const side   = act.SideOfCamp;
+                const name   = act.ActivityName;
+                const block  = period <= 3 ? 'am' : 'pm';
                 const oppBlock = block === 'am' ? 'pm' : 'am';
-                const eligible = avail.filter(c => {
-                    if (usedThisPeriod.has(c.CounselorID)) return false;
+                const slotPos  = state[bestIdx].counselors.indexOf(null);
+
+                const eligible = COUNSELORS.filter(c => {
+                    if (usedThisPeriod[period].has(c.CounselorID)) return false;
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     if (!isCounselorAvailableFor(sched, period, side)) return false;
@@ -1107,20 +1161,26 @@
 
                 const preferred = shuffle(eligible.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
                 const nonPref   = shuffle(eligible.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
-                const pool      = mode === 'pref' ? [...preferred] : [...preferred, ...nonPref];
+                const pool = mode === 'pref' ? [...preferred] : [...preferred, ...nonPref];
 
-                let poolIdx = 0;
-                for (let slotIdx = 0; slotIdx < state[idx].counselors.length; slotIdx++) {
-                    if (state[idx].counselors[slotIdx] !== null) continue; // preserve manual
-                    if (poolIdx >= pool.length) break;
-                    const chosen = pool[poolIdx++];
-                    state[idx].counselors[slotIdx] = chosen.CounselorID;
-                    usedThisPeriod.add(chosen.CounselorID);
+                if (pool.length === 0) {
+                    state[bestIdx].counselors[slotPos] = -1; // unfillable sentinel
+                } else {
+                    const chosen = pool[0];
+                    state[bestIdx].counselors[slotPos] = chosen.CounselorID;
+                    usedThisPeriod[period].add(chosen.CounselorID);
                     blockUsed[chosen.CounselorID][block].add(name);
                 }
+                madeProgress = true;
+            }
+
+            // Restore -1 sentinels to null (slots that couldn't be filled)
+            OFFERINGS.forEach((_, idx) => {
+                state[idx].counselors = state[idx].counselors.map(id => (id === -1 ? null : id));
             });
 
-            // Enforce same counselors across all periods of triple-period activities
+            // Enforce same counselors across all periods of triple-period activities.
+            // Lowest period is authoritative; subsequent periods are overridden to match.
             const tripleGroups = {};
             OFFERINGS.forEach((act, idx) => {
                 if (!act.ActivityName.toLowerCase().includes('triple period')) return;
@@ -1129,15 +1189,15 @@
             });
             for (const [, indices] of Object.entries(tripleGroups)) {
                 if (indices.length < 2) continue;
+                indices.sort((a, b) => OFFERINGS[a].PeriodNumber - OFFERINGS[b].PeriodNumber);
                 const maxSlots = Math.max(...indices.map(i => state[i].counselors.length));
                 for (let slot = 0; slot < maxSlots; slot++) {
-                    const sourceIdx = indices.find(i => state[i].counselors[slot] != null);
-                    if (sourceIdx === undefined) continue;
-                    const cId = state[sourceIdx].counselors[slot];
-                    for (const idx of indices) {
+                    const cId = state[indices[0]].counselors[slot] ?? null;
+                    if (cId === null) continue;
+                    for (const idx of indices.slice(1)) {
                         if (state[idx].counselors.length <= slot) {
                             state[idx].counselors.push(cId);
-                        } else if (state[idx].counselors[slot] === null) {
+                        } else {
                             state[idx].counselors[slot] = cId;
                         }
                     }
@@ -1200,7 +1260,13 @@
                     });
                     if (eligibleIdxs.length === 0) continue;
 
-                    // Phase 1: Fill existing null slots before adding new ones
+                    // Phase 1: Fill existing null slots before adding new ones.
+                    // Sort so classes with the most unfilled slots get first pick of extras.
+                    eligibleIdxs.sort((a, b) => {
+                        const nullA = state[a].counselors.filter(id => id === null).length;
+                        const nullB = state[b].counselors.filter(id => id === null).length;
+                        return nullB - nullA;
+                    });
                     const extrasPool = [...extras];
                     for (const eligIdx of eligibleIdxs) {
                         if (extrasPool.length === 0) break;
@@ -1224,6 +1290,10 @@
                             totalAdded++;
                         });
                     }
+
+                    // Never give extras to a well-staffed class while another class in this
+                    // period+side is still missing required counselors (slot count = minimum)
+                    if (eligibleIdxs.some(idx => state[idx].counselors.some(id => id === null))) continue;
 
                     // Phase 2: For remaining extras, add new slots
                     const newSlots = [];
@@ -1270,24 +1340,24 @@
                 }
             }
 
-            // Re-run triple-period propagation so newly added counselors are synced across all instances
-            const tripleGroups = {};
+            // Re-sync triple-period activities so any newly added counselors stay consistent
+            const tripleGroups2 = {};
             OFFERINGS.forEach((act, idx) => {
                 if (!act.ActivityName.toLowerCase().includes('triple period')) return;
-                if (!tripleGroups[act.ActivityName]) tripleGroups[act.ActivityName] = [];
-                tripleGroups[act.ActivityName].push(idx);
+                if (!tripleGroups2[act.ActivityName]) tripleGroups2[act.ActivityName] = [];
+                tripleGroups2[act.ActivityName].push(idx);
             });
-            for (const [, indices] of Object.entries(tripleGroups)) {
+            for (const [, indices] of Object.entries(tripleGroups2)) {
                 if (indices.length < 2) continue;
+                indices.sort((a, b) => OFFERINGS[a].PeriodNumber - OFFERINGS[b].PeriodNumber);
                 const maxSlots = Math.max(...indices.map(i => state[i].counselors.length));
                 for (let slot = 0; slot < maxSlots; slot++) {
-                    const sourceIdx = indices.find(i => state[i].counselors[slot] != null);
-                    if (sourceIdx === undefined) continue;
-                    const cId = state[sourceIdx].counselors[slot];
-                    for (const idx of indices) {
+                    const cId = state[indices[0]].counselors[slot] ?? null;
+                    if (cId === null) continue;
+                    for (const idx of indices.slice(1)) {
                         if (state[idx].counselors.length <= slot) {
                             state[idx].counselors.push(cId);
-                        } else if (state[idx].counselors[slot] === null) {
+                        } else {
                             state[idx].counselors[slot] = cId;
                         }
                     }

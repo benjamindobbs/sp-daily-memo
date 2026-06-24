@@ -1,25 +1,10 @@
-Active To Do:
-SPLIT Features:
-Context-
-SPLITs are CITs, they work exclusively with Reds/Carolinas, and have a unique schedule. They follow the Red/Carolina Schedule with the exception of they do not have a period 4.
-Requests:
-1. Add a new view and link it next to "Staff View" and call it "SPLIT View"
-1a. This view will need a barebones copy of the build counselor schedule view. 1b. This copy will just need to show Periods 1,2,5, and 6, only only Red/Carolina classes (Enrichment AM, and Sports PM).
-1c. It should let me set the amount of SPLIT slots per class (Enrollment/8, min of 1).
-1d. In place of Unit Leader/Instructor, it should just list the Unit Leader/Instructor plus the counselors assigned to the class
-1e. Do not include the auto scheduler, or builder, as this will be done manually with the SPLITs.
-2. I would like to be able to mark all SPLITs as "Field Trip" for a given day. This option should appear at the top of the SPLIT AM attendance sheet, and an accompanying "Returned" button should clear this marker on other attendance sheets. Marking as Field Trip should not prevent marking as present or absent individually. 
-2a. SPLITs should have a schoolbus icon appear next to their names on attendance sheets if the group has been marked Field Trip. 
-2b. The values set here should set their schedule, SPLITs should appear on attendance sheets, but should not be able to be marked as absent, present, or dismissed. Their attendance will exclusively be taken in the Specialty Camps AM/PM sheets. Whatever is set their should be displayed on all other sheets. This is only to inform the counselors if they should be expecting SPLITs to arrive. 
+SPLIT View Bugs:
+1. Seeing literal "&#127912" displayed at top of enrichment class 1
+2. Schedule is not being displayed correctly on Camper Lookup, it should show classes for 1,2,4,5.
+3. Period 3 should show SPLIT Sport for all SPLITs (this does not need an attendance sheet or to exist as a class, this only needs to exist to diplay on their profile and the camper lookup)
+4. Seeing literal "&#128652;" on Mark Field Trip button on SPLIT AM Attendance
 
-Counselor Scheduler Bugs:
-Build Schedule does not add slots as expected. It should add slots based on the slot calculation rules and leave them all blank. It should then add additional slots one at a time in descending order starting with the highest ratio class of campers:staff, checking the ratios after each new slot is added.
 
-In full auto I am seeing enrichment classes with 0 counselors, while some classes have been assigned extras. I assume this is to do with the ratio check. The fill extra counselors routine must ensure that the slot calculation rules always meet the minumum requirements for counselors. For example, a Red class needs two counselors even if that makes it's campers:counselor lower than moving one of the counselors away to a carolina class.
-
-I see a similar issues in period 6 sports where I have a class with 5 assigned slots, only two of which have been filled, but some classes have 6 assigned and 6 filled, some have 2 assigned and 1 filled. What may be causing this?
-
-There is one exception to the no-repeat classes in block rule. Sports Pals is an edge case that covers 3 periods, that always has the same counselors. So whoever is assigned to sports pals should in period 4 should automatically be added to sports pals for period 5 and 6 with the ability to manually override if needed. The auto scheduler should always put the same counselors in all 3 periods of sports pals. 
 For Future Update Disregard Below:
 Add printable report view with the following reports:
 Schedule by Counselor: 
