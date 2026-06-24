@@ -1569,6 +1569,13 @@ app.get('/camper/:id', (req, res) => {
             ORDER BY s.PeriodNumber ASC
         `).all(req.params.id);
 
+        // SPLIT campers have periods 1,2,5,6 — inject a display-only period 3 row
+        if (camper.HomeGroupColor === 'SPLIT' && !schedule.some(s => s.PeriodNumber === 3)) {
+            const insertAt = schedule.findIndex(s => s.PeriodNumber > 3);
+            schedule.splice(insertAt === -1 ? schedule.length : insertAt, 0,
+                { PeriodNumber: 3, ActivityName: 'SPLIT Sport', Location: null, SideOfCamp: 'Sports' });
+        }
+
         const counselors = db.prepare(`
             SELECT c.CounselorID, c.FirstName, c.LastName,
                 COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor

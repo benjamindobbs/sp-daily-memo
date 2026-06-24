@@ -1,8 +1,4 @@
-SPLIT View Bugs:
-1. Seeing literal "&#127912" displayed at top of enrichment class 1
-2. Schedule is not being displayed correctly on Camper Lookup, it should show classes for 1,2,4,5.
-3. Period 3 should show SPLIT Sport for all SPLITs (this does not need an attendance sheet or to exist as a class, this only needs to exist to diplay on their profile and the camper lookup)
-4. Seeing literal "&#128652;" on Mark Field Trip button on SPLIT AM Attendance
+Scheduler Bugs:
 
 
 For Future Update Disregard Below:

@@ -71,7 +71,7 @@
                 <input type="hidden" name="date" value="<%= date %>">
                 <input type="hidden" name="returnTo" value="/attendance/specialty/SPLIT/am?date=<%= date %>">
                 <button type="submit" class="btn btn-small" style="<%= fieldTripActive ? 'background:#fee2e2;color:#991b1b;border-color:#fca5a5;' : 'background:white;' %>">
-                    <%= fieldTripActive ? 'Returned' : '&#128652; Mark Field Trip' %>
+                    <%- fieldTripActive ? 'Returned' : '&#128652; Mark Field Trip' %>
                 </button>
             </form>
         </div>

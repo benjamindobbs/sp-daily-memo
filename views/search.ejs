@@ -147,11 +147,14 @@
                             <td colspan="7">
                                 <div class="mini-schedule">
                                     <%
-                                    // Red/Carolina have periods 1,2,4,5,6 — remap to display slots P1-P5
+                                    // Red/Carolina: periods 1,2,4,5,6 (no P3). SPLIT: periods 1,2,5,6 with P3=SPLIT Sport.
+                                    const isSplit = c.HomeGroupColor === 'SPLIT';
                                     const isRC = c.HomeGroupColor === 'Red' || c.HomeGroupColor === 'Carolina';
-                                    const slots = isRC
-                                        ? [c.P1, c.P2, c.P4, c.P5, c.P6]
-                                        : [c.P1, c.P2, c.P3, c.P4, c.P5];
+                                    const slots = isSplit
+                                        ? [c.P1, c.P2, 'SPLIT Sport', c.P5, c.P6]
+                                        : isRC
+                                            ? [c.P1, c.P2, c.P4, c.P5, c.P6]
+                                            : [c.P1, c.P2, c.P3, c.P4, c.P5];
                                     %>
                                     <% slots.forEach(function(activity, i) { %>
                                         <div class="period-box">

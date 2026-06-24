@@ -91,7 +91,7 @@
                 <span class="text-muted" style="font-size:0.78rem;"><%= pOffs.length %> class<%= pOffs.length !== 1 ? 'es' : '' %></span>
             </summary>
             <div class="period-body">
-                <p class="side-heading"><%= PERIOD_SIDES[p] === 'Enrichment' ? '&#127912; Enrichment' : '&#9917; Sports' %></p>
+                <p class="side-heading"><%- PERIOD_SIDES[p] === 'Enrichment' ? '&#127912; Enrichment' : '&#9917; Sports' %></p>
                 <div class="offering-grid">
                 <% pOffs.forEach(function(act) {
                     const key = p + '|' + act.ActivityName;
