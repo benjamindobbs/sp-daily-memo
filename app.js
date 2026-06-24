@@ -1285,15 +1285,13 @@ app.get('/master-schedule', (req, res) => {
         `);
         const aw = getActiveWeek();
         const getCounselors = db.prepare(`
-            SELECT DISTINCT co.CounselorID, co.FirstName, co.LastName,
-                   COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) AS HomeGroupColor
-            FROM Campers cam
-            JOIN Schedules s ON cam.CamperID = s.PersonID AND s.PersonType = 'Camper'
-                AND s.PeriodNumber = ? AND s.ActivityName = ?
-            LEFT JOIN CamperHomeGroups chg ON chg.CamperID = cam.CamperID AND chg.WeekNumber = ?
-            JOIN Counselors co ON co.CounselorID = COALESCE(chg.CounselorID, cam.HomeGroupCounselorID)
-            LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = co.CounselorID AND cwa.WeekNumber = ?
-            ORDER BY HomeGroupColor, co.LastName
+            SELECT c.CounselorID, c.FirstName, c.LastName,
+                   COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
+            FROM Counselors c
+            JOIN CounselorWeekSchedules cws
+                ON cws.CounselorID = c.CounselorID AND cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ?
+            LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
+            ORDER BY HomeGroupColor, c.LastName
         `);
         const getBusPresence = db.prepare(`
             SELECT 1 FROM Campers c JOIN Schedules s ON c.CamperID=s.PersonID AND s.PersonType='Camper'
@@ -1313,7 +1311,7 @@ app.get('/master-schedule', (req, res) => {
                 enrolled:    getEnrollment.get(cls.periodNumber, cls.activityName).n,
                 colorGroups: getColorGroups.all(cls.periodNumber, cls.activityName).map(r => r.HomeGroupColor),
                 staff:       getStaff.all(cls.periodNumber, cls.activityName),
-                counselors:  getCounselors.all(cls.periodNumber, cls.activityName, aw, aw),
+                counselors:  getCounselors.all(aw, cls.periodNumber, cls.activityName, aw),
                 busPresent:  !!getBusPresence.get(cls.periodNumber, cls.activityName),
                 extGroups:   getExtGroups.all(cls.periodNumber, cls.activityName).map(r => r.ExtendedHours)
             };
