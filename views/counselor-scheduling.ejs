@@ -615,7 +615,7 @@
             const side      = act.SideOfCamp;
             const arr       = state[offerIdx][type];
             const allPeople = type === 'counselors'
-                ? COUNSELORS.filter(c => {
+                ? MAIN_COUNSELORS.filter(c => {
                       const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                       const sched = sel ? sel.value : (c.ScheduleType || '');
                       return sched && isCounselorAvailableFor(sched, period, side);
@@ -640,6 +640,7 @@
                 sel.className = 'person-select';
                 sel.appendChild(new Option('— Select —', ''));
 
+                const addedIds = new Set();
                 allPeople.forEach(person => {
                     const id = type === 'counselors' ? person.CounselorID : person.StaffID;
                     if (usedElsewhere.has(id)) return;
@@ -649,7 +650,24 @@
                     const opt = new Option(label, id);
                     if (id === selectedId) opt.selected = true;
                     sel.appendChild(opt);
+                    addedIds.add(id);
                 });
+
+                // If the saved counselor wasn't in allPeople (e.g. schedule type changed),
+                // still add them so the assignment stays visible after reload.
+                if (selectedId && !addedIds.has(selectedId)) {
+                    const saved = type === 'counselors'
+                        ? COUNSELORS.find(c => c.CounselorID === selectedId)
+                        : STAFF_MEMBERS.find(s => s.StaffID === selectedId);
+                    if (saved) {
+                        const label = type === 'counselors'
+                            ? `${saved.FirstName} ${saved.LastName}${saved.HomeGroupColor ? ` (${saved.HomeGroupColor})` : ''}`
+                            : `${saved.FirstName} ${saved.LastName} — ${saved.StaffType}`;
+                        const opt = new Option(label, selectedId);
+                        opt.selected = true;
+                        sel.appendChild(opt);
+                    }
+                }
 
                 sel.addEventListener('change', () => {
                     state[offerIdx][type][slotIdx] = sel.value ? parseInt(sel.value) : null;
@@ -699,7 +717,7 @@
         function updateCounter(periodNum, side) {
             // Build available set from current group-assignment schedule dropdowns
             const available = new Set();
-            COUNSELORS.forEach(c => {
+            MAIN_COUNSELORS.forEach(c => {
                 const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                 const schedType = sel ? sel.value : (c.ScheduleType || '');
                 if (isCounselorAvailableFor(schedType, periodNum, side)) available.add(c.CounselorID);
@@ -762,7 +780,7 @@
                 // Staff only assigned to sports activities
                 if (act.SideOfCamp === 'Sports') {
                     state[idx].staff.forEach(id => {
-                        if (id) assignments.push({ periodNumber: act.PeriodNumber, activityName: act.ActivityName, personID: id, personType: 'Staff' });
+                        if (id) assignments.push({ periodNumber: act.PeriodNumber, activityName: act.ActivityName, personID: id, personType: 'Instructor' });
                     });
                 }
             });
@@ -774,7 +792,7 @@
                     body: JSON.stringify({ assignments, weekNumber: PLAN_WEEK })
                 });
                 if (resp.ok) {
-                    if (btn) { btn.textContent = '&#10003; Saved!'; setTimeout(() => { btn.textContent = 'Save Assignments'; btn.disabled = false; }, 2500); }
+                    if (btn) { btn.textContent = '✓ Saved!'; setTimeout(() => { btn.textContent = 'Save Assignments'; btn.disabled = false; }, 2500); }
                 } else {
                     const errBody = await resp.json().catch(() => ({}));
                     console.error('[save-counselor-assignments] server error:', errBody.error || resp.status);
@@ -872,7 +890,7 @@
                     body: JSON.stringify({ counselors, weekNumber: PLAN_WEEK })
                 });
                 if (resp.ok) {
-                    btn.textContent = '&#10003; Saved!';
+                    btn.textContent = '✓ Saved!';
                     setTimeout(() => { btn.textContent = 'Save Group Assignments'; btn.disabled = false; }, 2500);
                 } else {
                     btn.textContent = 'Error — try again'; btn.disabled = false;
@@ -997,18 +1015,98 @@
                 if (hg) hg.value = color;
             });
 
-            // Assign schedule types: honor preferences, then default to All Sports / All Enrichment
-            let sportsTurn = true;
-            Object.keys(assignments).forEach(cid => {
-                const sc = document.querySelector(`.cg-schedule[data-cid="${cid}"]:not(.cg-specialty-schedule)`);
-                if (!sc) return;
-                const schedPref = prefMap[parseInt(cid)]?.SchedulePreference;
-                if (schedPref && schedPref !== 'No Preference') {
-                    sc.value = schedPref;
+            // ── Schedule type assignment with demand-aware preference override ─────
+            // Compute per-quadrant demand using the same slot formula as autoCalculateSlots
+            const sMin = parseInt(document.getElementById('sportsMin').value)       || 2;
+            const sThr = parseInt(document.getElementById('sportsThreshold').value) || 16;
+            const sPer = parseInt(document.getElementById('sportsPer').value)       || 8;
+            const eRed = parseInt(document.getElementById('enrichRed').value)       || 2;
+            const eCar = parseInt(document.getElementById('enrichCarolina').value)  || 1;
+            const eRC  = parseInt(document.getElementById('enrichRC').value)        || 2;
+            const eGN  = parseInt(document.getElementById('enrichGN').value)        || 1;
+
+            const demand = { amSports: 0, pmSports: 0, amEnrich: 0, pmEnrich: 0 };
+            const slotTotals = {};
+            OFFERINGS.forEach(act => {
+                if (!act.PeriodNumber || !act.SideOfCamp) return;
+                const key = `${act.PeriodNumber}_${act.SideOfCamp}`;
+                let cnt;
+                if (act.SideOfCamp === 'Sports') {
+                    const enr = act.PreliminaryEnrollment || 0;
+                    cnt = sMin + Math.ceil(Math.max(0, enr - sThr) / sPer);
                 } else {
-                    sc.value = sportsTurn ? 'All Sports' : 'All Enrichment';
-                    sportsTurn = !sportsTurn;
+                    const ag = act.AllowedGroups || '';
+                    cnt = ag === 'Red' ? eRed : ag === 'Carolina' ? eCar : ag === 'Red-Carolina' ? eRC : ag === 'Green-Navy' ? eGN : eRC;
                 }
+                slotTotals[key] = (slotTotals[key] || 0) + cnt;
+            });
+            // Demand per quadrant = highest single-period slot total in that quadrant
+            Object.entries(slotTotals).forEach(([key, total]) => {
+                const [p, side] = key.split('_');
+                const am = parseInt(p) <= 3;
+                if (side === 'Sports')      { if (am) demand.amSports = Math.max(demand.amSports, total); else demand.pmSports = Math.max(demand.pmSports, total); }
+                else if (side === 'Enrichment') { if (am) demand.amEnrich = Math.max(demand.amEnrich, total); else demand.pmEnrich = Math.max(demand.pmEnrich, total); }
+            });
+
+            // Which quadrants each schedule type covers (1 counselor each)
+            const COVERS = {
+                'All Sports':                { amSports: 1, pmSports: 1, amEnrich: 0, pmEnrich: 0 },
+                'All Enrichment':            { amSports: 0, pmSports: 0, amEnrich: 1, pmEnrich: 1 },
+                'AM Sports / PM Enrichment': { amSports: 1, pmSports: 0, amEnrich: 0, pmEnrich: 1 },
+                'AM Enrichment / PM Sports': { amSports: 0, pmSports: 1, amEnrich: 1, pmEnrich: 0 },
+            };
+            const VALID_TYPES = Object.keys(COVERS);
+
+            function supplyFrom(typeMap) {
+                const s = { amSports: 0, pmSports: 0, amEnrich: 0, pmEnrich: 0 };
+                Object.values(typeMap).forEach(t => {
+                    if (COVERS[t]) Object.keys(s).forEach(q => s[q] += COVERS[t][q]);
+                });
+                return s;
+            }
+            function scheduleIsValid(supply) {
+                return supply.amSports >= demand.amSports && supply.pmSports >= demand.pmSports &&
+                       supply.amEnrich >= demand.amEnrich && supply.pmEnrich >= demand.pmEnrich;
+            }
+            // Returns the type that most reduces total shortfall given current supply
+            function mostNeededType(supply) {
+                let best = null, bestScore = -1;
+                for (const [type, cov] of Object.entries(COVERS)) {
+                    const score = Object.keys(supply).reduce((acc, q) => acc + (cov[q] > 0 ? Math.max(0, demand[q] - supply[q]) : 0), 0);
+                    if (score > bestScore) { bestScore = score; best = type; }
+                }
+                return best;
+            }
+
+            // First pass: honor all explicit preferences
+            const typeAssignments = {};
+            const prefCids = [];
+            Object.keys(assignments).forEach(cid => {
+                const schedPref = prefMap[parseInt(cid)]?.SchedulePreference;
+                if (schedPref && schedPref !== 'No Preference' && VALID_TYPES.includes(schedPref)) {
+                    typeAssignments[cid] = schedPref;
+                    prefCids.push(cid);
+                }
+            });
+            // Assign non-preference counselors demand-first
+            Object.keys(assignments).forEach(cid => {
+                if (typeAssignments[cid]) return;
+                typeAssignments[cid] = mostNeededType(supplyFrom(typeAssignments)) || 'All Sports';
+            });
+
+            // Second pass: if supply still can't meet demand, override preferences one at a time
+            if (!scheduleIsValid(supplyFrom(typeAssignments))) {
+                for (const cid of shuffle(prefCids)) {
+                    if (scheduleIsValid(supplyFrom(typeAssignments))) break;
+                    const needed = mostNeededType(supplyFrom(typeAssignments));
+                    if (needed) typeAssignments[cid] = needed;
+                }
+            }
+
+            // Apply to DOM
+            Object.entries(typeAssignments).forEach(([cid, type]) => {
+                const sc = document.querySelector(`.cg-schedule[data-cid="${cid}"]:not(.cg-specialty-schedule)`);
+                if (sc) sc.value = type;
             });
 
             updateGroupCounters();
@@ -1037,11 +1135,14 @@
                     else if (ag === 'Green-Navy')   count = enrichGN;
                     else                            count = enrichRC; // cross-side or unclassified → RC default
                 }
-                state[idx].counselors = Array(count).fill(null);
-                const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
-                if (card) {
-                    const inp = card.querySelector('[data-count-type="counselors"]');
-                    if (inp) inp.value = count;
+                // Only auto-initialize if no count or assignments have been manually set
+                if (state[idx].counselors.length === 0) {
+                    state[idx].counselors = Array(count).fill(null);
+                    const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                    if (card) {
+                        const inp = card.querySelector('[data-count-type="counselors"]');
+                        if (inp) inp.value = count;
+                    }
                 }
             });
             renderAllFromState();
@@ -1099,7 +1200,7 @@
                 const tBlock    = srcPeriod <= 3 ? 'am' : 'pm';
                 const slotCount = state[srcIdx].counselors.length;
                 // Eligible for the source period (skip same-name blockUsed; repeat is intentional)
-                const tEligible = COUNSELORS.filter(c => {
+                const tEligible = MAIN_COUNSELORS.filter(c => {
                     if (usedThisPeriod[srcPeriod].has(c.CounselorID)) return false;
                     const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
@@ -1148,14 +1249,12 @@
                 const oppBlock = block === 'am' ? 'pm' : 'am';
                 const slotPos  = state[bestIdx].counselors.indexOf(null);
 
-                const eligible = COUNSELORS.filter(c => {
+                const eligible = MAIN_COUNSELORS.filter(c => {
                     if (usedThisPeriod[period].has(c.CounselorID)) return false;
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     if (!isCounselorAvailableFor(sched, period, side)) return false;
                     if (blockUsed[c.CounselorID]?.[block].has(name)) return false;
-                    if (blockUsed[c.CounselorID]?.[oppBlock].has(name) &&
-                        !prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)) return false;
                     return true;
                 });
 
@@ -1204,6 +1303,16 @@
                 }
             }
 
+            // Remove unfilled null slots so blank dropdowns don't appear
+            OFFERINGS.forEach((_, idx) => {
+                state[idx].counselors = state[idx].counselors.filter(id => id !== null);
+                const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                if (card) {
+                    const inp = card.querySelector('[data-count-type="counselors"]');
+                    if (inp) inp.value = state[idx].counselors.length;
+                }
+            });
+
             renderAllFromState();
             updateAllCounters();
             updateGroupCounters();
@@ -1245,7 +1354,7 @@
 
                 for (const side of ['Sports', 'Enrichment']) {
                     // Counselors that should be in this period+side but aren't placed
-                    const extras = COUNSELORS.filter(c => {
+                    const extras = MAIN_COUNSELORS.filter(c => {
                         if (usedThisPeriod.has(c.CounselorID)) return false;
                         const schedSel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                         const sched = schedSel ? schedSel.value : (c.ScheduleType || '');
@@ -1275,8 +1384,6 @@
                             if (id !== null || extrasPool.length === 0) return;
                             const eligible_e = extrasPool.filter(c => {
                                 if (blockUsed[c.CounselorID]?.[block].has(actName)) return false;
-                                if (blockUsed[c.CounselorID]?.[oppBlock].has(actName) &&
-                                    !prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)) return false;
                                 return true;
                             });
                             const preferred = shuffle(eligible_e.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
@@ -1302,8 +1409,6 @@
                         const valid = eligibleIdxs.filter(idx => {
                             const actName = OFFERINGS[idx].ActivityName;
                             if (blockUsed[extra.CounselorID][block].has(actName)) return false;
-                            if (blockUsed[extra.CounselorID][oppBlock].has(actName) &&
-                                !prefMap[extra.CounselorID]?.ActivityPreferences?.includes(actName)) return false;
                             return true;
                         });
                         if (valid.length === 0) continue;
@@ -1323,8 +1428,6 @@
                         const actName = OFFERINGS[idx].ActivityName;
                         const eligible_r = [...remaining].filter(cid => {
                             if (blockUsed[cid]?.[block].has(actName)) return false;
-                            if (blockUsed[cid]?.[oppBlock].has(actName) &&
-                                !prefMap[cid]?.ActivityPreferences?.includes(actName)) return false;
                             return true;
                         });
                         const preferred = shuffle(eligible_r.filter(cid =>  prefMap[cid]?.ActivityPreferences?.includes(actName)));
@@ -1363,6 +1466,16 @@
                     }
                 }
             }
+
+            // Remove unfilled null slots so blank dropdowns don't appear
+            OFFERINGS.forEach((_, idx) => {
+                state[idx].counselors = state[idx].counselors.filter(id => id !== null);
+                const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                if (card) {
+                    const inp = card.querySelector('[data-count-type="counselors"]');
+                    if (inp) inp.value = state[idx].counselors.length;
+                }
+            });
 
             renderAllFromState();
             updateAllCounters();
