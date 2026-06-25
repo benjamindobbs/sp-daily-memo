@@ -24,6 +24,69 @@
         .context-row strong { color: var(--text); }
         .no-offerings { text-align: center; padding: 60px 20px; color: var(--text-muted); }
         .side-heading { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9; }
+
+        /* ── Random Picker ── */
+        .draw-bar {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+        }
+        .draw-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 18px;
+            border-radius: 20px;
+            border: none;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+            font-size: 0.88rem;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(99,102,241,0.35);
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .draw-btn:active { transform: scale(0.96); }
+        .draw-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .draw-remaining {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        .draw-ticket {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            border-radius: 12px;
+            background: #fef9c3;
+            border: 2px solid #fde047;
+            font-size: 1.25rem;
+            font-weight: 800;
+            color: #78350f;
+            white-space: nowrap;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .draw-ticket.spinning {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            font-weight: 700;
+        }
+        .draw-ticket.landed {
+            display: inline-flex;
+            transform: scale(1.06);
+            box-shadow: 0 4px 16px rgba(234,179,8,0.3);
+            animation: pop 0.25s ease-out;
+        }
+        @keyframes pop {
+            0%   { transform: scale(0.85); opacity: 0.4; }
+            70%  { transform: scale(1.1); }
+            100% { transform: scale(1.06); opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -91,6 +154,11 @@
                 <span class="text-muted" style="font-size:0.78rem;"><%= pOffs.length %> class<%= pOffs.length !== 1 ? 'es' : '' %></span>
             </summary>
             <div class="period-body">
+                <div class="draw-bar">
+                    <button class="draw-btn" onclick="pickRandom(<%= p %>)" id="draw-btn-<%= p %>">&#127922; Draw a Name</button>
+                    <span class="draw-remaining" id="draw-remaining-<%= p %>"></span>
+                    <span class="draw-ticket" id="draw-ticket-<%= p %>"></span>
+                </div>
                 <p class="side-heading"><%- PERIOD_SIDES[p] === 'Enrichment' ? '&#127912; Enrichment' : '&#9917; Sports' %></p>
                 <div class="offering-grid">
                 <% pOffs.forEach(function(act) {
@@ -174,6 +242,89 @@
                 for (let i = slots.length - 1; i >= target; i--) slots[i].remove();
             }
         }
+
+        function getUnassignedForPeriod(period) {
+            const assigned = new Set();
+            document.querySelectorAll(`.split-slot[data-period="${period}"]`).forEach(sel => {
+                const v = parseInt(sel.value);
+                if (v) assigned.add(v);
+            });
+            return SPLIT_CAMPERS.filter(sc => !assigned.has(sc.CamperID));
+        }
+
+        function updateRemaining(period) {
+            const remaining = getUnassignedForPeriod(period);
+            const el = document.getElementById(`draw-remaining-${period}`);
+            if (el) el.textContent = `${remaining.length} remaining`;
+        }
+
+        function pickRandom(period) {
+            const pool = getUnassignedForPeriod(period);
+            const btn    = document.getElementById(`draw-btn-${period}`);
+            const ticket = document.getElementById(`draw-ticket-${period}`);
+            const remEl  = document.getElementById(`draw-remaining-${period}`);
+
+            if (pool.length === 0) {
+                ticket.className = 'draw-ticket landed';
+                ticket.textContent = '🎉 Everyone has a class!';
+                ticket.style.display = 'inline-flex';
+                return;
+            }
+
+            const winner = pool[Math.floor(Math.random() * pool.length)];
+            const winnerName = `${winner.FirstName} ${winner.LastName}`;
+
+            btn.disabled = true;
+            ticket.className = 'draw-ticket spinning';
+            ticket.style.display = 'inline-flex';
+            ticket.textContent = '…';
+
+            // Slot-machine: start fast, decelerate, land
+            const TOTAL_MS  = 2200;
+            const START_INT = 55;
+            const END_INT   = 220;
+
+            let elapsed = 0;
+            let interval = START_INT;
+            let step = null;
+
+            function tick() {
+                // Pick a random name from the pool to flash (not always the winner)
+                const flash = pool[Math.floor(Math.random() * pool.length)];
+                ticket.textContent = `${flash.FirstName} ${flash.LastName}`;
+
+                elapsed += interval;
+                // Ease interval outward (slow down)
+                const progress = Math.min(elapsed / TOTAL_MS, 1);
+                interval = START_INT + (END_INT - START_INT) * (progress * progress);
+
+                if (elapsed >= TOTAL_MS) {
+                    clearTimeout(step);
+                    // Land on the winner
+                    ticket.className = 'draw-ticket landed';
+                    ticket.textContent = `⭐ ${winnerName}`;
+                    if (remEl) remEl.textContent = `${pool.length} remaining`;
+                    btn.disabled = false;
+                } else {
+                    step = setTimeout(tick, interval);
+                }
+            }
+
+            step = setTimeout(tick, interval);
+        }
+
+        // Keep remaining counts fresh whenever any slot changes
+        document.addEventListener('change', e => {
+            if (e.target.classList.contains('split-slot')) {
+                const period = parseInt(e.target.dataset.period);
+                updateRemaining(period);
+            }
+        });
+
+        // Initialize remaining counts on load
+        [1, 2, 5, 6].forEach(p => {
+            if (document.getElementById(`draw-remaining-${p}`)) updateRemaining(p);
+        });
 
         async function saveAssignments() {
             const btn = document.getElementById('saveBtn');
