@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camper Name Cards | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .filter-bar span {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-right: 4px;
+        }
+        .group-btn {
+            padding: 5px 14px;
+            border-radius: 20px;
+            border: 2px solid #cbd5e1;
+            background: #f8fafc;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #334155;
+            transition: background 0.1s, border-color 0.1s;
+        }
+        .group-btn.active { border-color: #3b82f6; background: #dbeafe; color: #1e40af; }
+        .group-btn[data-group="Red"].active    { border-color: #dc2626; background: #fee2e2; color: #991b1b; }
+        .group-btn[data-group="Carolina"].active { border-color: #2563eb; background: #dbeafe; color: #1e3a8a; }
+        .group-btn[data-group="Green"].active  { border-color: #16a34a; background: #dcfce7; color: #14532d; }
+        .group-btn[data-group="Navy"].active   { border-color: #1d4ed8; background: #eff6ff; color: #1e3a8a; }
+        .group-btn[data-group="SPLIT"].active  { border-color: #7c3aed; background: #ede9fe; color: #4c1d95; }
+        .card-count {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-left: auto;
+            align-self: center;
+        }
+        .card-grid {
+            display: grid;
+            grid-template-columns: 3in 3in;
+            grid-auto-rows: 5in;
+            gap: 0;
+        }
+        .name-card {
+            width: 3in;
+            height: 5in;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 0.3in;
+            box-sizing: border-box;
+            border: 1px dashed #ccc;
+        }
+        .name-card.hidden { display: none; }
+        .card-name {
+            font-size: 18pt;
+            font-weight: 700;
+            margin-bottom: 14pt;
+            line-height: 1.2;
+        }
+        .card-classes {
+            font-size: 11pt;
+            line-height: 1.9;
+            color: #333;
+        }
+
+        @media print {
+            @page {
+                size: letter portrait;
+                margin: 0.25in;
+            }
+            nav, .no-print { display: none !important; }
+            .container { padding: 0; max-width: none; }
+            .name-card { border: 1px dashed #aaa; }
+            .name-card.hidden { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+<nav class="nav-bar no-print">
+    <a href="/admin" class="nav-btn">&#127968; Hub</a>
+    <a href="/reports/attendance-rosters" class="nav-btn">&#128203; Attendance Rosters</a>
+    <button onclick="window.print()" class="nav-btn primary" style="margin-left:auto;">&#128424; Print</button>
+</nav>
+
+<div class="container">
+
+<% if (campers.length === 0) { %>
+    <p style="color:var(--text-muted); padding:40px 0;">No camper schedules found. Import a master schedule first.</p>
+<% } else { %>
+
+    <div class="filter-bar no-print">
+        <span>Groups:</span>
+        <button class="group-btn active" data-group="Red">Red</button>
+        <button class="group-btn active" data-group="Carolina">Carolina</button>
+        <button class="group-btn active" data-group="Green">Green</button>
+        <button class="group-btn active" data-group="Navy">Navy</button>
+        <button class="group-btn active" data-group="SPLIT">SPLIT</button>
+        <span class="card-count" id="cardCount"></span>
+    </div>
+
+    <div class="card-grid" id="cardGrid">
+        <% campers.forEach(camper => { %>
+        <div class="name-card" data-group="<%= camper.HomeGroupColor %>">
+            <div class="card-name"><%= camper.FirstName %> <%= camper.LastName %></div>
+            <div class="card-classes">
+                <% camper.classes.forEach(cls => { %>
+                    <%= cls %><br>
+                <% }) %>
+            </div>
+        </div>
+        <% }) %>
+    </div>
+
+    <script>
+        const FILTER_GROUPS = new Set(['Red', 'Carolina', 'Green', 'Navy', 'SPLIT']);
+        const active = new Set(['Red', 'Carolina', 'Green', 'Navy', 'SPLIT']);
+
+        function applyFilter() {
+            const cards = document.querySelectorAll('.name-card');
+            let visible = 0;
+            cards.forEach(card => {
+                const g = card.dataset.group;
+                const show = active.has(g) || !FILTER_GROUPS.has(g);
+                card.classList.toggle('hidden', !show);
+                if (show) visible++;
+            });
+            document.getElementById('cardCount').textContent = visible + ' card' + (visible !== 1 ? 's' : '');
+        }
+
+        document.querySelectorAll('.group-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const g = btn.dataset.group;
+                if (active.has(g)) {
+                    active.delete(g);
+                    btn.classList.remove('active');
+                } else {
+                    active.add(g);
+                    btn.classList.add('active');
+                }
+                applyFilter();
+            });
+        });
+
+        applyFilter();
+    </script>
+
+<% } %>
+
+</div>
+</body>
+</html>

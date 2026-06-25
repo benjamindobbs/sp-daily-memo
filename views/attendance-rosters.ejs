@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Rosters | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .roster-page {
+            page-break-after: always;
+            margin-bottom: 48px;
+        }
+        .roster-page:last-child {
+            page-break-after: avoid;
+            margin-bottom: 0;
+        }
+        .roster-header {
+            border-bottom: 2px solid #000;
+            padding-bottom: 8px;
+            margin-bottom: 14px;
+        }
+        .roster-header h2 {
+            margin: 0 0 4px;
+            font-size: 1.15rem;
+            font-weight: 700;
+        }
+        .roster-meta {
+            font-size: 0.82rem;
+            color: #555;
+            display: flex;
+            gap: 24px;
+        }
+        .roster-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+        .roster-table th {
+            background: #f8fafc;
+            border: 1px solid #888;
+            padding: 6px 10px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.8rem;
+        }
+        .roster-table th:first-child { text-align: left; }
+        .roster-table td {
+            border: 1px solid #bbb;
+            padding: 8px 10px;
+            height: 30px;
+        }
+        .roster-table td:first-child { font-weight: 500; }
+        .empty-state {
+            color: var(--text-muted);
+            font-style: italic;
+            text-align: center;
+            padding: 8px;
+        }
+
+        @media print {
+            nav, .no-print { display: none !important; }
+            .roster-page { margin-bottom: 0; }
+            .container { padding: 0; max-width: none; }
+        }
+    </style>
+</head>
+<body>
+
+<nav class="nav-bar no-print">
+    <a href="/admin" class="nav-btn">&#127968; Hub</a>
+    <a href="/reports/name-cards" class="nav-btn">&#127915; Name Cards</a>
+    <button onclick="window.print()" class="nav-btn primary" style="margin-left:auto;">&#128424; Print</button>
+</nav>
+
+<div class="container">
+
+<% if (counselors.length === 0) { %>
+    <p style="color:var(--text-muted); padding:40px 0;">No counselor schedules found for the active week. Build and save the counselor schedule first.</p>
+<% } else { %>
+
+<% counselors.forEach(counselor => { %>
+    <% counselor.periods.forEach((period, periodIdx) => { %>
+    <div class="roster-page">
+        <div class="roster-header">
+            <h2><%= counselor.FirstName %> <%= counselor.LastName %> &mdash; <%= period.ActivityName %></h2>
+            <div class="roster-meta">
+                <span>Period <%= period.PeriodNumber %></span>
+                <% if (period.Location) { %><span>&#128205; <%= period.Location %></span><% } %>
+                <span><%= period.campers.length %> camper<%= period.campers.length !== 1 ? 's' : '' %></span>
+            </div>
+        </div>
+        <table class="roster-table">
+            <thead>
+                <tr>
+                    <th style="width:40%;">Camper Name</th>
+                    <th>Mon</th>
+                    <th>Tue</th>
+                    <th>Wed</th>
+                    <th>Thu</th>
+                    <th>Fri</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% if (period.campers.length === 0) { %>
+                    <tr><td colspan="6" class="empty-state">No campers enrolled in this class</td></tr>
+                <% } else { %>
+                    <% period.campers.forEach(camper => { %>
+                    <tr>
+                        <td><%= camper.LastName %>, <%= camper.FirstName %></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    <% }) %>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
+    <% }) %>
+<% }) %>
+
+<% } %>
+</div>
+</body>
+</html>

@@ -252,6 +252,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/dismissals',
     '/nurse',
     '/split-scheduling', '/save-split-assignments',
+    '/reports', '/upload-pdf',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -1641,10 +1642,13 @@ app.get('/settings', (req, res) => {
         s.counselorCount = totalActiveStaff;
         s.offeringCount  = db.prepare('SELECT COUNT(*) as n FROM WeeklyOfferings WHERE WeekNumber=?').get(s.weekNumber).n;
     });
+    const hasCamperNotesPdf = fs.existsSync(path.join(__dirname, 'uploads', 'camper-notes.pdf'));
+    const hasIcpNotesPdf    = fs.existsSync(path.join(__dirname, 'uploads', 'icp-notes.pdf'));
     res.render('settings', {
         activities, periodOverrides, sessions, alertMessage: req.query.message,
         confirmWeek: req.query.confirmWeek || null, weekCount: req.query.weekCount || null,
-        confirmOfferWeek: req.query.confirmOfferWeek || null, offerCount: req.query.offerCount || null
+        confirmOfferWeek: req.query.confirmOfferWeek || null, offerCount: req.query.offerCount || null,
+        hasCamperNotesPdf, hasIcpNotesPdf
     });
 });
 app.post('/upload-activity-rules', upload.single('file'), (req, res) => {
@@ -4344,6 +4348,111 @@ app.post('/split-field-trip/clear', (req, res) => {
     const date = req.body.date || todayStr();
     db.prepare("DELETE FROM SplitFieldTrip WHERE Date=?").run(date);
     res.redirect(req.body.returnTo || `/attendance/specialty/SPLIT/am?date=${date}`);
+});
+
+// ─── PRINT REPORTS ────────────────────────────────────────────────────────────
+
+app.get('/reports/attendance-rosters', (_req, res) => {
+    const aw = getActiveWeek();
+    const scheduleRows = db.prepare(`
+        SELECT cws.CounselorID, co.FirstName, co.LastName,
+               cws.PeriodNumber, cws.ActivityName
+        FROM CounselorWeekSchedules cws
+        JOIN Counselors co ON co.CounselorID = cws.CounselorID
+        WHERE cws.WeekNumber = ?
+        ORDER BY co.LastName, co.FirstName, cws.PeriodNumber
+    `).all(aw);
+
+    const counselorMap = {};
+    scheduleRows.forEach(r => {
+        if (!counselorMap[r.CounselorID]) {
+            counselorMap[r.CounselorID] = {
+                CounselorID: r.CounselorID,
+                FirstName: r.FirstName,
+                LastName: r.LastName,
+                periods: []
+            };
+        }
+        const campers = db.prepare(`
+            SELECT ca.CamperID, ca.FirstName, ca.LastName
+            FROM Campers ca
+            JOIN Schedules s ON s.PersonID = ca.CamperID AND s.PersonType = 'Camper'
+            WHERE s.PeriodNumber = ? AND s.ActivityName = ?
+            ORDER BY ca.LastName, ca.FirstName
+        `).all(r.PeriodNumber, r.ActivityName);
+
+        const locRow = db.prepare(`
+            SELECT Location FROM Schedules
+            WHERE PersonType = 'Instructor' AND PeriodNumber = ? AND ActivityName = ?
+            AND Location IS NOT NULL AND Location != '' LIMIT 1
+        `).get(r.PeriodNumber, r.ActivityName);
+
+        counselorMap[r.CounselorID].periods.push({
+            PeriodNumber: r.PeriodNumber,
+            ActivityName: r.ActivityName,
+            Location: locRow?.Location || null,
+            campers
+        });
+    });
+
+    res.render('attendance-rosters', { counselors: Object.values(counselorMap) });
+});
+
+app.get('/reports/name-cards', (_req, res) => {
+    const rows = db.prepare(`
+        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.HomeGroupColor,
+               s.PeriodNumber, s.ActivityName
+        FROM Campers ca
+        JOIN Schedules s ON s.PersonID = ca.CamperID AND s.PersonType = 'Camper'
+        ORDER BY ca.LastName, ca.FirstName, s.PeriodNumber
+    `).all();
+
+    const camperMap = {};
+    rows.forEach(r => {
+        if (!camperMap[r.CamperID]) {
+            camperMap[r.CamperID] = {
+                CamperID: r.CamperID,
+                FirstName: r.FirstName,
+                LastName: r.LastName,
+                HomeGroupColor: r.HomeGroupColor || '',
+                classes: []
+            };
+        }
+        camperMap[r.CamperID].classes.push(r.ActivityName);
+    });
+
+    res.render('name-cards', { campers: Object.values(camperMap) });
+});
+
+// ─── DOCUMENT PDF UPLOAD / SERVE ──────────────────────────────────────────────
+
+const ALLOWED_PDF_TYPES = new Set(['camper-notes', 'icp-notes']);
+
+app.post('/upload-pdf/:type', upload.single('file'), (req, res) => {
+    const type = req.params.type;
+    if (!ALLOWED_PDF_TYPES.has(type)) return res.status(400).send('Invalid document type');
+    if (!req.file) return res.redirect('/settings?message=No+file+uploaded');
+    if (!req.file.originalname.toLowerCase().endsWith('.pdf') && req.file.mimetype !== 'application/pdf') {
+        fs.unlinkSync(req.file.path);
+        return res.redirect('/settings?message=File+must+be+a+PDF');
+    }
+    const dest = path.join(__dirname, 'uploads', `${type}.pdf`);
+    fs.renameSync(req.file.path, dest);
+    res.redirect('/settings?message=PDF+uploaded+successfully');
+});
+
+app.get('/pdf/:type', (req, res) => {
+    const type = req.params.type;
+    if (!ALLOWED_PDF_TYPES.has(type)) return res.status(404).send('Not found');
+    const filePath = path.join(__dirname, 'uploads', `${type}.pdf`);
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).type('html').send(
+            '<p style="font-family:sans-serif;padding:40px;">No PDF has been uploaded yet. Ask an admin to upload this document via Settings.</p>'
+        );
+    }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline');
+    res.sendFile(filePath);
 });
 
 const PORT = process.env.PORT || 3000;

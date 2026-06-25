@@ -357,6 +357,48 @@
 
                     </div>
                 </div>
+
+        <div class="card" style="margin-top:24px;">
+            <h2 style="margin:0 0 16px;">&#128196; Documents</h2>
+            <div style="display:flex; flex-direction:column; gap:20px;">
+
+                <div class="upload-section" style="padding-bottom:16px; border-bottom:1px solid #eee;">
+                    <h4 style="margin:0 0 4px;">Camper Notes PDF</h4>
+                    <% if (hasCamperNotesPdf) { %>
+                        <p style="font-size:0.8rem; color:#16a34a; margin:0 0 8px;">&#10003; File uploaded &mdash; <a href="/pdf/camper-notes" target="_blank">View</a></p>
+                    <% } else { %>
+                        <p style="font-size:0.8rem; color:var(--text-muted); margin:0 0 8px;">No file uploaded yet.</p>
+                    <% } %>
+                    <form action="/upload-pdf/camper-notes" method="POST" enctype="multipart/form-data" style="display:flex; align-items:center; gap:10px;">
+                        <input type="file" name="file" accept=".pdf,application/pdf" required style="font-size:0.82rem;">
+                        <button type="submit" class="btn primary btn-small">Upload PDF</button>
+                    </form>
+                </div>
+
+                <div class="upload-section">
+                    <h4 style="margin:0 0 4px;">ICP Notes PDF</h4>
+                    <% if (hasIcpNotesPdf) { %>
+                        <p style="font-size:0.8rem; color:#16a34a; margin:0 0 8px;">&#10003; File uploaded &mdash; <a href="/pdf/icp-notes" target="_blank">View</a></p>
+                    <% } else { %>
+                        <p style="font-size:0.8rem; color:var(--text-muted); margin:0 0 8px;">No file uploaded yet.</p>
+                    <% } %>
+                    <form action="/upload-pdf/icp-notes" method="POST" enctype="multipart/form-data" style="display:flex; align-items:center; gap:10px;">
+                        <input type="file" name="file" accept=".pdf,application/pdf" required style="font-size:0.82rem;">
+                        <button type="submit" class="btn primary btn-small">Upload PDF</button>
+                    </form>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:24px;">
+            <h2 style="margin:0 0 16px;">&#128424; Print Reports</h2>
+            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                <a href="/reports/attendance-rosters" target="_blank" class="btn primary">Attendance Rosters</a>
+                <a href="/reports/name-cards" target="_blank" class="btn">Camper Name Cards</a>
+            </div>
+        </div>
+
     </div>
 
 </body>

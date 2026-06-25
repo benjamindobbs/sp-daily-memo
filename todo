@@ -1,15 +1,1 @@
-For Future Update Disregard Below:
-Add printable report view with the following reports:
-Schedule by Counselor: 
-Produces PDF with all attendance rosters. Attendance rosters will have a header with the counselor name, class name, location if provided, and period, and a row for each camper plus a column for each day of the week. Each roster should get it's own page and pages should be collated by counselor for each of distribution.
-
-Camper Name Cards:
-Produce PDF with a 3x5" rectangle with each campers name (First Last) and a new line for each of their classes. These should all be ceneter aligned. It should be possible to print a 2x2 grid of these
-
-Add PDF Viewer for following:
--Camper Notes
--ICP Notes
-In data management add new upload section for PDFs for both options.
-In staff view add links to nav for Camper Notes and ICP notes.
-These will be password protected PDF files, if this is an issue let me know. 
-
+Period 5 enrichment classes are not populating in the auto scheduler
