@@ -195,6 +195,65 @@
         <% } %>
     </div>
 
+    <%/* ── Unclassified Activities ── */%>
+    <div class="audit-section">
+        <h2>
+            Unclassified Activities
+            <% if (unclassifiedActivities.length > 0) { %>
+                <span class="count-pill"><%= unclassifiedActivities.length %></span>
+            <% } else { %>
+                <span class="count-pill count-ok">All clear</span>
+            <% } %>
+        </h2>
+        <p class="audit-meta" style="margin-top:-8px;">Activities not assigned to Sports or Enrichment. These will be excluded from counselor scheduling and the preferences checklist until a side is set.</p>
+
+        <% if (unclassifiedActivities.length === 0) { %>
+            <div class="card">
+                <div class="all-clear">&#10003; All activities have a side assigned.</div>
+            </div>
+        <% } else { %>
+            <div class="card" style="padding:0; overflow:hidden;">
+                <table class="flag-table">
+                    <thead>
+                        <tr>
+                            <th>Activity</th>
+                            <th>Enrollment</th>
+                            <th>Set Side</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% unclassifiedActivities.forEach(act => { %>
+                        <tr>
+                            <td><strong><%= act.Name %></strong></td>
+                            <td>
+                                <% if (act.enrollment > 0) { %>
+                                    <span class="flag-badge flag-warn"><%= act.enrollment %> camper<%= act.enrollment !== 1 ? 's' : '' %></span>
+                                <% } else { %>
+                                    <span style="color:var(--text-muted); font-size:0.8rem;">None</span>
+                                <% } %>
+                            </td>
+                            <td>
+                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    <form action="/set-activity-side" method="POST" style="margin:0;">
+                                        <input type="hidden" name="activityName" value="<%= act.Name %>">
+                                        <input type="hidden" name="sideOfCamp" value="Sports">
+                                        <button type="submit" class="btn btn-small" style="background:#dbeafe; color:#1e40af; border-color:#93c5fd;">&#9917; Sports</button>
+                                    </form>
+                                    <form action="/set-activity-side" method="POST" style="margin:0;">
+                                        <input type="hidden" name="activityName" value="<%= act.Name %>">
+                                        <input type="hidden" name="sideOfCamp" value="Enrichment">
+                                        <button type="submit" class="btn btn-small" style="background:#fce7f3; color:#9d174d; border-color:#f9a8d4;">&#127912; Enrichment</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            </div>
+        <% } %>
+    </div>
+
     <%/* ── Counselor Flags ── */%>
     <div class="audit-section">
         <h2>

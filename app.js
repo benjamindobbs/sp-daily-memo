@@ -246,7 +246,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/hub-content', '/director-notes', '/photo-gallery', '/photo-vote',
     '/set-active-week', '/set-released-week', '/update-session-label',
     '/clear-counselor-week', '/counselor-week-assignments', '/clear-counselor-schedule', '/clear-counselor-homegroups',
-    '/audit', '/merge-class',
+    '/audit', '/merge-class', '/set-activity-side',
     '/homegroup-assignment',
     '/attendance/dismissal-archive',
     '/dismissals',
@@ -1220,7 +1220,25 @@ app.get('/audit', (req, res) => {
         suggestions: suggestTargets(r.ActivityName, allClassNames)
     }));
 
-    res.render('audit', { activeSession, alertMessage, noCounselor, missingSchedule, counselorMismatch, EXPECTED, suspects, allClassNames });
+    const unclassifiedActivities = db.prepare(`
+        SELECT a.Name, a.SideOfCamp,
+               COUNT(s.PersonID) AS enrollment
+        FROM Activities a
+        LEFT JOIN Schedules s ON s.ActivityName = a.Name AND s.PersonType = 'Camper'
+        WHERE a.SideOfCamp IS NULL OR a.SideOfCamp NOT IN ('Sports', 'Enrichment')
+        GROUP BY a.Name, a.SideOfCamp
+        ORDER BY a.Name
+    `).all();
+
+    res.render('audit', { activeSession, alertMessage, noCounselor, missingSchedule, counselorMismatch, EXPECTED, suspects, allClassNames, unclassifiedActivities });
+});
+
+app.post('/set-activity-side', (req, res) => {
+    const { activityName, sideOfCamp } = req.body;
+    if (!activityName || !['Sports', 'Enrichment'].includes(sideOfCamp))
+        return res.redirect('/audit?message=Invalid+request.');
+    db.prepare("UPDATE Activities SET SideOfCamp = ? WHERE Name = ?").run(sideOfCamp, activityName);
+    res.redirect(`/audit?message=Set+"${encodeURIComponent(activityName)}"+to+${sideOfCamp}.`);
 });
 
 app.post('/merge-class', (req, res) => {
@@ -3962,7 +3980,13 @@ app.get('/api/counselor-preferences/:id', (req, res) => {
 
 app.get('/counselor-preferences', (req, res) => {
     const counselors = db.prepare("SELECT CounselorID, FirstName, LastName, HomeGroupColor, StaffRole FROM Counselors ORDER BY LastName, FirstName").all();
-    const activities = db.prepare("SELECT Name, SideOfCamp FROM Activities ORDER BY SideOfCamp, Name").all();
+    const activeWeek = getActiveWeek();
+    const weekActivities = db.prepare(
+        "SELECT DISTINCT ActivityName AS Name, SideOfCamp FROM WeeklyOfferings WHERE WeekNumber = ? ORDER BY SideOfCamp, ActivityName"
+    ).all(activeWeek);
+    const activities = weekActivities.length
+        ? weekActivities
+        : db.prepare("SELECT Name, SideOfCamp FROM Activities ORDER BY SideOfCamp, Name").all();
     const alertMessage = req.query.message || null;
     const selectedCounselorId = parseInt(req.cookies.selectedCounselor) || null;
     const existingPrefs = selectedCounselorId
@@ -4478,6 +4502,7 @@ app.get('/reports/attendance-rosters', (_req, res) => {
         busMap[route].push(r);
     });
     const busSheets = Object.entries(busMap).map(([route, campers]) => ({ route, campers }));
+    const busSheetsByRoute = Object.fromEntries(busSheets.map(s => [s.route, s]));
 
     // ── Extended care rosters ────────────────────────────────────────────────
     const extRows = db.prepare(`
@@ -4490,12 +4515,35 @@ app.get('/reports/attendance-rosters', (_req, res) => {
     const extAM = extRows.filter(r => r.ExtendedHours === 'AM' || r.ExtendedHours === 'Both');
     const extPM = extRows.filter(r => r.ExtendedHours === 'PM' || r.ExtendedHours === 'Both');
 
+    // ── Per-counselor bus/extended assignments ───────────────────────────────
+    const counselorAttrsRows = db.prepare(`
+        SELECT co.CounselorID, co.FirstName, co.LastName,
+               COALESCE(cwa.BusRoute,      co.BusRoute)      AS BusRoute,
+               COALESCE(cwa.ExtendedHours, co.ExtendedHours) AS ExtendedHours
+        FROM Counselors co
+        LEFT JOIN CounselorWeekAttributes cwa
+            ON cwa.CounselorID = co.CounselorID AND cwa.WeekNumber = ?
+    `).all(aw);
+
+    const counselorAttrsMap = {};
+    counselorAttrsRows.forEach(r => {
+        const bus = (r.BusRoute || '').trim();
+        counselorAttrsMap[r.CounselorID] = {
+            FirstName:     r.FirstName,
+            LastName:      r.LastName,
+            BusRoute:      (bus && bus.toLowerCase() !== 'null' && bus.toLowerCase() !== 'none') ? bus : null,
+            ExtendedHours: r.ExtendedHours || null
+        };
+    });
+
     res.render('attendance-rosters', {
         counselors: Object.values(counselorMap),
         homegroupSheets,
         busSheets,
+        busSheetsByRoute,
         extAM,
-        extPM
+        extPM,
+        counselorAttrsMap
     });
 });
 

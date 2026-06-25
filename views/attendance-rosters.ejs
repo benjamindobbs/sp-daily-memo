@@ -159,16 +159,58 @@ const allRoutes = [...new Set(busSheets.map(b => b.route))].sort();
     </div>
 </div>
 
-<!-- ── Class rosters ── -->
-<% counselors.forEach(counselor => { %>
-    <% counselor.periods.forEach(period => { %>
-    <% const densityClass = period.campers.length > 32 ? 'very-dense' : period.campers.length > 22 ? 'dense' : ''; %>
+<%
+// Build per-counselor lookup maps
+const counselorById = {};
+counselors.forEach(c => { counselorById[c.CounselorID] = c; });
+const hgById = {};
+homegroupSheets.forEach(h => { hgById[h.CounselorID] = h; });
+
+// Union of all counselor IDs that have any sheet type
+const allCids = new Set([
+    ...counselors.map(c => c.CounselorID),
+    ...homegroupSheets.map(h => h.CounselorID)
+]);
+Object.keys(counselorAttrsMap).forEach(cidStr => {
+    const a = counselorAttrsMap[parseInt(cidStr)];
+    if (a && (a.BusRoute || a.ExtendedHours)) allCids.add(parseInt(cidStr));
+});
+
+// Sort alphabetically by LastName, FirstName using counselorAttrsMap for names
+const sortedCids = [...allCids].sort((a, b) => {
+    const na = counselorAttrsMap[a] || { LastName: '', FirstName: '' };
+    const nb = counselorAttrsMap[b] || { LastName: '', FirstName: '' };
+    return na.LastName.localeCompare(nb.LastName) || na.FirstName.localeCompare(nb.FirstName);
+});
+
+const renderedRoutes = new Set();
+let extAMRendered = false;
+let extPMRendered = false;
+%>
+
+<% sortedCids.forEach(cid => {
+    const c   = counselorById[cid];
+    const hg  = hgById[cid];
+    const attrs     = counselorAttrsMap[cid] || { FirstName: '', LastName: '', BusRoute: null, ExtendedHours: null };
+    const busSheet  = attrs.BusRoute ? busSheetsByRoute[attrs.BusRoute] : null;
+    const showExtAM = attrs.ExtendedHours === 'AM' || attrs.ExtendedHours === 'Both';
+    const showExtPM = attrs.ExtendedHours === 'PM' || attrs.ExtendedHours === 'Both';
+    const nameLc    = (attrs.FirstName + ' ' + attrs.LastName).toLowerCase();
+    if (busSheet) renderedRoutes.add(attrs.BusRoute);
+    if (showExtAM && extAM.length > 0) extAMRendered = true;
+    if (showExtPM && extPM.length > 0) extPMRendered = true;
+%>
+
+    <%/* ── Class period sheets ── */%>
+    <% if (c) { c.periods.forEach(period => {
+        const densityClass = period.campers.length > 32 ? 'very-dense' : period.campers.length > 22 ? 'dense' : '';
+    %>
     <div class="roster-page <%= densityClass %>"
          data-type="<%= (period.SideOfCamp || 'other').toLowerCase() %>"
          data-period="<%= period.PeriodNumber %>"
-         data-counselor-lc="<%= (counselor.FirstName + ' ' + counselor.LastName).toLowerCase() %>">
+         data-counselor-lc="<%= nameLc %>">
         <div class="roster-header">
-            <h2><%= counselor.FirstName %> <%= counselor.LastName %> &mdash; <%= period.ActivityName %></h2>
+            <h2><%= attrs.FirstName %> <%= attrs.LastName %> &mdash; <%= period.ActivityName %></h2>
             <div class="roster-meta">
                 <span><%= period.SideOfCamp || 'Class' %> &middot; Period <%= period.PeriodNumber %></span>
                 <% if (period.Location) { %><span>&#128205; <%= period.Location %></span><% } %>
@@ -177,65 +219,152 @@ const allRoutes = [...new Set(busSheets.map(b => b.route))].sort();
         </div>
         <table class="roster-table">
             <thead>
-                <tr>
-                    <th style="width:40%;">Camper Name</th>
-                    <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th>
-                </tr>
+                <tr><th style="width:40%;">Camper Name</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr>
             </thead>
             <tbody>
                 <% if (period.campers.length === 0) { %>
                     <tr><td colspan="6" class="empty-state">No campers enrolled</td></tr>
-                <% } else { %>
-                    <% period.campers.forEach(camper => { %>
+                <% } else { period.campers.forEach(camper => { %>
                     <tr><td><%= camper.LastName %>, <%= camper.FirstName %></td><td></td><td></td><td></td><td></td><td></td></tr>
-                    <% }) %>
-                <% } %>
+                <% }); } %>
             </tbody>
         </table>
     </div>
-    <% }) %>
-<% }) %>
+    <% }); } %>
 
-<!-- ── Homegroup rosters ── -->
-<% homegroupSheets.forEach(sheet => { %>
-<% const hgDensity = sheet.campers.length > 32 ? 'very-dense' : sheet.campers.length > 22 ? 'dense' : ''; %>
-<div class="roster-page <%= hgDensity %>"
-     data-type="homegroup"
-     data-color="<%= sheet.HomeGroupColor || '' %>"
-     data-counselor-lc="<%= (sheet.FirstName + ' ' + sheet.LastName).toLowerCase() %>">
-    <div class="roster-header">
-        <h2><%= sheet.FirstName %> <%= sheet.LastName %> &mdash; Homegroup</h2>
-        <div class="roster-meta">
-            <span>&#127968; Homegroup &middot; <%= sheet.HomeGroupColor || 'Unassigned' %></span>
-            <span><%= sheet.campers.length %> camper<%= sheet.campers.length !== 1 ? 's' : '' %></span>
+    <%/* ── Homegroup sheet ── */%>
+    <% if (hg) {
+        const hgDensity = hg.campers.length > 32 ? 'very-dense' : hg.campers.length > 22 ? 'dense' : '';
+    %>
+    <div class="roster-page <%= hgDensity %>"
+         data-type="homegroup"
+         data-color="<%= hg.HomeGroupColor || '' %>"
+         data-counselor-lc="<%= nameLc %>">
+        <div class="roster-header">
+            <h2><%= attrs.FirstName %> <%= attrs.LastName %> &mdash; Homegroup</h2>
+            <div class="roster-meta">
+                <span>&#127968; Homegroup &middot; <%= hg.HomeGroupColor || 'Unassigned' %></span>
+                <span><%= hg.campers.length %> camper<%= hg.campers.length !== 1 ? 's' : '' %></span>
+            </div>
         </div>
+        <table class="roster-table">
+            <thead>
+                <tr><th style="width:40%;">Camper Name</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr>
+            </thead>
+            <tbody>
+                <% if (hg.campers.length === 0) { %>
+                    <tr><td colspan="6" class="empty-state">No campers assigned</td></tr>
+                <% } else { hg.campers.forEach(camper => { %>
+                    <tr><td><%= camper.LastName %>, <%= camper.FirstName %></td><td></td><td></td><td></td><td></td><td></td></tr>
+                <% }); } %>
+            </tbody>
+        </table>
     </div>
-    <table class="roster-table">
-        <thead>
-            <tr>
-                <th style="width:40%;">Camper Name</th>
-                <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th>
-            </tr>
-        </thead>
-        <tbody>
-            <% if (sheet.campers.length === 0) { %>
-                <tr><td colspan="6" class="empty-state">No campers assigned</td></tr>
-            <% } else { %>
-                <% sheet.campers.forEach(camper => { %>
-                <tr><td><%= camper.LastName %>, <%= camper.FirstName %></td><td></td><td></td><td></td><td></td><td></td></tr>
-                <% }) %>
-            <% } %>
-        </tbody>
-    </table>
-</div>
-<% }) %>
+    <% } %>
 
-<!-- ── Bus rosters ── -->
-<% busSheets.forEach(sheet => { %>
-<% const busDensity = sheet.campers.length > 32 ? 'very-dense' : sheet.campers.length > 22 ? 'dense' : ''; %>
-<div class="roster-page <%= busDensity %>"
-     data-type="bus"
-     data-route="<%= sheet.route %>">
+    <%/* ── Bus sheet (counselor's assigned route) ── */%>
+    <% if (busSheet) {
+        const busDensity = busSheet.campers.length > 32 ? 'very-dense' : busSheet.campers.length > 22 ? 'dense' : '';
+    %>
+    <div class="roster-page <%= busDensity %>"
+         data-type="bus"
+         data-route="<%= busSheet.route %>"
+         data-counselor-lc="<%= nameLc %>">
+        <div class="roster-header">
+            <h2>Bus &mdash; <%= busSheet.route %></h2>
+            <div class="roster-meta">
+                <span>&#128652; Bus Route</span>
+                <span><%= busSheet.campers.length %> camper<%= busSheet.campers.length !== 1 ? 's' : '' %></span>
+            </div>
+        </div>
+        <table class="roster-table">
+            <thead>
+                <tr><th style="width:40%;">Camper Name</th><th>Group</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr>
+            </thead>
+            <tbody>
+                <% busSheet.campers.forEach(camper => { %>
+                <tr>
+                    <td><%= camper.LastName %>, <%= camper.FirstName %></td>
+                    <td><%= camper.HomeGroupColor %></td>
+                    <td></td><td></td><td></td><td></td><td></td>
+                </tr>
+                <% }) %>
+            </tbody>
+        </table>
+    </div>
+    <% } %>
+
+    <%/* ── Extended AM sheet ── */%>
+    <% if (showExtAM && extAM.length > 0) {
+        const amDensity = extAM.length > 32 ? 'very-dense' : extAM.length > 22 ? 'dense' : '';
+    %>
+    <div class="roster-page <%= amDensity %>"
+         data-type="extended"
+         data-session="AM"
+         data-counselor-lc="<%= nameLc %>">
+        <div class="roster-header">
+            <h2>AM Extended Care</h2>
+            <div class="roster-meta">
+                <span>&#9200; Early Drop-off</span>
+                <span><%= extAM.length %> camper<%= extAM.length !== 1 ? 's' : '' %></span>
+            </div>
+        </div>
+        <table class="roster-table">
+            <thead>
+                <tr><th style="width:40%;">Camper Name</th><th>Group</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr>
+            </thead>
+            <tbody>
+                <% extAM.forEach(camper => { %>
+                <tr>
+                    <td><%= camper.LastName %>, <%= camper.FirstName %></td>
+                    <td><%= camper.HomeGroupColor %></td>
+                    <td></td><td></td><td></td><td></td><td></td>
+                </tr>
+                <% }) %>
+            </tbody>
+        </table>
+    </div>
+    <% } %>
+
+    <%/* ── Extended PM sheet ── */%>
+    <% if (showExtPM && extPM.length > 0) {
+        const pmDensity = extPM.length > 32 ? 'very-dense' : extPM.length > 22 ? 'dense' : '';
+    %>
+    <div class="roster-page <%= pmDensity %>"
+         data-type="extended"
+         data-session="PM"
+         data-counselor-lc="<%= nameLc %>">
+        <div class="roster-header">
+            <h2>PM Extended Care</h2>
+            <div class="roster-meta">
+                <span>&#9200; Late Pickup</span>
+                <span><%= extPM.length %> camper<%= extPM.length !== 1 ? 's' : '' %></span>
+            </div>
+        </div>
+        <table class="roster-table">
+            <thead>
+                <tr><th style="width:40%;">Camper Name</th><th>Group</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr>
+            </thead>
+            <tbody>
+                <% extPM.forEach(camper => { %>
+                <tr>
+                    <td><%= camper.LastName %>, <%= camper.FirstName %></td>
+                    <td><%= camper.HomeGroupColor %></td>
+                    <td></td><td></td><td></td><td></td><td></td>
+                </tr>
+                <% }) %>
+            </tbody>
+        </table>
+    </div>
+    <% } %>
+
+<% }); /* end sortedCids.forEach */ %>
+
+<%/* ── Standalone bus sheets for routes not assigned to any counselor ── */%>
+<% busSheets.forEach(sheet => { if (renderedRoutes.has(sheet.route)) return;
+    const busDensity = sheet.campers.length > 32 ? 'very-dense' : sheet.campers.length > 22 ? 'dense' : '';
+%>
+<div class="roster-page <%= busDensity %>" data-type="bus" data-route="<%= sheet.route %>">
     <div class="roster-header">
         <h2>Bus &mdash; <%= sheet.route %></h2>
         <div class="roster-meta">
@@ -245,11 +374,7 @@ const allRoutes = [...new Set(busSheets.map(b => b.route))].sort();
     </div>
     <table class="roster-table">
         <thead>
-            <tr>
-                <th style="width:40%;">Camper Name</th>
-                <th>Group</th>
-                <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th>
-            </tr>
+            <tr><th style="width:40%;">Camper Name</th><th>Group</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr>
         </thead>
         <tbody>
             <% sheet.campers.forEach(camper => { %>
@@ -262,65 +387,41 @@ const allRoutes = [...new Set(busSheets.map(b => b.route))].sort();
         </tbody>
     </table>
 </div>
-<% }) %>
+<% }); %>
 
-<!-- ── Extended care rosters ── -->
-<% if (extAM.length > 0) { %>
-<% const amDensity = extAM.length > 32 ? 'very-dense' : extAM.length > 22 ? 'dense' : ''; %>
+<%/* ── Standalone extended sheets if no counselors have those duties ── */%>
+<% if (!extAMRendered && extAM.length > 0) {
+    const amDensity = extAM.length > 32 ? 'very-dense' : extAM.length > 22 ? 'dense' : '';
+%>
 <div class="roster-page <%= amDensity %>" data-type="extended" data-session="AM">
     <div class="roster-header">
         <h2>AM Extended Care</h2>
-        <div class="roster-meta">
-            <span>&#9200; Early Drop-off</span>
-            <span><%= extAM.length %> camper<%= extAM.length !== 1 ? 's' : '' %></span>
-        </div>
+        <div class="roster-meta"><span>&#9200; Early Drop-off</span><span><%= extAM.length %> camper<%= extAM.length !== 1 ? 's' : '' %></span></div>
     </div>
     <table class="roster-table">
-        <thead>
-            <tr>
-                <th style="width:40%;">Camper Name</th>
-                <th>Group</th>
-                <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th>
-            </tr>
-        </thead>
+        <thead><tr><th style="width:40%;">Camper Name</th><th>Group</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr></thead>
         <tbody>
             <% extAM.forEach(camper => { %>
-            <tr>
-                <td><%= camper.LastName %>, <%= camper.FirstName %></td>
-                <td><%= camper.HomeGroupColor %></td>
-                <td></td><td></td><td></td><td></td><td></td>
-            </tr>
+            <tr><td><%= camper.LastName %>, <%= camper.FirstName %></td><td><%= camper.HomeGroupColor %></td><td></td><td></td><td></td><td></td><td></td></tr>
             <% }) %>
         </tbody>
     </table>
 </div>
 <% } %>
 
-<% if (extPM.length > 0) { %>
-<% const pmDensity = extPM.length > 32 ? 'very-dense' : extPM.length > 22 ? 'dense' : ''; %>
+<% if (!extPMRendered && extPM.length > 0) {
+    const pmDensity = extPM.length > 32 ? 'very-dense' : extPM.length > 22 ? 'dense' : '';
+%>
 <div class="roster-page <%= pmDensity %>" data-type="extended" data-session="PM">
     <div class="roster-header">
         <h2>PM Extended Care</h2>
-        <div class="roster-meta">
-            <span>&#9200; Late Pickup</span>
-            <span><%= extPM.length %> camper<%= extPM.length !== 1 ? 's' : '' %></span>
-        </div>
+        <div class="roster-meta"><span>&#9200; Late Pickup</span><span><%= extPM.length %> camper<%= extPM.length !== 1 ? 's' : '' %></span></div>
     </div>
     <table class="roster-table">
-        <thead>
-            <tr>
-                <th style="width:40%;">Camper Name</th>
-                <th>Group</th>
-                <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th>
-            </tr>
-        </thead>
+        <thead><tr><th style="width:40%;">Camper Name</th><th>Group</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr></thead>
         <tbody>
             <% extPM.forEach(camper => { %>
-            <tr>
-                <td><%= camper.LastName %>, <%= camper.FirstName %></td>
-                <td><%= camper.HomeGroupColor %></td>
-                <td></td><td></td><td></td><td></td><td></td>
-            </tr>
+            <tr><td><%= camper.LastName %>, <%= camper.FirstName %></td><td><%= camper.HomeGroupColor %></td><td></td><td></td><td></td><td></td><td></td></tr>
             <% }) %>
         </tbody>
     </table>
@@ -361,7 +462,8 @@ const allRoutes = [...new Set(busSheets.map(b => b.route))].sort();
                     && (!counselorQuery || clc.includes(counselorQuery));
             } else if (type === 'bus') {
                 show = activeTypes.has('bus')
-                    && (activeRoutes.has('all') || activeRoutes.has(route));
+                    && (activeRoutes.has('all') || activeRoutes.has(route))
+                    && (!counselorQuery || !clc || clc.includes(counselorQuery));
             } else if (type === 'extended') {
                 show = activeTypes.has('extended')
                     && activeSessions.has(session);
