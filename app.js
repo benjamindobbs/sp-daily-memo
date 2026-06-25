@@ -1126,9 +1126,13 @@ app.get('/admin', (req, res) => {
 
     const absentByGroup = getAbsentByGroup(today);
 
+    const nurseCount = db.prepare(
+        "SELECT COUNT(*) AS count FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='nurse'"
+    ).get(today).count;
+
     res.render('index', {
         camperTotal, activityCount, groupCounts,
-        pendingChanges, waitlistCount,
+        pendingChanges, waitlistCount, nurseCount,
         hubStats, today,
         alertMessage: req.query.message,
         announcement, directorNotes, sessions,

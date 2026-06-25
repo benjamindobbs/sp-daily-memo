@@ -44,19 +44,19 @@
         }
         .card-grid {
             display: grid;
-            grid-template-columns: 3in 3in;
-            grid-auto-rows: 5in;
+            grid-template-columns: repeat(3, 3.5in);
+            grid-auto-rows: 4in;
             gap: 0;
         }
         .name-card {
-            width: 3in;
-            height: 5in;
+            width: 3.5in;
+            height: 4in;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             text-align: center;
-            padding: 0.3in;
+            padding: 0.25in 0.35in;
             box-sizing: border-box;
             border: 1px dashed #ccc;
         }
@@ -75,7 +75,7 @@
 
         @media print {
             @page {
-                size: letter portrait;
+                size: letter landscape;
                 margin: 0.25in;
             }
             nav, .no-print { display: none !important; }

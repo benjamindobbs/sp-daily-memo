@@ -49,6 +49,7 @@
         .hub-num-purple { color: #8b5cf6; }
         .hub-num-muted  { color: #94a3b8; }
         .hub-num-green  { color: #10b981; }
+        .hub-num-red    { color: #ef4444; }
 
         /* Quill font family classes */
         .ql-font-serif     { font-family: Georgia, 'Times New Roman', serif; }
@@ -177,6 +178,13 @@
                 </a>
 
             <% } %>
+
+            <%/* Nurse */%>
+            <a href="/nurse" class="hub-stat-card" style="border-top:3px solid #ef4444;">
+                <span class="hub-stat-num <%= nurseCount > 0 ? 'hub-num-red' : 'hub-num-muted' %>"><%= nurseCount %></span>
+                <span class="hub-stat-label">&#128137; At the Nurse</span>
+                <span class="hub-stat-sub"><%= nurseCount > 0 ? nurseCount === 1 ? '1 camper checked in' : nurseCount + ' campers checked in' : 'All clear' %></span>
+            </a>
 
             <%/* CampBrain Pending */%>
             <a href="/schedule-history" class="hub-stat-card" style="border-top:3px solid #f59e0b;">
@@ -321,6 +329,15 @@
             </div>
         </div>
 
+        <%/* ── Staff Announcement ── */%>
+        <div class="card" style="margin-top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;">Staff Announcement</h3>
+                <button onclick="saveAnnounce(event)" class="btn btn-primary btn-small">Save</button>
+            </div>
+            <div id="announceEditor" style="min-height:120px;"></div>
+        </div>
+
         <%/* ── Quick Tasks + System Status ── */%>
         <div class="quick-tasks">
             <div class="card">
@@ -379,14 +396,6 @@
             </div>
         </div>
 
-        <%/* ── Staff Announcement ── */%>
-        <div class="card" style="margin-top:20px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <h3 style="margin:0;">Staff Announcement</h3>
-                <button onclick="saveAnnounce(event)" class="btn btn-primary btn-small">Save</button>
-            </div>
-            <div id="announceEditor" style="min-height:120px;"></div>
-        </div>
     </div>
 
     <% if (!adminName) { %>
