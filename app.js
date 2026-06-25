@@ -236,7 +236,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/schedule-history', '/archive-schedule-changes', '/staff-lookup',
     '/faculty-summer', '/upload-staff-week', '/clear-staff-week',
     '/counselor-directory', '/counselor-view', '/promotions',
-    '/promote-waitlist', '/promote-all', '/upload-campers', '/upload-campers-schedule', '/upload-counselors',
+    '/promote-waitlist', '/promote-all', '/remove-waitlist', '/upload-campers', '/upload-campers-schedule', '/upload-counselors',
     '/upload-staff', '/upload-instructors', '/upload-activity-rules', '/add-activity',
     '/delete-activity', '/update-activity', '/add-activity-period-group',
     '/delete-activity-period-group',
@@ -250,7 +250,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/homegroup-assignment',
     '/attendance/dismissal-archive',
     '/dismissals',
-    '/nurse',
+    '/nurse',  '/nurse/archive',
     '/split-scheduling', '/save-split-assignments',
     '/reports', '/upload-pdf',
 ];
@@ -1830,6 +1830,11 @@ app.post('/promote-all', (req, res) => {
 });
 
 
+app.post('/remove-waitlist/:id', (req, res) => {
+    db.prepare('DELETE FROM Waitlists WHERE WaitlistID = ?').run(req.params.id);
+    res.redirect('/promotions?message=Removed+from+waitlist');
+});
+
 // --- CSV IMPORTS (Consolidated) ---
 
 // Shared name parser for "Last, First" format used by camp management exports.
@@ -3346,6 +3351,23 @@ app.post('/nurse/update-notes/:visitId', (req, res) => {
     res.redirect('/nurse');
 });
 
+app.get('/nurse/archive', (req, res) => {
+    const rows = db.prepare(`
+        SELECT n.VisitID, n.Date, n.CheckInTime, n.CheckOutTime, n.Notes, n.Dismissed, n.CreatedBy,
+               c.FirstName, c.LastName, c.HomeGroupColor
+        FROM NurseLog n JOIN Campers c ON c.CamperID = n.CamperID
+        ORDER BY n.Date DESC, n.CheckInTime DESC
+    `).all();
+
+    const byDate = {};
+    for (const r of rows) {
+        if (!byDate[r.Date]) byDate[r.Date] = [];
+        byDate[r.Date].push(r);
+    }
+
+    res.render('nurse-archive', { byDate, viewMode: req.cookies.viewMode || 'admin' });
+});
+
 // --- SCHEDULED PICKUPS / DISMISSALS TOOL ---
 app.get('/dismissals', (req, res) => {
     const today = todayStr();
@@ -4358,14 +4380,19 @@ app.post('/split-field-trip/clear', (req, res) => {
 
 app.get('/reports/attendance-rosters', (_req, res) => {
     const aw = getActiveWeek();
+
+    // ── Class rosters (Sports + Enrichment) ─────────────────────────────────
     const scheduleRows = db.prepare(`
         SELECT cws.CounselorID, co.FirstName, co.LastName,
-               cws.PeriodNumber, cws.ActivityName
+               cws.PeriodNumber, cws.ActivityName,
+               COALESCE(wo.SideOfCamp, 'Other') AS SideOfCamp
         FROM CounselorWeekSchedules cws
         JOIN Counselors co ON co.CounselorID = cws.CounselorID
+        LEFT JOIN WeeklyOfferings wo
+            ON wo.ActivityName = cws.ActivityName AND wo.PeriodNumber = cws.PeriodNumber AND wo.WeekNumber = ?
         WHERE cws.WeekNumber = ?
         ORDER BY co.LastName, co.FirstName, cws.PeriodNumber
-    `).all(aw);
+    `).all(aw, aw);
 
     const counselorMap = {};
     scheduleRows.forEach(r => {
@@ -4394,12 +4421,82 @@ app.get('/reports/attendance-rosters', (_req, res) => {
         counselorMap[r.CounselorID].periods.push({
             PeriodNumber: r.PeriodNumber,
             ActivityName: r.ActivityName,
+            SideOfCamp: r.SideOfCamp,
             Location: locRow?.Location || null,
             campers
         });
     });
 
-    res.render('attendance-rosters', { counselors: Object.values(counselorMap) });
+    // ── Homegroup rosters ────────────────────────────────────────────────────
+    const hgRows = db.prepare(`
+        SELECT chg.CounselorID,
+               co.FirstName AS CounselorFirst, co.LastName AS CounselorLast,
+               COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) AS HomeGroupColor,
+               ca.CamperID, ca.FirstName AS CamperFirst, ca.LastName AS CamperLast,
+               ca.HomeGroupColor AS CamperColor
+        FROM CamperHomeGroups chg
+        JOIN Counselors co ON co.CounselorID = chg.CounselorID
+        LEFT JOIN CounselorWeekAttributes cwa
+            ON cwa.CounselorID = co.CounselorID AND cwa.WeekNumber = ?
+        JOIN Campers ca ON ca.CamperID = chg.CamperID
+        WHERE chg.WeekNumber = ?
+        ORDER BY co.HomeGroupColor, co.LastName, co.FirstName, ca.LastName, ca.FirstName
+    `).all(aw, aw);
+
+    const hgMap = {};
+    hgRows.forEach(r => {
+        if (!hgMap[r.CounselorID]) {
+            hgMap[r.CounselorID] = {
+                CounselorID: r.CounselorID,
+                FirstName: r.CounselorFirst,
+                LastName: r.CounselorLast,
+                HomeGroupColor: r.HomeGroupColor,
+                campers: []
+            };
+        }
+        hgMap[r.CounselorID].campers.push({
+            CamperID: r.CamperID,
+            FirstName: r.CamperFirst,
+            LastName: r.CamperLast,
+            HomeGroupColor: r.CamperColor
+        });
+    });
+    const homegroupSheets = Object.values(hgMap);
+
+    // ── Bus rosters ──────────────────────────────────────────────────────────
+    const busRows = db.prepare(`
+        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.HomeGroupColor, ca.BusRoute
+        FROM Campers ca
+        WHERE ca.BusRoute IS NOT NULL AND TRIM(ca.BusRoute) != '' AND LOWER(TRIM(ca.BusRoute)) != 'null'
+        ORDER BY ca.BusRoute, ca.LastName, ca.FirstName
+    `).all();
+
+    const busMap = {};
+    busRows.forEach(r => {
+        const route = r.BusRoute;
+        if (!busMap[route]) busMap[route] = [];
+        busMap[route].push(r);
+    });
+    const busSheets = Object.entries(busMap).map(([route, campers]) => ({ route, campers }));
+
+    // ── Extended care rosters ────────────────────────────────────────────────
+    const extRows = db.prepare(`
+        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.HomeGroupColor, ca.ExtendedHours
+        FROM Campers ca
+        WHERE ca.ExtendedHours IN ('AM', 'Both', 'PM')
+        ORDER BY ca.HomeGroupColor, ca.LastName, ca.FirstName
+    `).all();
+
+    const extAM = extRows.filter(r => r.ExtendedHours === 'AM' || r.ExtendedHours === 'Both');
+    const extPM = extRows.filter(r => r.ExtendedHours === 'PM' || r.ExtendedHours === 'Both');
+
+    res.render('attendance-rosters', {
+        counselors: Object.values(counselorMap),
+        homegroupSheets,
+        busSheets,
+        extAM,
+        extPM
+    });
 });
 
 app.get('/reports/name-cards', (_req, res) => {

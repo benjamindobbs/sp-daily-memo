@@ -1,0 +1,25 @@
+Pills on counselor scheduler render correctly after full auto build runs (0/x). Upon return to page after pills show different values. Pills should show counselors remaining unscheduled in period (per side of camp)/ total slots. 
+
+Add ability to remove camper from waitlist in promototions view
+
+In camper Lookup > Camper Details Card the dropdown for Home Counselor looks like a default html dropdown with no style. Style should match the dropdowns for Extended Hours and Camp Lunch in the same card.
+
+In counselor profile, null for Bus Route should say None instead of Parent. Parent should be kept as the value for Campers
+
+In counselor view Schedule Type is not showing data
+
+Bus values in counselor views are displaying literal "&#128652;"
+
+Change search in nurse to show remaining filtered names live in the dropdown
+
+Add nurse log archive
+
+Enforce single page attendance sheets by shrinking font size of camper names or reducing padding above/below campers names 
+
+Add homegroup, bus, and extended attendance sheets per counselor
+
+Add filters to attendance sheets for Sports/Enrichment and Counselors (Search with checkbox to add counselors to filter, default to all), Period, Bus (sub filter for route), Extended (sub filter for AM/PM), and Homegroup(Sub filter by colorgroup)
+
+Add filter for name cards for camper (dropdown like counselor name filter)
+
+

@@ -50,16 +50,16 @@
             <div class="duty-strip">
                 <div class="duty-box">
                     <small>&#128652; Bus Route</small>
-                    <strong><% var _cb = counselor.BusRoute; var _cbn = parseFloat(_cb); %><%= (_cb && _cb.toLowerCase() !== 'null') ? (isNaN(_cbn) ? _cb : Math.round(_cbn)) : 'Parent' %></strong>
+                    <strong><% var _cb = counselor.BusRoute; var _cbn = parseFloat(_cb); %><%= (_cb && _cb.toLowerCase() !== 'null') ? (isNaN(_cbn) ? _cb : Math.round(_cbn)) : 'None' %></strong>
                 </div>
                 <div class="duty-box">
                     <small>&#9200; Extended Care</small>
                     <strong><%= counselor.ExtendedHours || 'None' %></strong>
                 </div>
-                <% if (isMainCamp) { %>
+                <% if (counselor.ScheduleType) { %>
                 <div class="duty-box">
                     <small>&#128203; Schedule Type</small>
-                    <strong><%= counselor.ScheduleType || '—' %></strong>
+                    <strong><%= counselor.ScheduleType %></strong>
                 </div>
                 <% } %>
             </div>
@@ -121,7 +121,7 @@
                                         </a>
                                     </td>
                                     <td><%= camper.Grade %></td>
-                                    <td><small><% var _mb = camper.BusRoute; var _mbn = parseFloat(_mb); %><%= (_mb && _mb.toLowerCase() !== 'null') ? '&#128652; ' + (isNaN(_mbn) ? _mb : Math.round(_mbn)) : 'Parent' %></small></td>
+                                    <td><small><% var _mb = camper.BusRoute; var _mbn = parseFloat(_mb); %><%= (_mb && _mb.toLowerCase() !== 'null') ? '🚌 ' + (isNaN(_mbn) ? _mb : Math.round(_mbn)) : 'Parent' %></small></td>
                                     <td>
                                         <% if (camper.ExtendedHours === 'Both') { %>
                                             <span class="tag" style="background: #dcfce7; color: #166534; font-size: 0.7rem;">AM &amp; PM</span>

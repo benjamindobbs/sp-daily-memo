@@ -106,12 +106,15 @@
         <button class="group-btn active" data-group="Green">Green</button>
         <button class="group-btn active" data-group="Navy">Navy</button>
         <button class="group-btn active" data-group="SPLIT">SPLIT</button>
+        <input type="search" id="camperSearch" placeholder="Search camper..." autocomplete="off"
+               style="margin-left:12px; padding:5px 12px; border:2px solid #cbd5e1; border-radius:20px;
+                      font-size:0.82rem; font-family:inherit; outline:none; width:160px; transition:border-color 0.15s;">
         <span class="card-count" id="cardCount"></span>
     </div>
 
     <div class="card-grid" id="cardGrid">
         <% campers.forEach(camper => { %>
-        <div class="name-card" data-group="<%= camper.HomeGroupColor %>">
+        <div class="name-card" data-group="<%= camper.HomeGroupColor %>" data-name="<%= (camper.FirstName + ' ' + camper.LastName).toLowerCase() %>">
             <div class="card-name"><%= camper.FirstName %> <%= camper.LastName %></div>
             <div class="card-classes">
                 <% camper.classes.forEach(cls => { %>
@@ -127,11 +130,14 @@
         const active = new Set(['Red', 'Carolina', 'Green', 'Navy', 'SPLIT']);
 
         function applyFilter() {
+            const query = document.getElementById('camperSearch').value.toLowerCase().trim();
             const cards = document.querySelectorAll('.name-card');
             let visible = 0;
             cards.forEach(card => {
                 const g = card.dataset.group;
-                const show = active.has(g) || !FILTER_GROUPS.has(g);
+                const groupMatch = active.has(g) || !FILTER_GROUPS.has(g);
+                const nameMatch = !query || card.dataset.name.includes(query);
+                const show = groupMatch && nameMatch;
                 card.classList.toggle('hidden', !show);
                 if (show) visible++;
             });
@@ -151,6 +157,8 @@
                 applyFilter();
             });
         });
+
+        document.getElementById('camperSearch').addEventListener('input', applyFilter);
 
         applyFilter();
     </script>

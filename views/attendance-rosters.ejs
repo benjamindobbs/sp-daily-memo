@@ -6,6 +6,49 @@
     <title>Attendance Rosters | Camp Hub</title>
     <link rel="stylesheet" href="/css/style.css">
     <style>
+        /* ── Filter bar ── */
+        .roster-filters {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .filter-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .filter-label { font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; width: 80px; flex-shrink: 0; }
+        .fchip {
+            padding: 4px 12px; border-radius: 20px; border: 2px solid #cbd5e1;
+            background: #f8fafc; cursor: pointer; font-size: 0.78rem; font-weight: 600;
+            color: #475569; transition: background 0.1s, border-color 0.1s;
+        }
+        .fchip.active { border-color: var(--primary); background: #dbeafe; color: #1e40af; }
+        .fchip[data-color="Red"].active    { border-color: #dc2626; background: #fee2e2; color: #991b1b; }
+        .fchip[data-color="Carolina"].active { border-color: #2563eb; background: #dbeafe; color: #1e3a8a; }
+        .fchip[data-color="Green"].active  { border-color: #16a34a; background: #dcfce7; color: #14532d; }
+        .fchip[data-color="Navy"].active   { border-color: #1d4ed8; background: #eff6ff; color: #1e3a8a; }
+        .fchip[data-type="sports"].active  { border-color: #2563eb; background: #dbeafe; color: #1e3a8a; }
+        .fchip[data-type="enrichment"].active { border-color: #db2777; background: #fce7f3; color: #9d174d; }
+        .fchip[data-type="homegroup"].active  { border-color: #d97706; background: #fef3c7; color: #92400e; }
+        .fchip[data-type="bus"].active        { border-color: #059669; background: #d1fae5; color: #065f46; }
+        .fchip[data-type="extended"].active   { border-color: #7c3aed; background: #ede9fe; color: #4c1d95; }
+        .filter-search {
+            padding: 5px 12px; border: 2px solid #cbd5e1; border-radius: 20px;
+            font-size: 0.78rem; font-family: inherit; outline: none; width: 180px;
+        }
+        .filter-search:focus { border-color: var(--primary); }
+        .filter-select {
+            padding: 5px 10px; border: 2px solid #cbd5e1; border-radius: 20px;
+            font-size: 0.78rem; font-family: inherit; background: white; outline: none;
+        }
+        .filter-select:focus { border-color: var(--primary); }
+        .sheet-count { font-size: 0.78rem; color: var(--text-muted); margin-left: auto; align-self: center; }
+        .sub-row { display: none; }
+        .sub-row.visible { display: flex; }
+
+        /* ── Roster pages ── */
         .roster-page {
             page-break-after: always;
             margin-bottom: 48px;
@@ -14,22 +57,14 @@
             page-break-after: avoid;
             margin-bottom: 0;
         }
+        .roster-page.hidden { display: none; }
         .roster-header {
             border-bottom: 2px solid #000;
             padding-bottom: 8px;
             margin-bottom: 14px;
         }
-        .roster-header h2 {
-            margin: 0 0 4px;
-            font-size: 1.15rem;
-            font-weight: 700;
-        }
-        .roster-meta {
-            font-size: 0.82rem;
-            color: #555;
-            display: flex;
-            gap: 24px;
-        }
+        .roster-header h2 { margin: 0 0 4px; font-size: 1.15rem; font-weight: 700; }
+        .roster-meta { font-size: 0.82rem; color: #555; display: flex; gap: 24px; }
         .roster-table {
             width: 100%;
             border-collapse: collapse;
@@ -45,22 +80,22 @@
             font-size: 0.8rem;
         }
         .roster-table th:first-child { text-align: left; }
-        .roster-table td {
-            border: 1px solid #bbb;
-            padding: 8px 10px;
-            height: 30px;
-        }
+        .roster-table td { border: 1px solid #bbb; padding: 8px 10px; height: 30px; }
         .roster-table td:first-child { font-weight: 500; }
-        .empty-state {
-            color: var(--text-muted);
-            font-style: italic;
-            text-align: center;
-            padding: 8px;
-        }
+
+        /* Density scaling */
+        .roster-page.dense .roster-table { font-size: 0.73rem; }
+        .roster-page.dense .roster-table td { padding: 5px 10px; height: 22px; }
+        .roster-page.dense .roster-table th { padding: 5px 10px; font-size: 0.72rem; }
+        .roster-page.very-dense .roster-table { font-size: 0.63rem; }
+        .roster-page.very-dense .roster-table td { padding: 3px 8px; height: 16px; }
+        .roster-page.very-dense .roster-table th { padding: 4px 8px; font-size: 0.63rem; }
+        .empty-state { color: var(--text-muted); font-style: italic; text-align: center; padding: 8px; }
 
         @media print {
             nav, .no-print { display: none !important; }
             .roster-page { margin-bottom: 0; }
+            .roster-page.hidden { display: none !important; }
             .container { padding: 0; max-width: none; }
         }
     </style>
@@ -75,17 +110,67 @@
 
 <div class="container">
 
-<% if (counselors.length === 0) { %>
-    <p style="color:var(--text-muted); padding:40px 0;">No counselor schedules found for the active week. Build and save the counselor schedule first.</p>
+<%
+const hasAny = counselors.length > 0 || homegroupSheets.length > 0 || busSheets.length > 0 || extAM.length > 0 || extPM.length > 0;
+const allRoutes = [...new Set(busSheets.map(b => b.route))].sort();
+%>
+
+<% if (!hasAny) { %>
+    <p style="color:var(--text-muted); padding:40px 0;">No roster data found. Import schedules and build the counselor schedule first.</p>
 <% } else { %>
 
+<!-- ── Filter bar ── -->
+<div class="roster-filters no-print">
+    <div class="filter-row">
+        <span class="filter-label">Type</span>
+        <button class="fchip active" data-type="sports">&#9917; Sports</button>
+        <button class="fchip active" data-type="enrichment">&#127912; Enrichment</button>
+        <button class="fchip active" data-type="homegroup">&#127968; Homegroup</button>
+        <button class="fchip active" data-type="bus">&#128652; Bus</button>
+        <button class="fchip active" data-type="extended">&#9200; Extended</button>
+        <span class="sheet-count" id="sheetCount"></span>
+    </div>
+    <div class="filter-row">
+        <span class="filter-label">Counselor</span>
+        <input type="search" class="filter-search" id="filterCounselor" placeholder="Search name…" autocomplete="off">
+        <span class="filter-label" style="margin-left:8px;">Period</span>
+        <button class="fchip active" data-period="all">All</button>
+        <% for (let p = 1; p <= 6; p++) { %>
+        <button class="fchip active" data-period="<%= p %>"><%= p %></button>
+        <% } %>
+    </div>
+    <div class="filter-row sub-row" id="subHomegroup">
+        <span class="filter-label">Group</span>
+        <% ['Red','Carolina','Green','Navy'].forEach(function(c) { %>
+        <button class="fchip active" data-color="<%= c %>"><%= c %></button>
+        <% }); %>
+    </div>
+    <div class="filter-row sub-row" id="subBus">
+        <span class="filter-label">Route</span>
+        <button class="fchip active" data-route="all">All Routes</button>
+        <% allRoutes.forEach(function(r) { %>
+        <button class="fchip active" data-route="<%= r %>"><%= r %></button>
+        <% }); %>
+    </div>
+    <div class="filter-row sub-row" id="subExtended">
+        <span class="filter-label">Session</span>
+        <button class="fchip active" data-session="AM">AM</button>
+        <button class="fchip active" data-session="PM">PM</button>
+    </div>
+</div>
+
+<!-- ── Class rosters ── -->
 <% counselors.forEach(counselor => { %>
-    <% counselor.periods.forEach((period, periodIdx) => { %>
-    <div class="roster-page">
+    <% counselor.periods.forEach(period => { %>
+    <% const densityClass = period.campers.length > 32 ? 'very-dense' : period.campers.length > 22 ? 'dense' : ''; %>
+    <div class="roster-page <%= densityClass %>"
+         data-type="<%= (period.SideOfCamp || 'other').toLowerCase() %>"
+         data-period="<%= period.PeriodNumber %>"
+         data-counselor-lc="<%= (counselor.FirstName + ' ' + counselor.LastName).toLowerCase() %>">
         <div class="roster-header">
             <h2><%= counselor.FirstName %> <%= counselor.LastName %> &mdash; <%= period.ActivityName %></h2>
             <div class="roster-meta">
-                <span>Period <%= period.PeriodNumber %></span>
+                <span><%= period.SideOfCamp || 'Class' %> &middot; Period <%= period.PeriodNumber %></span>
                 <% if (period.Location) { %><span>&#128205; <%= period.Location %></span><% } %>
                 <span><%= period.campers.length %> camper<%= period.campers.length !== 1 ? 's' : '' %></span>
             </div>
@@ -94,26 +179,15 @@
             <thead>
                 <tr>
                     <th style="width:40%;">Camper Name</th>
-                    <th>Mon</th>
-                    <th>Tue</th>
-                    <th>Wed</th>
-                    <th>Thu</th>
-                    <th>Fri</th>
+                    <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th>
                 </tr>
             </thead>
             <tbody>
                 <% if (period.campers.length === 0) { %>
-                    <tr><td colspan="6" class="empty-state">No campers enrolled in this class</td></tr>
+                    <tr><td colspan="6" class="empty-state">No campers enrolled</td></tr>
                 <% } else { %>
                     <% period.campers.forEach(camper => { %>
-                    <tr>
-                        <td><%= camper.LastName %>, <%= camper.FirstName %></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                    </tr>
+                    <tr><td><%= camper.LastName %>, <%= camper.FirstName %></td><td></td><td></td><td></td><td></td><td></td></tr>
                     <% }) %>
                 <% } %>
             </tbody>
@@ -122,7 +196,282 @@
     <% }) %>
 <% }) %>
 
-<% } %>
+<!-- ── Homegroup rosters ── -->
+<% homegroupSheets.forEach(sheet => { %>
+<% const hgDensity = sheet.campers.length > 32 ? 'very-dense' : sheet.campers.length > 22 ? 'dense' : ''; %>
+<div class="roster-page <%= hgDensity %>"
+     data-type="homegroup"
+     data-color="<%= sheet.HomeGroupColor || '' %>"
+     data-counselor-lc="<%= (sheet.FirstName + ' ' + sheet.LastName).toLowerCase() %>">
+    <div class="roster-header">
+        <h2><%= sheet.FirstName %> <%= sheet.LastName %> &mdash; Homegroup</h2>
+        <div class="roster-meta">
+            <span>&#127968; Homegroup &middot; <%= sheet.HomeGroupColor || 'Unassigned' %></span>
+            <span><%= sheet.campers.length %> camper<%= sheet.campers.length !== 1 ? 's' : '' %></span>
+        </div>
+    </div>
+    <table class="roster-table">
+        <thead>
+            <tr>
+                <th style="width:40%;">Camper Name</th>
+                <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% if (sheet.campers.length === 0) { %>
+                <tr><td colspan="6" class="empty-state">No campers assigned</td></tr>
+            <% } else { %>
+                <% sheet.campers.forEach(camper => { %>
+                <tr><td><%= camper.LastName %>, <%= camper.FirstName %></td><td></td><td></td><td></td><td></td><td></td></tr>
+                <% }) %>
+            <% } %>
+        </tbody>
+    </table>
 </div>
+<% }) %>
+
+<!-- ── Bus rosters ── -->
+<% busSheets.forEach(sheet => { %>
+<% const busDensity = sheet.campers.length > 32 ? 'very-dense' : sheet.campers.length > 22 ? 'dense' : ''; %>
+<div class="roster-page <%= busDensity %>"
+     data-type="bus"
+     data-route="<%= sheet.route %>">
+    <div class="roster-header">
+        <h2>Bus &mdash; <%= sheet.route %></h2>
+        <div class="roster-meta">
+            <span>&#128652; Bus Route</span>
+            <span><%= sheet.campers.length %> camper<%= sheet.campers.length !== 1 ? 's' : '' %></span>
+        </div>
+    </div>
+    <table class="roster-table">
+        <thead>
+            <tr>
+                <th style="width:40%;">Camper Name</th>
+                <th>Group</th>
+                <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% sheet.campers.forEach(camper => { %>
+            <tr>
+                <td><%= camper.LastName %>, <%= camper.FirstName %></td>
+                <td><%= camper.HomeGroupColor %></td>
+                <td></td><td></td><td></td><td></td><td></td>
+            </tr>
+            <% }) %>
+        </tbody>
+    </table>
+</div>
+<% }) %>
+
+<!-- ── Extended care rosters ── -->
+<% if (extAM.length > 0) { %>
+<% const amDensity = extAM.length > 32 ? 'very-dense' : extAM.length > 22 ? 'dense' : ''; %>
+<div class="roster-page <%= amDensity %>" data-type="extended" data-session="AM">
+    <div class="roster-header">
+        <h2>AM Extended Care</h2>
+        <div class="roster-meta">
+            <span>&#9200; Early Drop-off</span>
+            <span><%= extAM.length %> camper<%= extAM.length !== 1 ? 's' : '' %></span>
+        </div>
+    </div>
+    <table class="roster-table">
+        <thead>
+            <tr>
+                <th style="width:40%;">Camper Name</th>
+                <th>Group</th>
+                <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% extAM.forEach(camper => { %>
+            <tr>
+                <td><%= camper.LastName %>, <%= camper.FirstName %></td>
+                <td><%= camper.HomeGroupColor %></td>
+                <td></td><td></td><td></td><td></td><td></td>
+            </tr>
+            <% }) %>
+        </tbody>
+    </table>
+</div>
+<% } %>
+
+<% if (extPM.length > 0) { %>
+<% const pmDensity = extPM.length > 32 ? 'very-dense' : extPM.length > 22 ? 'dense' : ''; %>
+<div class="roster-page <%= pmDensity %>" data-type="extended" data-session="PM">
+    <div class="roster-header">
+        <h2>PM Extended Care</h2>
+        <div class="roster-meta">
+            <span>&#9200; Late Pickup</span>
+            <span><%= extPM.length %> camper<%= extPM.length !== 1 ? 's' : '' %></span>
+        </div>
+    </div>
+    <table class="roster-table">
+        <thead>
+            <tr>
+                <th style="width:40%;">Camper Name</th>
+                <th>Group</th>
+                <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% extPM.forEach(camper => { %>
+            <tr>
+                <td><%= camper.LastName %>, <%= camper.FirstName %></td>
+                <td><%= camper.HomeGroupColor %></td>
+                <td></td><td></td><td></td><td></td><td></td>
+            </tr>
+            <% }) %>
+        </tbody>
+    </table>
+</div>
+<% } %>
+
+<% } /* end hasAny */ %>
+</div>
+
+<script>
+    const activeTypes    = new Set(['sports','enrichment','homegroup','bus','extended']);
+    const activePeriods  = new Set(['all','1','2','3','4','5','6']);
+    const activeColors   = new Set(['Red','Carolina','Green','Navy']);
+    const activeRoutes   = new Set(['all', ...(<%- JSON.stringify(busSheets.map(b => b.route)) %>)]);
+    const activeSessions = new Set(['AM','PM']);
+    let counselorQuery   = '';
+
+    function applyFilters() {
+        const pages = document.querySelectorAll('.roster-page');
+        let visible = 0;
+        pages.forEach(page => {
+            const type    = page.dataset.type || '';
+            const period  = String(page.dataset.period || '');
+            const clc     = page.dataset.counselorLc || '';
+            const color   = page.dataset.color || '';
+            const route   = page.dataset.route || '';
+            const session = page.dataset.session || '';
+
+            let show = false;
+
+            if (type === 'sports' || type === 'enrichment') {
+                show = activeTypes.has(type)
+                    && (activePeriods.has('all') || activePeriods.has(period))
+                    && (!counselorQuery || clc.includes(counselorQuery));
+            } else if (type === 'homegroup') {
+                show = activeTypes.has('homegroup')
+                    && (activeColors.size === 0 || activeColors.has(color))
+                    && (!counselorQuery || clc.includes(counselorQuery));
+            } else if (type === 'bus') {
+                show = activeTypes.has('bus')
+                    && (activeRoutes.has('all') || activeRoutes.has(route));
+            } else if (type === 'extended') {
+                show = activeTypes.has('extended')
+                    && activeSessions.has(session);
+            } else {
+                show = true; // other types always visible
+            }
+
+            page.classList.toggle('hidden', !show);
+            if (show) visible++;
+        });
+        const el = document.getElementById('sheetCount');
+        if (el) el.textContent = visible + ' sheet' + (visible !== 1 ? 's' : '');
+    }
+
+    function toggleSubRows() {
+        const hgActive  = activeTypes.has('homegroup');
+        const busActive = activeTypes.has('bus');
+        const extActive = activeTypes.has('extended');
+        document.getElementById('subHomegroup').classList.toggle('visible', hgActive);
+        document.getElementById('subBus').classList.toggle('visible', busActive);
+        document.getElementById('subExtended').classList.toggle('visible', extActive);
+    }
+
+    // Type chips
+    document.querySelectorAll('.fchip[data-type]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const t = btn.dataset.type;
+            if (activeTypes.has(t)) { activeTypes.delete(t); btn.classList.remove('active'); }
+            else { activeTypes.add(t); btn.classList.add('active'); }
+            toggleSubRows();
+            applyFilters();
+        });
+    });
+
+    // Period chips
+    document.querySelectorAll('.fchip[data-period]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const p = btn.dataset.period;
+            if (p === 'all') {
+                const allActive = activePeriods.has('all');
+                if (allActive) { activePeriods.clear(); btn.classList.remove('active'); }
+                else {
+                    ['all','1','2','3','4','5','6'].forEach(x => activePeriods.add(x));
+                    document.querySelectorAll('.fchip[data-period]').forEach(b => b.classList.add('active'));
+                }
+            } else {
+                activePeriods.delete('all');
+                document.querySelector('.fchip[data-period="all"]').classList.remove('active');
+                if (activePeriods.has(p)) { activePeriods.delete(p); btn.classList.remove('active'); }
+                else { activePeriods.add(p); btn.classList.add('active'); }
+            }
+            applyFilters();
+        });
+    });
+
+    // Color chips
+    document.querySelectorAll('.fchip[data-color]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const c = btn.dataset.color;
+            if (activeColors.has(c)) { activeColors.delete(c); btn.classList.remove('active'); }
+            else { activeColors.add(c); btn.classList.add('active'); }
+            applyFilters();
+        });
+    });
+
+    // Route chips
+    document.querySelectorAll('.fchip[data-route]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const r = btn.dataset.route;
+            if (r === 'all') {
+                const allActive = activeRoutes.has('all');
+                if (allActive) { activeRoutes.clear(); btn.classList.remove('active'); }
+                else {
+                    btn.classList.add('active');
+                    document.querySelectorAll('.fchip[data-route]').forEach(b => {
+                        activeRoutes.add(b.dataset.route); b.classList.add('active');
+                    });
+                }
+            } else {
+                activeRoutes.delete('all');
+                document.querySelector('.fchip[data-route="all"]').classList.remove('active');
+                if (activeRoutes.has(r)) { activeRoutes.delete(r); btn.classList.remove('active'); }
+                else { activeRoutes.add(r); btn.classList.add('active'); }
+            }
+            applyFilters();
+        });
+    });
+
+    // Session chips
+    document.querySelectorAll('.fchip[data-session]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const s = btn.dataset.session;
+            if (activeSessions.has(s)) { activeSessions.delete(s); btn.classList.remove('active'); }
+            else { activeSessions.add(s); btn.classList.add('active'); }
+            applyFilters();
+        });
+    });
+
+    // Counselor search
+    const counselorInput = document.getElementById('filterCounselor');
+    if (counselorInput) {
+        counselorInput.addEventListener('input', () => {
+            counselorQuery = counselorInput.value.trim().toLowerCase();
+            applyFilters();
+        });
+    }
+
+    // Init
+    toggleSubRows();
+    applyFilters();
+</script>
 </body>
 </html>

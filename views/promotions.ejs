@@ -136,6 +136,12 @@
                                 <%= promo.CurrentEnrollment %> / <%= promo.MaxCapacity %> Filled
                                 <div class="cap-sub">Class Full</div>
                             </div>
+                            <form action="/remove-waitlist/<%= promo.WaitlistID %>" method="POST"
+                                  onsubmit="return confirm('Remove <%= promo.FirstName %> <%= promo.LastName %> from the waitlist?')">
+                                <button type="submit" class="btn" style="width:100%; color:#dc2626; border-color:#fca5a5;">
+                                    Remove
+                                </button>
+                            </form>
                         </div>
                     </div>
                 <% }) %>

@@ -69,7 +69,7 @@
                             <span class="info-label">Home Counselor</span>
                         </div>
                         <div style=”margin-bottom: 16px;”>
-                            <select name=”homeGroupCounselorID” style=”width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.9rem; background:white;”>
+                            <select name=”homeGroupCounselorID” style=”width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.9rem; background:white; box-sizing:border-box;”>
                                 <option value=””>— Unassigned —</option>
                                 <% ['Red','Carolina','Green','Navy'].forEach(function(grp) {
                                    const gc = counselors.filter(c => c.HomeGroupColor === grp);

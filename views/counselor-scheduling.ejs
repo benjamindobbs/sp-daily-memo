@@ -720,7 +720,7 @@
             MAIN_COUNSELORS.forEach(c => {
                 const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                 const schedType = sel ? sel.value : (c.ScheduleType || '');
-                if (isCounselorAvailableFor(schedType, periodNum, side)) available.add(c.CounselorID);
+                if (schedType && isCounselorAvailableFor(schedType, periodNum, side)) available.add(c.CounselorID);
             });
 
             // Counselors already placed into activity slots this period
