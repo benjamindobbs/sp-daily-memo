@@ -4409,11 +4409,12 @@ app.get('/reports/attendance-rosters', (_req, res) => {
     const scheduleRows = db.prepare(`
         SELECT cws.CounselorID, co.FirstName, co.LastName,
                cws.PeriodNumber, cws.ActivityName,
-               COALESCE(wo.SideOfCamp, 'Other') AS SideOfCamp
+               COALESCE(wo.SideOfCamp, a.SideOfCamp, 'Other') AS SideOfCamp
         FROM CounselorWeekSchedules cws
         JOIN Counselors co ON co.CounselorID = cws.CounselorID
         LEFT JOIN WeeklyOfferings wo
             ON wo.ActivityName = cws.ActivityName AND wo.PeriodNumber = cws.PeriodNumber AND wo.WeekNumber = ?
+        LEFT JOIN Activities a ON a.Name = cws.ActivityName
         WHERE cws.WeekNumber = ?
         ORDER BY co.LastName, co.FirstName, cws.PeriodNumber
     `).all(aw, aw);
