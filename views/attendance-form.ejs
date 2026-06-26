@@ -18,6 +18,7 @@
         <a href="/attendance" class="nav-btn primary">&#128203; Attendance</a>
         <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <a href="/nurse" class="nav-btn">&#128137; Nurse</a>
+        <a href="/case-log" class="nav-btn">&#128330;&#65039; Case Log</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="staff">
             <button class="nav-btn" style="cursor:pointer;">Staff View</button>
@@ -143,6 +144,7 @@
                         <span class="camper-name"><%= c.FirstName %> <%= c.LastName %></span>
                         <div class="camper-badges">
                             <% if (c.nurseAM) { %><span class="badge-absent-am" style="background:#fee2e2;color:#991b1b;">&#128137; In Nurse</span><% } else if (c.absentAM) { %><span class="badge-absent-am">&#9888; Absent AM</span><% } %>
+                            <% if (c.caseLog) { %><span class="badge-absent-am" style="background:#ede9fe;color:#5b21b6;">&#128330;&#65039; With No&#235;l</span><% } %>
                             <% if (c.absentBusAM) { %><span class="badge-absent-bus">&#128652; Absent Bus AM</span><% } %>
                             <% if (c.dismissed) { %><span class="badge-dismissed">&#128663; Dismissed</span><% } %>
                             <% if (c.seenEarlier) { %><span class="badge-seen-earlier">&#10003; Seen Earlier</span><% } %>

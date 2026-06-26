@@ -187,6 +187,13 @@ function getNurseAMSet(date) {
     );
 }
 
+function getCaseLogSet(date) {
+    return new Set(
+        db.prepare("SELECT CamperID FROM CaseLog WHERE Date=? AND CheckOutTime IS NULL AND Dismissed=0")
+            .all(date).map(r => r.CamperID)
+    );
+}
+
 function computeHomegroupAttStats(session, today) {
     const total = db.prepare(`
         SELECT COUNT(DISTINCT co.CounselorID) as n
@@ -266,6 +273,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/attendance/dismissal-archive',
     '/dismissals',
     '/nurse',  '/nurse/archive',
+    '/case-log', '/case-log/archive',
     '/split-scheduling', '/save-split-assignments',
     '/reports', '/upload-pdf',
 ];
@@ -822,6 +830,20 @@ try {
         FOREIGN KEY (CamperID) REFERENCES Campers(CamperID)
     )`);
 } catch(e) { console.error('[migration] NurseLog:', e.message); }
+
+try {
+    db.exec(`CREATE TABLE IF NOT EXISTS CaseLog (
+        VisitID      INTEGER PRIMARY KEY AUTOINCREMENT,
+        Date         TEXT    NOT NULL,
+        CamperID     INTEGER NOT NULL,
+        CheckInTime  TEXT    NOT NULL,
+        CheckOutTime TEXT,
+        Notes        TEXT,
+        Dismissed    INTEGER DEFAULT 0,
+        CreatedBy    TEXT,
+        FOREIGN KEY (CamperID) REFERENCES Campers(CamperID)
+    )`);
+} catch(e) { console.error('[migration] CaseLog:', e.message); }
 
 // Migrate Staff rows into Counselors (one-time; skips if already present by name)
 try {
@@ -2496,6 +2518,7 @@ app.post('/clear-campers', (req, res) => {
     db.prepare("DELETE FROM ScheduleChanges").run();
     db.prepare("DELETE FROM CamperHomeGroups").run();
     db.prepare("DELETE FROM NurseLog").run();
+    db.prepare("DELETE FROM CaseLog").run();
     db.prepare("DELETE FROM Campers").run();
     res.redirect('/settings?message=Campers+Cleared');
 });
@@ -3037,6 +3060,7 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
     );
 
     const nurseAMSet1 = getNurseAMSet(date);
+    const caseLogSet1 = getCaseLogSet(date);
     const pickupMap1 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
@@ -3044,6 +3068,7 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
         absentAM: absentAMSet.has(c.CamperID),
         absentBusAM: absentBusAMSet.has(c.CamperID),
         nurseAM: nurseAMSet1.has(c.CamperID),
+        caseLog: caseLogSet1.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
         seenEarlier: seenEarlierSet.has(c.CamperID),
         scheduledPickup: pickupMap1[c.CamperID] || null
@@ -3087,12 +3112,14 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
     );
 
     const nurseAMSet2 = getNurseAMSet(date);
+    const caseLogSet2 = getCaseLogSet(date);
     const pickupMap2 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
         nurseAM: nurseAMSet2.has(c.CamperID),
+        caseLog: caseLogSet2.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
         seenEarlier: seenEarlierSet.has(c.CamperID),
         scheduledPickup: pickupMap2[c.CamperID] || null
@@ -3138,12 +3165,14 @@ app.get('/attendance/specialty/:color/:session', (req, res) => {
     );
 
     const nurseAMSet3 = getNurseAMSet(date);
+    const caseLogSet3 = getCaseLogSet(date);
     const pickupMap3 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
         nurseAM: nurseAMSet3.has(c.CamperID),
+        caseLog: caseLogSet3.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
         seenEarlier: seenEarlierSet.has(c.CamperID),
         scheduledPickup: pickupMap3[c.CamperID] || null
@@ -3199,6 +3228,7 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
     );
 
     const nurseAMSet4 = getNurseAMSet(date);
+    const caseLogSet4 = getCaseLogSet(date);
     const pickupMap4 = getScheduledPickupMap(date);
 
     // SPLIT campers in this class are read-only; their status comes from specialty_am
@@ -3218,6 +3248,7 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
             currentStatus: isSplit ? splitSpecialtyStatus4[c.CamperID] || null : statusMap[c.CamperID] || null,
             absentAM: absentAMSet.has(c.CamperID),
             nurseAM: nurseAMSet4.has(c.CamperID),
+            caseLog: caseLogSet4.has(c.CamperID),
             dismissed: dismissedSet.has(c.CamperID),
             seenEarlier: seenEarlierSet.has(c.CamperID),
             scheduledPickup: pickupMap4[c.CamperID] || null,
@@ -3287,12 +3318,14 @@ app.get('/attendance/bus/:route/:session', (req, res) => {
     );
 
     const nurseAMSet5 = getNurseAMSet(date);
+    const caseLogSet5 = getCaseLogSet(date);
     const pickupMap5 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
         nurseAM: nurseAMSet5.has(c.CamperID),
+        caseLog: caseLogSet5.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
         seenEarlier: seenEarlierSet.has(c.CamperID),
         scheduledPickup: pickupMap5[c.CamperID] || null
@@ -3337,12 +3370,14 @@ app.get('/attendance/extended/:session', (req, res) => {
     );
 
     const nurseAMSet6 = getNurseAMSet(date);
+    const caseLogSet6 = getCaseLogSet(date);
     const pickupMap6 = getScheduledPickupMap(date);
     const roster = campers.map(c => ({
         ...c,
         currentStatus: statusMap[c.CamperID] || null,
         absentAM: absentAMSet.has(c.CamperID),
         nurseAM: nurseAMSet6.has(c.CamperID),
+        caseLog: caseLogSet6.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
         seenEarlier: seenEarlierSet.has(c.CamperID),
         scheduledPickup: pickupMap6[c.CamperID] || null
@@ -3576,6 +3611,86 @@ app.get('/nurse/archive', (req, res) => {
     }
 
     res.render('nurse-archive', { byDate, viewMode: req.cookies.viewMode || 'admin' });
+});
+
+// --- CASE LOG ---
+app.get('/case-log', (req, res) => {
+    const today = todayStr();
+    const visits = db.prepare(`
+        SELECT cl.VisitID, cl.CheckInTime, cl.CheckOutTime, cl.Notes, cl.Dismissed, cl.CreatedBy,
+               c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor
+        FROM CaseLog cl JOIN Campers c ON c.CamperID = cl.CamperID
+        WHERE cl.Date = ?
+        ORDER BY cl.CheckInTime DESC
+    `).all(today);
+    const campers = db.prepare("SELECT CamperID, FirstName, LastName, HomeGroupColor FROM Campers ORDER BY LastName, FirstName").all();
+    const message = req.query.message || null;
+    res.render('case-log', { visits, campers, today, message, viewMode: req.cookies.viewMode || 'admin' });
+});
+
+app.post('/case-log/checkin', (req, res) => {
+    const { camperId, notes } = req.body;
+    if (!camperId) return res.redirect('/case-log');
+    const today = todayStr();
+    const checkInTime = nowTimeStr();
+    const createdBy = getViewerName(req);
+    db.prepare(`
+        INSERT INTO CaseLog (Date, CamperID, CheckInTime, Notes, CreatedBy)
+        VALUES (?, ?, ?, ?, ?)
+    `).run(today, camperId, checkInTime, notes || null, createdBy);
+    res.redirect('/case-log');
+});
+
+app.post('/case-log/checkout/:visitId', (req, res) => {
+    const visitId = parseInt(req.params.visitId);
+    const visit = db.prepare("SELECT * FROM CaseLog WHERE VisitID = ?").get(visitId);
+    if (!visit) return res.redirect('/case-log');
+    db.prepare("UPDATE CaseLog SET CheckOutTime = ? WHERE VisitID = ?").run(nowTimeStr(), visitId);
+    res.redirect('/case-log');
+});
+
+app.post('/case-log/dismiss/:visitId', (req, res) => {
+    const visitId = parseInt(req.params.visitId);
+    const visit = db.prepare("SELECT * FROM CaseLog WHERE VisitID = ?").get(visitId);
+    if (!visit) return res.redirect('/case-log');
+    const today = todayStr();
+    const dismissalTime = nowTimeStr();
+    const markedBy = getViewerName(req);
+    if (!visit.CheckOutTime) {
+        db.prepare("UPDATE CaseLog SET CheckOutTime = ?, Dismissed = 1 WHERE VisitID = ?")
+            .run(dismissalTime, visitId);
+    } else {
+        db.prepare("UPDATE CaseLog SET Dismissed = 1 WHERE VisitID = ?").run(visitId);
+    }
+    db.prepare(`
+        INSERT INTO EarlyDismissals (Date, CamperID, DismissalTime, Notes, MarkedBy)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (Date, CamperID) DO UPDATE SET
+            DismissalTime = excluded.DismissalTime, Notes = excluded.Notes, MarkedBy = excluded.MarkedBy
+    `).run(today, visit.CamperID, dismissalTime, 'Via Case Log', markedBy);
+    res.redirect('/case-log');
+});
+
+app.post('/case-log/update-notes/:visitId', (req, res) => {
+    const visitId = parseInt(req.params.visitId);
+    const { notes } = req.body;
+    db.prepare("UPDATE CaseLog SET Notes = ? WHERE VisitID = ?").run(notes || null, visitId);
+    res.redirect('/case-log');
+});
+
+app.get('/case-log/archive', (req, res) => {
+    const rows = db.prepare(`
+        SELECT cl.VisitID, cl.Date, cl.CheckInTime, cl.CheckOutTime, cl.Notes, cl.Dismissed, cl.CreatedBy,
+               c.FirstName, c.LastName, c.HomeGroupColor
+        FROM CaseLog cl JOIN Campers c ON c.CamperID = cl.CamperID
+        ORDER BY cl.Date DESC, cl.CheckInTime DESC
+    `).all();
+    const byDate = {};
+    for (const r of rows) {
+        if (!byDate[r.Date]) byDate[r.Date] = [];
+        byDate[r.Date].push(r);
+    }
+    res.render('case-log-archive', { byDate, viewMode: req.cookies.viewMode || 'admin' });
 });
 
 // --- SCHEDULED PICKUPS / DISMISSALS TOOL ---

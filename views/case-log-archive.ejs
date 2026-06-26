@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Case Log Archive | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .date-section { margin-bottom: 32px; }
+        .date-heading {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin: 0 0 10px;
+        }
+        .archive-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .archive-table th {
+            background: #f8fafc;
+            padding: 8px 14px;
+            text-align: left;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border-color);
+        }
+        .archive-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: middle;
+        }
+        .archive-table tr:last-child td { border-bottom: none; }
+        .badge-dismissed { background: #e0e7ff; color: #3730a3; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; }
+        .badge-out       { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; }
+        .badge-active    { background: #ede9fe; color: #5b21b6; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; }
+        .notes-cell { font-size: 0.8rem; color: var(--text-muted); max-width: 260px; }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/case-log" class="nav-btn primary">&#128330;&#65039; Case Log</a>
+        <a href="/case-log/archive" class="nav-btn">&#128196; Archive</a>
+    </nav>
+
+    <div class="container">
+        <header class="page-header">
+            <div>
+                <h1 style="margin:0;">&#128330;&#65039; Case Log Archive</h1>
+                <p class="text-muted" style="margin:2px 0 0;">All case log entries on record, newest first.</p>
+            </div>
+        </header>
+
+        <% const dates = Object.keys(byDate); %>
+        <% if (dates.length === 0) { %>
+            <div style="text-align:center; padding:48px; color:var(--text-muted);">No case log entries on record yet.</div>
+        <% } else { %>
+            <% dates.forEach(function(date) { %>
+            <div class="date-section">
+                <p class="date-heading"><%= date %> &mdash; <%= byDate[date].length %> visit<%= byDate[date].length !== 1 ? 's' : '' %></p>
+                <table class="archive-table">
+                    <thead>
+                        <tr>
+                            <th>Camper</th>
+                            <th>Check In</th>
+                            <th>Check Out</th>
+                            <th>Status</th>
+                            <th>Notes</th>
+                            <th>Logged By</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% byDate[date].forEach(function(v) { %>
+                        <tr>
+                            <td>
+                                <span class="tag <%= v.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 6px; margin-right:6px;"><%= v.HomeGroupColor %></span>
+                                <strong><%= v.FirstName %> <%= v.LastName %></strong>
+                            </td>
+                            <td><%= v.CheckInTime %></td>
+                            <td><%= v.CheckOutTime || '—' %></td>
+                            <td>
+                                <% if (v.Dismissed) { %>
+                                    <span class="badge-dismissed">&#128663; Dismissed</span>
+                                <% } else if (v.CheckOutTime) { %>
+                                    <span class="badge-out">&#10003; Checked Out</span>
+                                <% } else { %>
+                                    <span class="badge-active">&#128330;&#65039; With No&#235;l</span>
+                                <% } %>
+                            </td>
+                            <td class="notes-cell"><%= v.Notes || '' %></td>
+                            <td style="font-size:0.8rem; color:var(--text-muted);"><%= v.CreatedBy || '—' %></td>
+                        </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            </div>
+            <% }); %>
+        <% } %>
+    </div>
+
+</body>
+</html>

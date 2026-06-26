@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nurse Log | Camp Hub</title>
+    <title>Case Log | Camp Hub</title>
     <link rel="stylesheet" href="/css/style.css">
     <script src="/js/nav.js" defer></script>
     <style>
@@ -26,7 +26,7 @@
             gap: 10px;
         }
         .nurse-card.active {
-            border-left: 4px solid #ef4444;
+            border-left: 4px solid #8b5cf6;
         }
         .nurse-card.checked-out {
             border-left: 4px solid #10b981;
@@ -63,9 +63,9 @@
             font-size: 0.72rem;
             font-weight: 700;
         }
-        .badge-active   { background: #fee2e2; color: #991b1b; }
+        .badge-active   { background: #ede9fe; color: #5b21b6; }
         .badge-out      { background: #d1fae5; color: #065f46; }
-        .badge-dismissed{ background: #ede9fe; color: #5b21b6; }
+        .badge-dismissed{ background: #e0e7ff; color: #3730a3; }
         .nurse-notes-form {
             display: flex;
             gap: 8px;
@@ -171,9 +171,9 @@
         <a href="/swap-tool" class="nav-btn">&#128260; Swap Tools</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
         <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
-        <a href="/nurse" class="nav-btn primary">&#128137; Nurse</a>
-        <a href="/nurse/archive" class="nav-btn">&#128196; Archive</a>
-        <a href="/case-log" class="nav-btn">&#128330;&#65039; Case Log</a>
+        <a href="/nurse" class="nav-btn">&#128137; Nurse</a>
+        <a href="/case-log" class="nav-btn primary">&#128330;&#65039; Case Log</a>
+        <a href="/case-log/archive" class="nav-btn">&#128196; Archive</a>
         <form action="/choose-view" method="POST" style="margin-left:auto;">
             <input type="hidden" name="view" value="staff">
             <button class="nav-btn" style="cursor:pointer;">Staff View</button>
@@ -185,7 +185,7 @@
 
         <div class="page-header">
             <div>
-                <h1 style="margin:0;">&#128137; Nurse Log</h1>
+                <h1 style="margin:0;">&#128330;&#65039; Case Log</h1>
                 <p class="text-muted" style="margin:2px 0 0;"><%= today %></p>
             </div>
         </div>
@@ -197,7 +197,7 @@
         <!-- CHECK-IN FORM -->
         <div class="checkin-form">
             <h3>Check Camper In</h3>
-            <form action="/nurse/checkin" method="POST">
+            <form action="/case-log/checkin" method="POST">
                 <div class="checkin-fields">
                     <div class="camper-autocomplete" id="acWrap">
                         <input type="text" id="camperSearchAC" placeholder="Search camper…" autocomplete="off">
@@ -205,28 +205,28 @@
                         <div class="ac-dropdown" id="acDropdown"></div>
                     </div>
                     <textarea name="notes" placeholder="Notes (optional)"></textarea>
-                    <button type="submit" class="btn btn-primary">&#128137; Check In</button>
+                    <button type="submit" class="btn btn-primary">&#128330;&#65039; Check In</button>
                 </div>
             </form>
         </div>
 
-        <!-- CURRENTLY IN NURSE -->
+        <!-- CURRENTLY IN CASE LOG -->
         <%
         const activeVisits = visits.filter(v => !v.CheckOutTime && !v.Dismissed);
         const completedVisits = visits.filter(v => v.CheckOutTime || v.Dismissed);
         %>
 
-        <p class="nurse-section-title">Currently in Nurse (<%= activeVisits.length %>)</p>
+        <p class="nurse-section-title">Currently in Case Log (<%= activeVisits.length %>)</p>
 
         <% if (activeVisits.length === 0) { %>
-            <div class="empty-state">No campers currently in the nurse&#39;s office.</div>
+            <div class="empty-state">No campers currently in the case log.</div>
         <% } else { %>
             <% activeVisits.forEach(function(v) { %>
             <div class="nurse-card active">
                 <div class="nurse-card-header">
                     <span class="tag <%= v.HomeGroupColor %>"><%= v.HomeGroupColor %></span>
                     <span class="nurse-card-name"><%= v.FirstName %> <%= v.LastName %></span>
-                    <span class="nurse-badge badge-active">&#128137; In Nurse</span>
+                    <span class="nurse-badge badge-active">&#128330;&#65039; With No&#235;l</span>
                 </div>
                 <div class="nurse-time-row">
                     <span>Checked in: <strong><%= v.CheckInTime %></strong></span>
@@ -236,16 +236,15 @@
                     <div style="font-size:0.85rem; color:#374151; background:#f8fafc; padding:6px 10px; border-radius:6px;"><%= v.Notes %></div>
                 <% } %>
                 <div class="nurse-actions">
-                    <form action="/nurse/checkout/<%= v.VisitID %>" method="POST" style="margin:0;">
+                    <form action="/case-log/checkout/<%= v.VisitID %>" method="POST" style="margin:0;">
                         <button type="submit" class="btn-nurse-out">&#10003; Check Out</button>
                     </form>
-                    <form action="/nurse/dismiss/<%= v.VisitID %>" method="POST" style="margin:0;"
+                    <form action="/case-log/dismiss/<%= v.VisitID %>" method="POST" style="margin:0;"
                           onsubmit="return confirm('Dismiss <%= v.FirstName %> <%= v.LastName %> from camp for the rest of the day?')">
                         <button type="submit" class="btn-nurse-dismiss">&#128663; Dismiss from Camp</button>
                     </form>
                 </div>
-                <!-- Inline notes update -->
-                <form action="/nurse/update-notes/<%= v.VisitID %>" method="POST" class="nurse-notes-form">
+                <form action="/case-log/update-notes/<%= v.VisitID %>" method="POST" class="nurse-notes-form">
                     <textarea name="notes" placeholder="Add / update notes…"><%= v.Notes || '' %></textarea>
                     <button type="submit" class="btn-nurse-notes">Save Notes</button>
                 </form>
@@ -278,7 +277,7 @@
             <% if (v.Notes) { %>
                 <div style="font-size:0.85rem; color:#374151; background:#f8fafc; padding:6px 10px; border-radius:6px;"><%= v.Notes %></div>
             <% } %>
-            <form action="/nurse/update-notes/<%= v.VisitID %>" method="POST" class="nurse-notes-form">
+            <form action="/case-log/update-notes/<%= v.VisitID %>" method="POST" class="nurse-notes-form">
                 <textarea name="notes" placeholder="Add / update notes…"><%= v.Notes || '' %></textarea>
                 <button type="submit" class="btn-nurse-notes">Save Notes</button>
             </form>
