@@ -2183,7 +2183,7 @@ app.post('/upload-counselors', upload.single('file'), (req, res) => {
                     if (entries.length === 1) {
                         const e = entries[0];
                         const role = POSITION_TO_ROLE[(e.row.Positions || '').trim().toLowerCase()] || (e.row.Positions || '').trim();
-                        const homeColor = role === 'Swim Counselor' ? 'Swim' : mapCampToColor(e.row.Camp);
+                        const homeColor = mapCampToColor(e.row.Camp) || (role === 'Swim Counselor' ? 'Swim' : null);
                         const existing = findCounselor.get(fullName);
                         if (existing) { updCounselor.run(homeColor, role, existing.CounselorID); }
                         else { insCounselor.run(firstName, lastName, homeColor, role); }
@@ -2208,7 +2208,7 @@ app.post('/upload-counselors', upload.single('file'), (req, res) => {
                                 }
                             }
                             for (const [, e] of Object.entries(bySide)) {
-                                const homeColor = e.role === 'Swim Counselor' ? 'Swim' : mapCampToColor(e.row.Camp);
+                                const homeColor = mapCampToColor(e.row.Camp) || (e.role === 'Swim Counselor' ? 'Swim' : null);
                                 const existing = db.prepare("SELECT CounselorID FROM Counselors WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) AND StaffRole = ? LIMIT 1").get(fullName, e.role);
                                 if (existing) { updCounselor.run(homeColor, e.role, existing.CounselorID); }
                                 else { insCounselor.run(firstName, lastName, homeColor, e.role); }
@@ -2218,7 +2218,7 @@ app.post('/upload-counselors', upload.single('file'), (req, res) => {
                         } else {
                             // Same side: keep highest-rank entry
                             const winner = parsed.reduce((best, p) => (ROLE_RANK[p.role] || 1) >= (ROLE_RANK[best.role] || 1) ? p : best);
-                            const homeColor = winner.role === 'Swim Counselor' ? 'Swim' : mapCampToColor(winner.row.Positions, winner.row.Camp);
+                            const homeColor = mapCampToColor(winner.row.Positions, winner.row.Camp) || (winner.role === 'Swim Counselor' ? 'Swim' : null);
                             const existing = findCounselor.get(fullName);
                             if (existing) { updCounselor.run(homeColor, winner.role, existing.CounselorID); }
                             else { insCounselor.run(firstName, lastName, homeColor, winner.role); }
@@ -3572,7 +3572,7 @@ app.get('/counselor-scheduling', (req, res) => {
     for (const c of allCounselors) {
         if (c.StaffRole === 'Swim Counselor' && !c.HomeGroupColor) c.HomeGroupColor = 'Swim';
     }
-    const mainCounselors      = allCounselors.filter(c => !SPECIALTY_SET.has(c.HomeGroupColor) || c.SpecialtyGroup);
+    const mainCounselors      = allCounselors.filter(c => (!SPECIALTY_SET.has(c.HomeGroupColor) || c.SpecialtyGroup) && !(c.StaffRole === 'Swim Counselor' && !c.ScheduleType));
     const specialtyCounselors = [];
     for (const c of allCounselors) {
         if (SPECIALTY_SET.has(c.HomeGroupColor)) {
@@ -3580,6 +3580,9 @@ app.get('/counselor-scheduling', (req, res) => {
         } else if (c.SpecialtyGroup) {
             // Dual-assigned: also appears in specialty section with specialty color
             specialtyCounselors.push({ ...c, HomeGroupColor: c.SpecialtyGroup, _dualAssigned: true });
+        } else if (c.StaffRole === 'Swim Counselor') {
+            // Swim counselor assigned to a main homegroup — still appears in Swim section
+            specialtyCounselors.push({ ...c, HomeGroupColor: 'Swim', _dualAssigned: true });
         }
     }
     // Keep counselors array as all for backwards-compat with availability/assignment logic below
@@ -4266,12 +4269,12 @@ app.get('/homegroup-assignment', (req, res) => {
     const sessions = db.prepare("SELECT * FROM Sessions ORDER BY weekNumber").all();
 
     const counselors = db.prepare(`
-        SELECT co.CounselorID, co.FirstName, co.LastName,
+        SELECT co.CounselorID, co.FirstName, co.LastName, co.StaffRole,
                COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) AS HomeGroupColor,
                cwa.ExtendedHours AS ExtendedHours
         FROM Counselors co
         LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = co.CounselorID AND cwa.WeekNumber = ?
-        WHERE co.StaffRole = 'Counselor'
+        WHERE co.StaffRole IN ('Counselor', 'Swim Counselor')
           AND COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) IN ('Red','Carolina','Green','Navy')
         ORDER BY COALESCE(cwa.HomeGroupColor, co.HomeGroupColor), co.LastName, co.FirstName
     `).all(week);
@@ -4285,6 +4288,17 @@ app.get('/homegroup-assignment', (req, res) => {
         WHERE co.StaffRole = 'Counselor'
           AND COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) IN ('LilPlace','KinderPlace','SPLIT','SPRC')
         ORDER BY COALESCE(cwa.HomeGroupColor, co.HomeGroupColor), co.LastName, co.FirstName
+    `).all(week);
+
+    const swimCounselors = db.prepare(`
+        SELECT co.CounselorID, co.FirstName, co.LastName,
+               COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) AS HomeGroupColor,
+               cwa.ExtendedHours AS ExtendedHours
+        FROM Counselors co
+        LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = co.CounselorID AND cwa.WeekNumber = ?
+        WHERE co.StaffRole = 'Swim Counselor'
+          AND COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) NOT IN ('Red','Carolina','Green','Navy')
+        ORDER BY co.LastName, co.FirstName
     `).all(week);
 
     const unassignedCounselors = db.prepare(`
@@ -4307,7 +4321,7 @@ app.get('/homegroup-assignment', (req, res) => {
     `).all(week);
 
     res.render('homegroup-assignment', {
-        week, sessions, counselors, specialtyCounselors, unassignedCounselors, campers,
+        week, sessions, counselors, specialtyCounselors, swimCounselors, unassignedCounselors, campers,
         activeWeek: getActiveWeek()
     });
 });

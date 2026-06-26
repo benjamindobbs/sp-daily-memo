@@ -119,6 +119,7 @@
         const WEEK         = <%- week %>;
         const COUNSELORS             = <%- JSON.stringify(counselors) %>;
         const SPECIALTY_COUNSELORS   = <%- JSON.stringify(specialtyCounselors) %>;
+        const SWIM_COUNSELORS        = <%- JSON.stringify(swimCounselors) %>;
         const UNASSIGNED_COUNSELORS  = <%- JSON.stringify(unassignedCounselors) %>;
         const CAMPERS      = <%- JSON.stringify(campers) %>;
 
@@ -143,6 +144,9 @@
             extendedHoursMap[c.CounselorID] = c.ExtendedHours || '';
         }
         for (const c of SPECIALTY_COUNSELORS) {
+            extendedHoursMap[c.CounselorID] = c.ExtendedHours || '';
+        }
+        for (const c of SWIM_COUNSELORS) {
             extendedHoursMap[c.CounselorID] = c.ExtendedHours || '';
         }
         for (const c of UNASSIGNED_COUNSELORS) {
@@ -201,6 +205,7 @@
             }
 
             if (UNASSIGNED_COUNSELORS.length > 0) buildUnassignedCounselorSection(container);
+            if (SWIM_COUNSELORS.length > 0) buildSwimCounselorSection(container);
             if (SPECIALTY_COUNSELORS.length > 0) buildSpecialtyCounselorSection(container);
         }
 
@@ -255,6 +260,62 @@
                 });
                 block.appendChild(extSel);
 
+                section.appendChild(block);
+            }
+
+            container.appendChild(section);
+        }
+
+        function buildSwimCounselorSection(container) {
+            const section = document.createElement('div');
+            section.className = 'hga-group-section';
+            section.style.marginTop = '32px';
+
+            const header = document.createElement('div');
+            header.className = 'hga-group-header';
+            header.innerHTML = `
+                <span class="tag Swim" style="font-size:0.78rem;">Swim</span>
+                <span style="font-weight:700; font-size:0.9rem;">Swim Staff</span>
+                <span class="hga-group-stats">${SWIM_COUNSELORS.length} counselor${SWIM_COUNSELORS.length === 1 ? '' : 's'} &mdash; optionally assign to a home group color</span>
+            `;
+            section.appendChild(header);
+
+            for (const c of SWIM_COUNSELORS) {
+                const block = document.createElement('div');
+                block.className = 'hga-counselor-block';
+                block.style.cssText = 'display:flex; align-items:center; gap:14px; flex-wrap:wrap;';
+
+                const nameEl = document.createElement('span');
+                nameEl.className = 'hga-counselor-name';
+                nameEl.textContent = `${c.FirstName} ${c.LastName}`;
+                block.appendChild(nameEl);
+
+                const colorSel = document.createElement('select');
+                colorSel.style.cssText = 'padding:5px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; font-family:inherit; background:white;';
+                colorSel.dataset.counselorId = c.CounselorID;
+                for (const [val, label] of [['', '— No Group —'], ['Red', 'Red'], ['Carolina', 'Carolina'], ['Green', 'Green'], ['Navy', 'Navy']]) {
+                    const o = document.createElement('option');
+                    o.value = val; o.textContent = label;
+                    colorSel.appendChild(o);
+                }
+                colorSel.addEventListener('change', function() {
+                    groupColorMap[this.dataset.counselorId] = this.value || 'Swim';
+                });
+                block.appendChild(colorSel);
+
+                const extSel = document.createElement('select');
+                extSel.style.cssText = 'padding:3px 7px; border:1px solid var(--border-color); border-radius:6px; font-size:0.78rem; font-family:inherit; color:var(--text-muted); margin-left:auto;';
+                extSel.dataset.counselorId = c.CounselorID;
+                for (const [val, label] of [['', 'No Ext'], ['AM', 'AM Ext'], ['PM', 'PM Ext'], ['Both', 'AM+PM']]) {
+                    const o = document.createElement('option');
+                    o.value = val; o.textContent = label;
+                    if ((extendedHoursMap[c.CounselorID] || '') === val) o.selected = true;
+                    extSel.appendChild(o);
+                }
+                extSel.addEventListener('change', function() {
+                    extendedHoursMap[parseInt(this.dataset.counselorId)] = this.value;
+                });
+                block.appendChild(extSel);
                 section.appendChild(block);
             }
 
@@ -327,6 +388,14 @@
             nameEl.className = 'hga-counselor-name';
             nameEl.textContent = `${co.FirstName} ${co.LastName}`;
             row.appendChild(nameEl);
+
+            if (co.StaffRole === 'Swim Counselor') {
+                const badge = document.createElement('span');
+                badge.className = 'tag Swim';
+                badge.style.cssText = 'font-size:0.68rem; padding:1px 7px;';
+                badge.textContent = 'Swim';
+                row.appendChild(badge);
+            }
 
             const progressEl = document.createElement('span');
             progressEl.className = 'hga-progress';

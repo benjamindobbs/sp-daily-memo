@@ -1,2 +1,14 @@
-Allow manual override to assign swim counselors a homegroup. This may come from the ACR-250/Master Schedule upload or manually set via the counselor scheduler. These counselors should still appear in the Swim specialty camp group and retain their Swim badge.
+When attempting to import the csv you provided for week one it fails and says "Error importing Week 1". Review what may cause this and patch or add more robust error reporting to aide in troubleshooting.
 
+When navigating to an instructor or unit leader profile I get this error:
+SqliteError: no such column: ActivityName
+    at Database.prepare (/app/node_modules/better-sqlite3/lib/methods/wrappers.js:5:21)
+    at /app/app.js:1567:14
+    at Layer.handleRequest (/app/node_modules/router/lib/layer.js:152:17)
+    at next (/app/node_modules/router/lib/route.js:157:13)
+    at Route.dispatch (/app/node_modules/router/lib/route.js:117:3)
+    at handle (/app/node_modules/router/index.js:435:11)
+    at Layer.handleRequest (/app/node_modules/router/lib/layer.js:152:17)
+    at /app/node_modules/router/index.js:295:15
+    at param (/app/node_modules/router/index.js:600:14)
+    at param (/app/node_modules/router/index.js:610:14)
