@@ -81,9 +81,10 @@
         <% } %>
 
         <%
-            // Split sessions by AM/PM
-            const hgAM  = homegroupSessions.filter(s => s.session === 'am');
-            const hgPM  = homegroupSessions.filter(s => s.session === 'pm');
+            // Split sessions by AM/Lunch/PM
+            const hgAM    = homegroupSessions.filter(s => s.session === 'am');
+            const hgLunch = homegroupSessions.filter(s => s.session === 'lunch');
+            const hgPM    = homegroupSessions.filter(s => s.session === 'pm');
             const busAM = busSessions.filter(s => s.session === 'am');
             const busPM = busSessions.filter(s => s.session === 'pm');
             const extAM = extSessions.filter(s => s.session === 'am');
@@ -100,8 +101,9 @@
             });
 
             // Unique colors for color filter pills
-            const hgAMColors = [...new Set(hgAM.map(s => s.color).filter(Boolean))].sort();
-            const hgPMColors = [...new Set(hgPM.map(s => s.color).filter(Boolean))].sort();
+            const hgAMColors    = [...new Set(hgAM.map(s => s.color).filter(Boolean))].sort();
+            const hgLunchColors = [...new Set(hgLunch.map(s => s.color).filter(Boolean))].sort();
+            const hgPMColors    = [...new Set(hgPM.map(s => s.color).filter(Boolean))].sort();
 
             // Helper: return badge class + text for section summary
             function secStat(arr) {
@@ -114,8 +116,9 @@
 
             // Period filter bar helpers
             const periodOrder = ['1','2','3','4','5','6'];
-            const hasAMServices = extAM.length > 0 || busAM.length > 0 || hgAM.length > 0 || spAM.length > 0;
-            const hasPMServices = extPM.length > 0 || busPM.length > 0 || hgPM.length > 0 || spPM.length > 0;
+            const hasAMServices   = extAM.length > 0 || busAM.length > 0 || hgAM.length > 0 || spAM.length > 0;
+            const hasLunchServices = hgLunch.length > 0;
+            const hasPMServices   = extPM.length > 0 || busPM.length > 0 || hgPM.length > 0 || spPM.length > 0;
             const activePeriodKeys = periodOrder.filter(pk => byPeriod[pk]);
         %>
 
@@ -129,6 +132,7 @@
             hgAM.forEach(s => flatItems.push({ icon: '&#127968;', cat: 'Home Group AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             spAM.forEach(s => flatItems.push({ icon: '&#11088;', cat: 'Specialty AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             classSessions.forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null }));
+            hgLunch.forEach(s => flatItems.push({ icon: '&#127869;', cat: 'Home Group Lunch', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             spPM.forEach(s => flatItems.push({ icon: '&#11088;', cat: 'Specialty PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             hgPM.forEach(s => flatItems.push({ icon: '&#127968;', cat: 'Home Group PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             busPM.forEach(s => flatItems.push({ icon: '&#128652;', cat: 'Bus PM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
@@ -165,6 +169,9 @@
             <% } %>
             <% activePeriodKeys.forEach(function(pk) { %>
             <button class="period-pill" data-filter="period-<%= pk %>" onclick="setPeriodFilter('period-<%= pk %>',this)">Period <%= pk %></button>
+            <% if (pk === '3' && hasLunchServices) { %>
+            <button class="period-pill" data-filter="lunch" onclick="setPeriodFilter('lunch',this)">Lunch</button>
+            <% } %>
             <% }); %>
             <% if (hasPMServices) { %>
             <button class="period-pill" data-filter="pm-services" onclick="setPeriodFilter('pm-services',this)">PM Services</button>
@@ -317,6 +324,42 @@
             </div>
         </details>
         <% } %>
+        <%/* Inject lunch homegroup section after period 3 */%>
+        <% if (pk === '3' && hgLunch.length > 0) { %>
+        <% const hgLunchStat = secStat(hgLunch); %>
+        <details class="att-section" id="section-hg-lunch" data-section="lunch">
+            <summary>
+                &#127869; Home Groups Lunch
+                <% if (hgLunchStat) { %><span class="sec-count <%= hgLunchStat.cls %>"><%= hgLunchStat.sub %>/<%= hgLunchStat.tot %></span><% } %>
+            </summary>
+            <div class="att-section-body">
+                <div class="sub-filter-bar">
+                    <button class="sub-pill active" onclick="setSubFilter('section-hg-lunch','all',this)">All</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-hg-lunch','pending',this)">Pending</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-hg-lunch','submitted',this)">Submitted</button>
+                </div>
+                <% if (hgLunchColors.length > 1) { %>
+                <div class="color-filter-bar">
+                    <button class="pill pill-all active" onclick="setColorFilter('hg-lunch','all',this)">All</button>
+                    <% hgLunchColors.forEach(function(c) { %>
+                    <button class="pill pill-<%= c %>" onclick="setColorFilter('hg-lunch','<%= c %>',this)"><%= c %></button>
+                    <% }); %>
+                </div>
+                <% } %>
+                <div class="att-grid" data-grid-id="hg-lunch">
+                    <% hgLunch.forEach(function(s) { %>
+                    <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>" data-search="<%= s.label.toLowerCase() %>" data-color="<%= s.color %>">
+                        <div class="att-card-label">
+                            <span class="tag <%= s.color %>" style="font-size:0.68rem; padding:1px 7px; margin-right:6px;"><%= s.color %></span>
+                            <%= s.label.split('—')[0].trim() %>
+                        </div>
+                        <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
+                    </a>
+                    <% }); %>
+                </div>
+            </div>
+        </details>
+        <% } %>
         <% }); %>
 
         <%/* ── Home Groups PM ── */%>
@@ -441,7 +484,7 @@
     </div>
 
     <script>
-        const activeColorFilters = { 'hg-am': 'all', 'hg-pm': 'all' };
+        const activeColorFilters = { 'hg-am': 'all', 'hg-lunch': 'all', 'hg-pm': 'all' };
         const sectionSubFilter = {};
 
         function setPeriodFilter(filter, btn) {

@@ -127,6 +127,16 @@
                 </div>
                 <% } %>
 
+            <% } else if (hubStats.mode === 'lunch') { %>
+
+                <%/* Lunch Home Groups */%>
+                <% const lunchHgDone = hubStats.lunchHg.total > 0 && hubStats.lunchHg.submitted === hubStats.lunchHg.total; %>
+                <a href="/attendance?date=<%= today %>" class="hub-stat-card" style="border-top:3px solid #f97316;">
+                    <span class="hub-stat-num <%= lunchHgDone ? 'hub-num-green' : 'hub-num-muted' %>"><%= hubStats.lunchHg.submitted %>/<%= hubStats.lunchHg.total %></span>
+                    <span class="hub-stat-label">Lunch Home Groups</span>
+                    <span class="hub-stat-sub">Counselors with attendance in</span>
+                </a>
+
             <% } else if (hubStats.mode === 'precamp') { %>
 
                 <%/* AM Extended */%>

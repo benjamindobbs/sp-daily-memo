@@ -107,7 +107,7 @@
         <section style="margin-bottom: 36px;">
             <h2 style="font-size: 1rem; margin-bottom: 12px;">Weekly CSV Uploads</h2>
             <p class="text-muted" style="font-size: 0.78rem; margin-bottom: 14px;">
-                Headers: <strong>FirstName, LastName, HomeGroupColor, StaffType, P1, L1, P2, L2, P3, L3, P4, L4, P5, L5, P6, L6</strong><br>
+                Headers: <strong>FirstName, LastName, P1, L1, P2, L2, P3, L3, P4, L4, P5, L5, P6, L6</strong><br>
                 Uploading a week replaces all existing data for that week.
             </p>
             <div class="week-upload-grid">
@@ -180,7 +180,9 @@
                         <% group.members.forEach(function(s) { %>
                         <tr class="summer-staff-row mc-card" data-name="<%= (s.FirstName + ' ' + s.LastName).toLowerCase() %>">
                             <td class="mc-title">
-                                <div class="staff-name"><%= s.FirstName %> <%= s.LastName %></div>
+                                <div class="staff-name">
+                                    <a href="/counselor-profile/<%= s.StaffID %>" style="color:var(--primary);text-decoration:none;font-weight:600;"><%= s.FirstName %> <%= s.LastName %></a>
+                                </div>
                             </td>
                             <td>
                                 <span class="staff-type-badge"><%= s.StaffType || '—' %></span>

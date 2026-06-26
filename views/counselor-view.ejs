@@ -29,9 +29,16 @@
         const isMainCamp    = MAIN_CAMP_COLORS.includes(counselor.HomeGroupColor);
     %>
 
+    <% if (typeof message !== 'undefined' && message) { %>
+    <div style="background:#dcfce7; color:#166534; border:1px solid #86efac; border-radius:8px; padding:10px 16px; margin:12px 16px; font-size:0.85rem;">
+        <%= message.replace(/\+/g, ' ') %>
+    </div>
+    <% } %>
+
     <div class="profile-container">
         <header class="counselor-header">
-            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px; justify-content:space-between;">
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                 <% if (counselor.HomeGroupColor) { %>
                 <span class="tag <%= counselor.HomeGroupColor %>"
                     style="background: white; color: var(--primary); font-weight: 800;">
@@ -41,6 +48,13 @@
                 <span style="font-size:0.78rem; background:#e2e8f0; color:#475569; padding:3px 10px; border-radius:10px; font-weight:600;">
                     <%= counselor.StaffRole || 'Staff' %>
                 </span>
+            </div>
+            <% if (viewMode === 'admin') { %>
+            <form action="/delete-counselor/<%= counselor.CounselorID %>" method="POST" style="margin:0;"
+                  onsubmit="return confirm('Permanently delete <%= counselor.FirstName %> <%= counselor.LastName %>? This cannot be undone.')">
+                <button type="submit" class="btn btn-small" style="background:#fee2e2; color:#991b1b; border-color:#fca5a5;">&#128465; Delete</button>
+            </form>
+            <% } %>
             </div>
             <h1 style="margin: 8px 0 5px 0; font-size: 2.5rem;">
                 <%= counselor.FirstName %> <%= counselor.LastName %>
@@ -88,6 +102,158 @@
                         <p class="card" style="text-align: center; color: var(--text-muted);">No assigned classes.</p>
                     <% } %>
                 </div>
+            </section>
+            <% } %>
+
+            <%# Instructor Editing — Admin only %>
+            <% if (isInstructor && viewMode === 'admin') { %>
+            <section style="grid-column: 1 / -1;">
+                <h3 style="margin-bottom: 16px;">Edit Profile</h3>
+
+                <form action="/update-staff-info/<%= counselor.CounselorID %>" method="POST"
+                      style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:28px; padding:14px; background:#f8fafc; border-radius:10px; border:1px solid var(--border-color);">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">First Name</label>
+                        <input name="firstName" value="<%= counselor.FirstName %>" required
+                               class="form-input" style="width:130px; font-size:0.85rem; padding:6px 10px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Last Name</label>
+                        <input name="lastName" value="<%= counselor.LastName %>" required
+                               class="form-input" style="width:130px; font-size:0.85rem; padding:6px 10px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Staff Role</label>
+                        <select name="staffRole" class="form-input" style="font-size:0.85rem; padding:6px 10px;">
+                            <% ['Instructor','Unit Leader','Sports Leader','Counselor','Swim Counselor','Director','Office Staff','Nurse','Equipment Manager','CPR Instructor','Internship'].forEach(r => { %>
+                                <option value="<%= r %>" <%= counselor.StaffRole === r ? 'selected' : '' %>><%= r %></option>
+                            <% }) %>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-small" style="padding:7px 16px;">Save Info</button>
+                </form>
+
+                <h4 style="margin-bottom:12px; font-size:0.95rem;">Weekly Schedule</h4>
+                <%
+                    const schedByWeek = {};
+                    for (let _w = 1; _w <= 6; _w++) schedByWeek[_w] = [];
+                    staffWeekSchedules.forEach(r => { schedByWeek[r.WeekNumber].push(r); });
+                %>
+
+                <div style="display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;" id="week-tab-bar">
+                    <% for (let w = 1; w <= 6; w++) { %>
+                    <button type="button" class="btn btn-small" id="weektab-<%= w %>"
+                            onclick="showWeekPanel(<%= w %>)"
+                            style="<%= w === 1 ? 'background:var(--primary);color:white;border-color:var(--primary);' : '' %>">
+                        Week <%= w %><% if (schedByWeek[w].length > 0) { %> <span style="opacity:0.7;">(<%= schedByWeek[w].length %>)</span><% } %>
+                    </button>
+                    <% } %>
+                </div>
+
+                <% for (let w = 1; w <= 6; w++) { %>
+                <div id="weekpanel-<%= w %>" style="display:<%= w === 1 ? 'block' : 'none' %>;">
+                    <% if (schedByWeek[w].length > 0) { %>
+                    <table style="width:100%; border-collapse:collapse; margin-bottom:14px; font-size:0.85rem;">
+                        <thead>
+                            <tr style="background:#f1f5f9;">
+                                <th style="padding:7px 10px; text-align:left; color:var(--text-muted); font-weight:600; font-size:0.75rem; width:60px;">Period</th>
+                                <th style="padding:7px 10px; text-align:left; color:var(--text-muted); font-weight:600; font-size:0.75rem;">Activity</th>
+                                <th style="padding:7px 10px; text-align:left; color:var(--text-muted); font-weight:600; font-size:0.75rem; width:140px;">Location</th>
+                                <th style="width:34px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <% schedByWeek[w].forEach(function(entry) { %>
+                            <tr style="border-bottom:1px solid var(--border-color);">
+                                <td style="padding:7px 10px; font-weight:700; color:var(--primary);">P<%= entry.PeriodNumber %></td>
+                                <td colspan="2" style="padding:5px 10px;">
+                                    <form action="/update-staff-period" method="POST"
+                                          style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                                        <input type="hidden" name="staffId" value="<%= counselor.CounselorID %>">
+                                        <input type="hidden" name="weekNumber" value="<%= w %>">
+                                        <input type="hidden" name="periodNumber" value="<%= entry.PeriodNumber %>">
+                                        <select name="activityName" class="form-input" style="font-size:0.82rem; padding:4px 8px; flex:1; min-width:150px;">
+                                            <% allActivities.forEach(function(a) { %>
+                                                <option value="<%= a %>" <%= entry.ActivityName === a ? 'selected' : '' %>><%= a %></option>
+                                            <% }) %>
+                                            <% if (!allActivities.includes(entry.ActivityName)) { %>
+                                                <option value="<%= entry.ActivityName %>" selected><%= entry.ActivityName %></option>
+                                            <% } %>
+                                        </select>
+                                        <input type="text" name="location" value="<%= entry.Location || '' %>"
+                                               class="form-input" placeholder="Location"
+                                               style="font-size:0.82rem; padding:4px 8px; width:120px;">
+                                        <button type="submit" class="btn btn-small" style="padding:4px 12px; white-space:nowrap;">Save</button>
+                                    </form>
+                                </td>
+                                <td style="padding:5px 8px;">
+                                    <form action="/remove-staff-period" method="POST">
+                                        <input type="hidden" name="staffId" value="<%= counselor.CounselorID %>">
+                                        <input type="hidden" name="weekNumber" value="<%= w %>">
+                                        <input type="hidden" name="periodNumber" value="<%= entry.PeriodNumber %>">
+                                        <button type="submit" class="btn btn-small"
+                                                style="background:#fee2e2;color:#991b1b;border-color:#fca5a5; padding:4px 9px;"
+                                                onclick="return confirm('Remove Period <%= entry.PeriodNumber %> from Week <%= w %>?')">&#10005;</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <% }) %>
+                        </tbody>
+                    </table>
+                    <% } else { %>
+                    <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:14px; font-style:italic;">No schedule for Week <%= w %>.</p>
+                    <% } %>
+
+                    <%
+                        const usedPeriods = schedByWeek[w].map(function(e) { return e.PeriodNumber; });
+                        const availPeriods = [1,2,3,4,5,6].filter(function(p) { return !usedPeriods.includes(p); });
+                    %>
+                    <% if (availPeriods.length > 0 && allActivities.length > 0) { %>
+                    <form action="/update-staff-period" method="POST"
+                          style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; padding:12px 14px; background:#f8fafc; border-radius:8px; border:1px dashed var(--border-color);">
+                        <input type="hidden" name="staffId" value="<%= counselor.CounselorID %>">
+                        <input type="hidden" name="weekNumber" value="<%= w %>">
+                        <div style="display:flex; flex-direction:column; gap:4px;">
+                            <label style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">Period</label>
+                            <select name="periodNumber" class="form-input" style="font-size:0.82rem; padding:5px 8px; width:100px;">
+                                <% availPeriods.forEach(function(p) { %>
+                                    <option value="<%= p %>">Period <%= p %></option>
+                                <% }) %>
+                            </select>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:4px;">
+                            <label style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">Activity</label>
+                            <select name="activityName" class="form-input" style="font-size:0.82rem; padding:5px 8px; min-width:160px;">
+                                <% allActivities.forEach(function(a) { %>
+                                    <option value="<%= a %>"><%= a %></option>
+                                <% }) %>
+                            </select>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:4px;">
+                            <label style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">Location</label>
+                            <input type="text" name="location" class="form-input" placeholder="Optional"
+                                   style="font-size:0.82rem; padding:5px 8px; width:120px;">
+                        </div>
+                        <button type="submit" class="btn btn-small" style="padding:6px 14px;">+ Add Period</button>
+                    </form>
+                    <% } %>
+                </div>
+                <% } %>
+
+                <script>
+                function showWeekPanel(w) {
+                    for (var i = 1; i <= 6; i++) {
+                        var panel = document.getElementById('weekpanel-' + i);
+                        var btn   = document.getElementById('weektab-' + i);
+                        if (panel) panel.style.display = i === w ? 'block' : 'none';
+                        if (btn) {
+                            btn.style.background   = i === w ? 'var(--primary)' : '';
+                            btn.style.color        = i === w ? 'white' : '';
+                            btn.style.borderColor  = i === w ? 'var(--primary)' : '';
+                        }
+                    }
+                }
+                </script>
             </section>
             <% } %>
 

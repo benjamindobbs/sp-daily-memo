@@ -15,6 +15,7 @@
         <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
         <a href="/master-schedule" class="nav-btn">&#128197; Schedule</a>
         <a href="/settings" class="nav-btn primary">&#9881;&#65039; Settings</a>
+        <a href="/faculty-summer" class="nav-btn">&#128197; Full Summer</a>
         <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
         <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
         <a href="/nurse" class="nav-btn">&#128137; Nurse</a>
@@ -314,8 +315,8 @@
                                 style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
                                 <h4 style="margin-bottom: 5px;">Instructor Schedules</h4>
                                 <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">
-                                    Assigns period schedules to existing instructors. Required columns: <strong>Name</strong> (Last, First), <strong>P1—P6</strong>, <strong>L1—L6</strong> (locations, optional).
-                                    Person must already exist in the system via the Staff import above.
+                                    Uploads instructor schedules to the <strong>active week</strong>. Required columns: <strong>FirstName, LastName, P1—P6, L1—L6</strong> (locations optional).
+                                    Unknown names are automatically added as Instructors. Replaces existing schedule for each instructor in the active week.
                                 </p>
                                 <form action="/upload-instructors" method="POST" enctype="multipart/form-data" style="display: flex; flex-direction: column; gap: 10px;">
                                     <input type="file" name="file" accept=".csv" required style="font-size: 0.85rem;">

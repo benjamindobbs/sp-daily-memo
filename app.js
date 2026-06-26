@@ -88,6 +88,7 @@ function inferPeriodFromTime(timeMins, homeGroupColor) {
 function getHubMode(estMins) {
     if (estMins < CAMP_DAY_START_MINS) return 'precamp';
     if (estMins >= CAMP_DAY_END_MINS)  return 'postcamp';
+    if (estMins >= 12 * 60 && estMins < 13 * 60) return 'lunch';
     return 'classes';
 }
 
@@ -246,7 +247,8 @@ const ADMIN_ONLY_PREFIXES = [
     '/hub-content', '/director-notes', '/photo-gallery', '/photo-vote',
     '/set-active-week', '/set-released-week', '/update-session-label',
     '/clear-counselor-week', '/counselor-week-assignments', '/clear-counselor-schedule', '/clear-counselor-homegroups',
-    '/audit', '/merge-class', '/set-activity-side',
+    '/audit', '/merge-class', '/set-activity-side', '/delete-counselor',
+    '/update-staff-info', '/update-staff-period', '/remove-staff-period',
     '/homegroup-assignment',
     '/attendance/dismissal-archive',
     '/dismissals',
@@ -1108,6 +1110,8 @@ app.get('/admin', (req, res) => {
         const ep = getActivePeriod(ENRICHMENT_PERIODS, estMins);
         hubStats.sports = sp ? { label: sp.label, clockBlock: sp.clockBlock, ...computeClassAttStats(sp.clockBlock, 'Sports', today) } : null;
         hubStats.enrich = ep ? { label: ep.label, clockBlock: ep.clockBlock, ...computeClassAttStats(ep.clockBlock, 'Enrichment', today) } : null;
+    } else if (hubMode === 'lunch') {
+        hubStats.lunchHg = computeHomegroupAttStats('lunch', today);
     } else {
         hubStats.amExt = computeExtAttStats('am', today);
         hubStats.amBus = computeBusAttStats('am', today);
@@ -1556,8 +1560,44 @@ app.get('/counselor-profile/:id', (req, res) => {
     const instructorSchedule = isInstructor
         ? db.prepare("SELECT PeriodNumber, ActivityName, Location FROM Schedules WHERE PersonID = ? AND PersonType = 'Instructor' ORDER BY PeriodNumber ASC").all(req.params.id)
         : [];
+    const staffWeekSchedules = isInstructor
+        ? db.prepare("SELECT WeekNumber, PeriodNumber, ActivityName, Location FROM StaffWeekSchedules WHERE StaffID = ? ORDER BY WeekNumber ASC, PeriodNumber ASC").all(req.params.id)
+        : [];
+    const allActivities = isInstructor
+        ? db.prepare(`
+            SELECT DISTINCT ActivityName FROM Activities WHERE ActivityName IS NOT NULL AND ActivityName != ''
+            UNION
+            SELECT DISTINCT ActivityName FROM StaffWeekSchedules WHERE ActivityName IS NOT NULL AND ActivityName != ''
+            UNION
+            SELECT DISTINCT ActivityName FROM Schedules WHERE ActivityName IS NOT NULL AND ActivityName != '' AND PersonType = 'Instructor'
+            ORDER BY ActivityName ASC
+          `).all().map(r => r.ActivityName)
+        : [];
     const campers = isCounselor ? getWeekCampersForCounselor(parseInt(req.params.id), aw) : [];
-    res.render('counselor-view', { counselor, schedule, instructorSchedule, campers });
+    const message = req.query.message || null;
+    res.render('counselor-view', { counselor, schedule, instructorSchedule, campers, staffWeekSchedules, allActivities, message });
+});
+
+app.post('/delete-counselor/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    if (!id) return res.redirect('/counselor-directory?message=Invalid+ID');
+    const person = db.prepare("SELECT FirstName, LastName FROM Counselors WHERE CounselorID = ?").get(id);
+    if (!person) return res.redirect('/counselor-directory?message=Staff+member+not+found');
+
+    db.transaction(() => {
+        db.prepare("UPDATE Campers SET HomeGroupCounselorID = NULL WHERE HomeGroupCounselorID = ?").run(id);
+        db.prepare("UPDATE CamperHomeGroups SET CounselorID = NULL WHERE CounselorID = ?").run(id);
+        db.prepare("DELETE FROM Schedules WHERE PersonID = ? AND PersonType = 'Counselor'").run(id);
+        db.prepare("DELETE FROM StaffWeekSchedules WHERE StaffID = ?").run(id);
+        db.prepare("DELETE FROM CounselorScheduleAssignments WHERE PersonID = ?").run(id);
+        db.prepare("DELETE FROM CounselorWeekSchedules WHERE CounselorID = ?").run(id);
+        db.prepare("DELETE FROM CounselorWeekAttributes WHERE CounselorID = ?").run(id);
+        db.prepare("DELETE FROM CounselorPreferences WHERE CounselorID = ?").run(id);
+        db.prepare("DELETE FROM Counselors WHERE CounselorID = ?").run(id);
+    })();
+
+    const name = encodeURIComponent(person.FirstName + ' ' + person.LastName);
+    res.redirect(`/counselor-directory?message=${name}+deleted`);
 });
 
 app.get('/camper/:id', (req, res) => {
@@ -2201,40 +2241,45 @@ app.post('/upload-counselors', upload.single('file'), (req, res) => {
     });
 });
 
-// 2. IMPORT INSTRUCTORS — updates schedule periods for existing Instructor records
-// CSV: Name (Last, First), P1–P6, L1–L6. Person must already exist via /upload-counselors.
+// 2. IMPORT INSTRUCTORS — uploads to active week (same format as /upload-staff-week)
+// CSV: FirstName, LastName, P1–P6, L1–L6. Unknown names are auto-inserted as Instructors.
 app.post('/upload-instructors', upload.single('file'), (req, res) => {
+    const weekNumber = getActiveWeek();
     const results = [];
     fs.createReadStream(req.file.path).pipe(csv()).on('data', (d) => results.push(d)).on('end', () => {
-        const findInstructor = db.prepare("SELECT CounselorID FROM Counselors WHERE StaffRole='Instructor' AND UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
-        const deleteSched    = db.prepare("DELETE FROM Schedules WHERE PersonID=? AND PersonType='Instructor'");
-        const insSched       = db.prepare("INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName, Location) VALUES (?, 'Instructor', ?, ?, ?)");
+        const findStaff   = db.prepare("SELECT CounselorID AS StaffID FROM Counselors WHERE FirstName = ? AND LastName = ? LIMIT 1");
+        const insertStaff = db.prepare("INSERT INTO Counselors (FirstName, LastName, StaffRole) VALUES (?, ?, 'Instructor')");
+        const delWeek     = db.prepare('DELETE FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ?');
+        const insSchedule = db.prepare('INSERT OR REPLACE INTO StaffWeekSchedules (StaffID, WeekNumber, PeriodNumber, ActivityName, Location) VALUES (?, ?, ?, ?, ?)');
 
         try {
-            let updated = 0, skipped = 0;
+            let updated = 0, inserted = 0;
             db.transaction((data) => {
                 for (const row of data) {
-                    const raw = (row.Name || '').trim();
-                    if (!raw) continue;
-                    const commaIdx = raw.indexOf(',');
-                    let firstName, lastName;
-                    if (commaIdx === -1) { firstName = raw; lastName = ''; }
-                    else { lastName = raw.slice(0, commaIdx).trim(); firstName = raw.slice(commaIdx + 1).trim(); }
-                    const existing = findInstructor.get(`${firstName} ${lastName}`);
-                    if (!existing) { skipped++; continue; }
-                    deleteSched.run(existing.CounselorID);
+                    const firstName = (row.FirstName || '').trim();
+                    const lastName  = (row.LastName  || '').trim();
+                    if (!firstName && !lastName) continue;
+
+                    let found = findStaff.get(firstName, lastName);
+                    if (!found) {
+                        const info = insertStaff.run(firstName, lastName);
+                        found = { StaffID: info.lastInsertRowid };
+                        inserted++;
+                    }
+                    const staffId = found.StaffID;
+                    delWeek.run(staffId, weekNumber);
                     for (let i = 1; i <= 6; i++) {
                         if (row[`P${i}`] && row[`P${i}`].trim()) {
-                            insSched.run(existing.CounselorID, i, row[`P${i}`].trim(), row[`L${i}`] ? row[`L${i}`].trim() : null);
+                            insSchedule.run(staffId, weekNumber, i, row[`P${i}`].trim(), row[`L${i}`] ? row[`L${i}`].trim() : null);
                         }
                     }
                     updated++;
                 }
             })(results);
-            res.redirect(`/settings?message=Instructors+Updated:+${updated}+updated,+${skipped}+skipped+(not+found)`);
+            res.redirect(`/settings?message=Week+${weekNumber}+imported:+${updated}+instructors+(${inserted}+new)`);
         } catch (err) {
             console.error('Instructor import error:', err);
-            res.redirect('/settings?message=Error+Importing+Instructors');
+            res.redirect('/settings?message=Error+importing+instructors');
         } finally {
             if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         }
@@ -2248,8 +2293,9 @@ app.post('/upload-staff-week/:weekNumber', upload.single('file'), (req, res) => 
 
     const results = [];
     fs.createReadStream(req.file.path).pipe(csv()).on('data', (d) => results.push(d)).on('end', () => {
-        const findStaff  = db.prepare("SELECT CounselorID AS StaffID FROM Counselors WHERE FirstName = ? AND LastName = ? AND StaffRole IN ('Instructor','Unit Leader','Sports Leader') LIMIT 1");
-        const delWeek    = db.prepare('DELETE FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ?');
+        const findStaff   = db.prepare("SELECT CounselorID AS StaffID FROM Counselors WHERE FirstName = ? AND LastName = ? LIMIT 1");
+        const insertStaff = db.prepare("INSERT INTO Counselors (FirstName, LastName, StaffRole) VALUES (?, ?, 'Instructor')");
+        const delWeek     = db.prepare('DELETE FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ?');
         const insSchedule = db.prepare('INSERT OR REPLACE INTO StaffWeekSchedules (StaffID, WeekNumber, PeriodNumber, ActivityName, Location) VALUES (?, ?, ?, ?, ?)');
 
         try {
@@ -2260,7 +2306,10 @@ app.post('/upload-staff-week/:weekNumber', upload.single('file'), (req, res) => 
                     if (!firstName && !lastName) continue;
 
                     let found = findStaff.get(firstName, lastName);
-                    if (!found) continue; // skip unknown staff; they must be imported via /upload-counselors first
+                    if (!found) {
+                        const info = insertStaff.run(firstName, lastName);
+                        found = { StaffID: info.lastInsertRowid };
+                    }
                     const staffId = found.StaffID;
 
                     delWeek.run(staffId, weekNumber);
@@ -2285,6 +2334,40 @@ app.post('/clear-staff-week/:weekNumber', (req, res) => {
     const weekNumber = parseInt(req.params.weekNumber);
     db.prepare('DELETE FROM StaffWeekSchedules WHERE WeekNumber = ?').run(weekNumber);
     res.redirect(`/faculty-summer?message=Week+${weekNumber}+Cleared`);
+});
+
+// STAFF PROFILE EDITING
+app.post('/update-staff-info/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const firstName = (req.body.firstName || '').trim();
+    const lastName  = (req.body.lastName  || '').trim();
+    const staffRole = (req.body.staffRole || '').trim();
+    const validRoles = ['Instructor','Unit Leader','Sports Leader','Counselor','Swim Counselor',
+                        'Director','Office Staff','Nurse','Equipment Manager','CPR Instructor','Internship'];
+    if (!firstName || !lastName) return res.redirect(`/counselor-profile/${id}?message=Name+required`);
+    if (!validRoles.includes(staffRole)) return res.redirect(`/counselor-profile/${id}?message=Invalid+role`);
+    db.prepare("UPDATE Counselors SET FirstName = ?, LastName = ?, StaffRole = ? WHERE CounselorID = ?").run(firstName, lastName, staffRole, id);
+    res.redirect(`/counselor-profile/${id}?message=Profile+updated`);
+});
+
+app.post('/update-staff-period', (req, res) => {
+    const staffId      = parseInt(req.body.staffId);
+    const weekNumber   = parseInt(req.body.weekNumber);
+    const periodNumber = parseInt(req.body.periodNumber);
+    const activityName = (req.body.activityName || '').trim();
+    const location     = (req.body.location || '').trim() || null;
+    if (!staffId || !weekNumber || !periodNumber || !activityName) return res.redirect('/counselor-directory');
+    db.prepare("INSERT OR REPLACE INTO StaffWeekSchedules (StaffID, WeekNumber, PeriodNumber, ActivityName, Location) VALUES (?, ?, ?, ?, ?)").run(staffId, weekNumber, periodNumber, activityName, location);
+    res.redirect(`/counselor-profile/${staffId}?message=Saved`);
+});
+
+app.post('/remove-staff-period', (req, res) => {
+    const staffId      = parseInt(req.body.staffId);
+    const weekNumber   = parseInt(req.body.weekNumber);
+    const periodNumber = parseInt(req.body.periodNumber);
+    if (!staffId || !weekNumber || !periodNumber) return res.redirect('/counselor-directory');
+    db.prepare("DELETE FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ? AND PeriodNumber = ?").run(staffId, weekNumber, periodNumber);
+    res.redirect(`/counselor-profile/${staffId}?message=Period+removed`);
 });
 
 // CLEAR ACTIVITIES
@@ -2542,7 +2625,7 @@ function getScheduledPickupMap(date) {
 }
 
 // Sessions that should show the "absent AM" indicator (i.e. everything after homegroup_am)
-const SHOW_AM_INDICATOR = new Set(['class','homegroup_pm','bus_pm','extended_pm','specialty_pm']);
+const SHOW_AM_INDICATOR = new Set(['class','homegroup_lunch','homegroup_pm','bus_pm','extended_pm','specialty_pm']);
 
 // --- ATTENDANCE OVERVIEW ---
 app.get('/attendance', (req, res) => {
@@ -2634,13 +2717,14 @@ app.get('/attendance', (req, res) => {
 
     const homegroupSessions = [];
     for (const counselor of homegroupCounselors) {
-        for (const session of ['am', 'pm']) {
+        for (const session of ['am', 'lunch', 'pm']) {
             const sessionType = `homegroup_${session}`;
             const handledCount = hasWeekHgData
                 ? checkHgHandled.get(date, sessionType, counselor.CounselorID, aw, date, counselor.CounselorID, aw)?.n || 0
                 : checkHgHandled.get(date, sessionType, counselor.CounselorID, date, counselor.CounselorID)?.n || 0;
+            const sessionLabel = session === 'lunch' ? 'Lunch' : session.toUpperCase();
             homegroupSessions.push({
-                label: `${counselor.FirstName} ${counselor.LastName} — ${session.toUpperCase()}`,
+                label: `${counselor.FirstName} ${counselor.LastName} — ${sessionLabel}`,
                 counselorId: counselor.CounselorID,
                 color: counselor.HomeGroupColor,
                 session: session,
