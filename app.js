@@ -1422,6 +1422,11 @@ app.get('/master-schedule', (req, res) => {
             SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
             FROM Counselors st JOIN StaffWeekSchedules sws ON sws.StaffID = st.CounselorID
             WHERE sws.WeekNumber = ? AND sws.PeriodNumber = ? AND sws.ActivityName = ?
+            UNION
+            SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
+            FROM Counselors st JOIN CounselorScheduleAssignments csa ON csa.PersonID = st.CounselorID
+            WHERE csa.WeekNumber = ? AND csa.PeriodNumber = ? AND csa.ActivityName = ?
+              AND csa.PersonType IN ('Instructor', 'Staff')
         `);
         const aw = getActiveWeek();
         const getCounselors = db.prepare(`
@@ -1450,7 +1455,7 @@ app.get('/master-schedule', (req, res) => {
                 location:    locRow ? locRow.Location : (cls.location || null),
                 enrolled:    getEnrollment.get(cls.periodNumber, cls.activityName).n,
                 colorGroups: getColorGroups.all(cls.periodNumber, cls.activityName).map(r => r.HomeGroupColor),
-                staff:       getStaff.all(cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName),
+                staff:       getStaff.all(cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName),
                 counselors:  getCounselors.all(aw, cls.periodNumber, cls.activityName, aw),
                 busPresent:  !!getBusPresence.get(cls.periodNumber, cls.activityName),
                 extGroups:   getExtGroups.all(cls.periodNumber, cls.activityName).map(r => r.ExtendedHours)
@@ -4799,8 +4804,13 @@ app.get('/reports/attendance-rosters', (_req, res) => {
         const locRow = db.prepare(`
             SELECT Location FROM Schedules
             WHERE PersonType = 'Instructor' AND PeriodNumber = ? AND ActivityName = ?
-            AND Location IS NOT NULL AND Location != '' LIMIT 1
-        `).get(r.PeriodNumber, r.ActivityName);
+              AND Location IS NOT NULL AND Location != ''
+            UNION
+            SELECT Location FROM StaffWeekSchedules
+            WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ?
+              AND Location IS NOT NULL AND Location != ''
+            LIMIT 1
+        `).get(r.PeriodNumber, r.ActivityName, aw, r.PeriodNumber, r.ActivityName);
 
         counselorMap[r.PersonID].periods.push({
             PeriodNumber: r.PeriodNumber,
