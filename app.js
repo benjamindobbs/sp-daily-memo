@@ -1512,8 +1512,12 @@ app.get('/class-roster/:period/:activity', (req, res) => {
             SELECT Location FROM StaffWeekSchedules
             WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
               AND Location IS NOT NULL AND Location != ''
+            UNION
+            SELECT Location FROM Activities
+            WHERE Name = ? COLLATE NOCASE
+              AND Location IS NOT NULL AND Location != ''
             LIMIT 1
-        `).get(activityName, period, activeWeek, period, activityName);
+        `).get(activityName, period, activeWeek, period, activityName, activityName);
 
         const staff = db.prepare(`
             SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
@@ -1558,6 +1562,9 @@ app.post('/update-class-location', (req, res) => {
     db.prepare(
         "UPDATE StaffWeekSchedules SET Location = ? WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE"
     ).run(location || null, aw, parseInt(periodNumber), activityName);
+    db.prepare(
+        "UPDATE Activities SET Location = ? WHERE Name = ?"
+    ).run(location || null, activityName);
     res.redirect(`/class-roster/${periodNumber}/${encodeURIComponent(activityName)}`);
 });
 
