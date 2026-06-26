@@ -500,6 +500,31 @@ db.exec(`
     );
 `);
 
+// Migration: fix StaffWeekSchedules FK — was referencing Staff(StaffID) but uploads use Counselors(CounselorID)
+try {
+    const swsFKs = db.prepare("PRAGMA foreign_key_list(StaffWeekSchedules)").all();
+    const wrongFK = swsFKs.some(fk => fk.table === 'Staff');
+    if (wrongFK) {
+        db.exec(`
+            PRAGMA foreign_keys = OFF;
+            CREATE TABLE StaffWeekSchedules_new (
+                StaffID      INTEGER NOT NULL,
+                WeekNumber   INTEGER NOT NULL CHECK(WeekNumber BETWEEN 1 AND 6),
+                PeriodNumber INTEGER NOT NULL CHECK(PeriodNumber BETWEEN 1 AND 6),
+                ActivityName TEXT    NOT NULL,
+                Location     TEXT,
+                PRIMARY KEY (StaffID, WeekNumber, PeriodNumber),
+                FOREIGN KEY (StaffID) REFERENCES Counselors(CounselorID) ON DELETE CASCADE
+            );
+            INSERT INTO StaffWeekSchedules_new SELECT * FROM StaffWeekSchedules;
+            DROP TABLE StaffWeekSchedules;
+            ALTER TABLE StaffWeekSchedules_new RENAME TO StaffWeekSchedules;
+            PRAGMA foreign_keys = ON;
+        `);
+        console.log('[migration] StaffWeekSchedules FK corrected to Counselors(CounselorID)');
+    }
+} catch(e) { console.error('[migration] StaffWeekSchedules FK fix:', e.message); }
+
 // Migration: create schedule change log tables if they don't exist yet
 db.exec(`
     CREATE TABLE IF NOT EXISTS ScheduleChanges (
@@ -1565,7 +1590,7 @@ app.get('/counselor-profile/:id', (req, res) => {
         : [];
     const allActivities = isInstructor
         ? db.prepare(`
-            SELECT DISTINCT ActivityName FROM Activities WHERE ActivityName IS NOT NULL AND ActivityName != ''
+            SELECT DISTINCT Name AS ActivityName FROM Activities WHERE Name IS NOT NULL AND Name != ''
             UNION
             SELECT DISTINCT ActivityName FROM StaffWeekSchedules WHERE ActivityName IS NOT NULL AND ActivityName != ''
             UNION
@@ -2279,7 +2304,8 @@ app.post('/upload-instructors', upload.single('file'), (req, res) => {
             res.redirect(`/settings?message=Week+${weekNumber}+imported:+${updated}+instructors+(${inserted}+new)`);
         } catch (err) {
             console.error('Instructor import error:', err);
-            res.redirect('/settings?message=Error+importing+instructors');
+            const detail = encodeURIComponent(err.message || 'unknown error');
+            res.redirect(`/settings?message=Error+importing+instructors:+${detail}`);
         } finally {
             if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         }
@@ -2323,7 +2349,8 @@ app.post('/upload-staff-week/:weekNumber', upload.single('file'), (req, res) => 
             res.redirect(`/faculty-summer?message=Week+${weekNumber}+Imported`);
         } catch (err) {
             console.error('Week upload error:', err);
-            res.redirect(`/faculty-summer?message=Error+importing+Week+${weekNumber}`);
+            const detail = encodeURIComponent(err.message || 'unknown error');
+            res.redirect(`/faculty-summer?message=Error+importing+Week+${weekNumber}:+${detail}`);
         } finally {
             if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         }
