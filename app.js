@@ -2730,9 +2730,11 @@ app.get('/attendance', (req, res) => {
     let counselorBusRoute = null;
     let counselorExtHours = null;
     let counselorGroupColor = null;
+    let isStaffMemberFilter = false;
+    const STAFF_ROLES = new Set(['Instructor', 'Unit Leader', 'Sports Leader']);
     if (filterCid) {
         const cRow = db.prepare(`
-            SELECT c.FirstName, c.LastName,
+            SELECT c.FirstName, c.LastName, c.StaffRole,
                    COALESCE(cwa.BusRoute, c.BusRoute) AS BusRoute,
                    COALESCE(cwa.ExtendedHours, c.ExtendedHours) AS ExtendedHours,
                    COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
@@ -2742,17 +2744,24 @@ app.get('/attendance', (req, res) => {
         `).get(getActiveWeek(), filterCid);
         if (cRow) {
             selectedCounselorName = `${cRow.FirstName} ${cRow.LastName}`;
-            counselorBusRoute = cRow.BusRoute || null;
-            counselorExtHours = cRow.ExtendedHours || null;
-            counselorGroupColor = cRow.HomeGroupColor || null;
+            isStaffMemberFilter = STAFF_ROLES.has(cRow.StaffRole);
+            counselorBusRoute = isStaffMemberFilter ? null : (cRow.BusRoute || null);
+            counselorExtHours = isStaffMemberFilter ? null : (cRow.ExtendedHours || null);
+            counselorGroupColor = isStaffMemberFilter ? null : (cRow.HomeGroupColor || null);
         }
-        const assignments = db.prepare(
-            'SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ?'
-        ).all(filterCid, getActiveWeek());
         allowedClasses = new Set();
-        for (const a of assignments) {
-            // PeriodNumber is now an INTEGER clock block (1-6); direct match to Schedules.
-            allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName}`);
+        if (isStaffMemberFilter) {
+            // Instructors/Unit Leaders/Sports Leaders: scheduled in StaffWeekSchedules
+            const assignments = db.prepare(
+                'SELECT PeriodNumber, ActivityName FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ?'
+            ).all(filterCid, getActiveWeek());
+            for (const a of assignments) allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName}`);
+        } else {
+            // Counselors: scheduled in CounselorWeekSchedules
+            const assignments = db.prepare(
+                'SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ?'
+            ).all(filterCid, getActiveWeek());
+            for (const a of assignments) allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName}`);
         }
     }
 
@@ -2953,21 +2962,29 @@ app.get('/attendance', (req, res) => {
     let filteredExtSessions = extSessions;
     let filteredSpecialtySessions = specialtySessions;
     if (filterCid) {
-        filteredHomegroupSessions = homegroupSessions.filter(s => s.counselorId === filterCid);
         filteredClassSessions = classSessions.filter(s =>
             allowedClasses.has(`${s.filterPeriod}|${s.activityName}`)
         );
-        filteredBusSessions = counselorBusRoute
-            ? busSessions.filter(s => s.route === counselorBusRoute)
-            : [];
-        filteredExtSessions = extSessions.filter(s => {
-            if (!counselorExtHours) return false;
-            if (counselorExtHours === 'Both') return true;
-            return s.session.toUpperCase() === counselorExtHours.toUpperCase();
-        });
-        filteredSpecialtySessions = SPECIALTY_CAMP_COLORS.includes(counselorGroupColor)
-            ? specialtySessions.filter(s => s.color === counselorGroupColor)
-            : [];
+        if (isStaffMemberFilter) {
+            // Instructors/ULs/SLs: no home groups, bus, extended, or specialty
+            filteredHomegroupSessions = [];
+            filteredBusSessions = [];
+            filteredExtSessions = [];
+            filteredSpecialtySessions = [];
+        } else {
+            filteredHomegroupSessions = homegroupSessions.filter(s => s.counselorId === filterCid);
+            filteredBusSessions = counselorBusRoute
+                ? busSessions.filter(s => s.route === counselorBusRoute)
+                : [];
+            filteredExtSessions = extSessions.filter(s => {
+                if (!counselorExtHours) return false;
+                if (counselorExtHours === 'Both') return true;
+                return s.session.toUpperCase() === counselorExtHours.toUpperCase();
+            });
+            filteredSpecialtySessions = SPECIALTY_CAMP_COLORS.includes(counselorGroupColor)
+                ? specialtySessions.filter(s => s.color === counselorGroupColor)
+                : [];
+        }
     }
 
     res.render('attendance-overview', {
