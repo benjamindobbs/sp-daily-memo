@@ -329,7 +329,7 @@
 
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn btn-primary" onclick="buildSchedule()">Build Schedule</button>
-                <button class="btn btn-primary" onclick="autoAssignHomeGroups(); buildSchedule(); fillExtraCounselors();" style="background:var(--success, #16a34a);">⚡ Full Auto Build</button>
+                <button class="btn btn-primary" onclick="runFullAutoBuild();" style="background:var(--success, #16a34a);">⚡ Full Auto Build</button>
                 <span id="autoStatus" style="font-size:0.82rem; color:var(--text-muted); margin-left:4px;"></span>
             </div>
             <% if (sessions.filter(s => s.weekNumber !== planWeek).length > 0) { %>
@@ -1652,6 +1652,25 @@
                 : 'Done! Review and save when ready.';
         }
 
+        // ── Full Auto Build ──────────────────────────────────────────────────────
+        async function runFullAutoBuild() {
+            const statusEl = document.getElementById('autoStatus');
+            statusEl.textContent = 'Syncing schedule…';
+            try {
+                const resp = await fetch('/api/sync-offerings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ weekNumber: PLAN_WEEK })
+                });
+                if (!resp.ok) throw new Error('sync failed');
+            } catch {
+                statusEl.textContent = 'Sync failed — try again.';
+                return;
+            }
+            sessionStorage.setItem('pendingFullAuto', '1');
+            location.reload();
+        }
+
         // ── Bootstrap ────────────────────────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', () => {
             initState();
@@ -1677,6 +1696,14 @@
             document.querySelectorAll('.cg-schedule').forEach(sel => {
                 sel.addEventListener('change', () => { updateAllCounters(); updateGroupCounters(); });
             });
+
+            if (sessionStorage.getItem('pendingFullAuto')) {
+                sessionStorage.removeItem('pendingFullAuto');
+                autoAssignHomeGroups();
+                buildSchedule();
+                fillExtraCounselors();
+                saveCounselorGroups();
+            }
         });
     </script>
 </body>

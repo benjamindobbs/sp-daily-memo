@@ -261,7 +261,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/upload-staff', '/upload-instructors', '/upload-activity-rules', '/add-activity',
     '/delete-activity', '/update-activity', '/add-activity-period-group',
     '/delete-activity-period-group',
-    '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings', '/sync-offerings-from-schedule',
+    '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings', '/sync-offerings-from-schedule', '/api/sync-offerings',
     '/save-counselor-assignments', '/export-counselor-schedule', '/export-staff-schedule',
     '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups',
     '/hub-content', '/director-notes', '/photo-gallery', '/photo-vote',
@@ -4196,6 +4196,12 @@ function syncOfferingsForWeek(weekNumber) {
 
     return { activitiesCount: activityMap.size, offeringsCount: offeringMap.size, crossSide };
 }
+
+app.post('/api/sync-offerings', (req, res) => {
+    const weekNumber = parseInt(req.body.weekNumber) || getActiveWeek();
+    const result = syncOfferingsForWeek(weekNumber);
+    res.json({ ok: true, ...result });
+});
 
 app.post('/sync-offerings-from-schedule', (req, res) => {
     const weekNumber = parseInt(req.body.weekNumber) || getActiveWeek();
