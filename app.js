@@ -1657,7 +1657,14 @@ app.get('/counselor-profile/:id', (req, res) => {
         ? db.prepare("SELECT PeriodNumber, ActivityName, NULL AS Location FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ? ORDER BY PeriodNumber ASC").all(req.params.id, aw)
         : [];
     const instructorSchedule = isInstructor
-        ? db.prepare("SELECT PeriodNumber, ActivityName, Location FROM Schedules WHERE PersonID = ? AND PersonType = 'Instructor' ORDER BY PeriodNumber ASC").all(req.params.id)
+        ? db.prepare(`
+            SELECT PeriodNumber, ActivityName, Location FROM StaffWeekSchedules
+            WHERE StaffID = ? AND WeekNumber = ?
+            UNION
+            SELECT PeriodNumber, ActivityName, NULL AS Location FROM CounselorScheduleAssignments
+            WHERE PersonID = ? AND WeekNumber = ? AND PersonType IN ('Instructor', 'Staff')
+            ORDER BY PeriodNumber ASC
+          `).all(req.params.id, aw, req.params.id, aw)
         : [];
     const staffWeekSchedules = isInstructor
         ? db.prepare("SELECT WeekNumber, PeriodNumber, ActivityName, Location FROM StaffWeekSchedules WHERE StaffID = ? ORDER BY WeekNumber ASC, PeriodNumber ASC").all(req.params.id)
