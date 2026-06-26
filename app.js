@@ -92,6 +92,19 @@ function getHubMode(estMins) {
     return 'classes';
 }
 
+// Photo of the Day phases (NY EST):
+//   submission  — 9:00 AM to  3:59 PM  (9*60 – 16*60)
+//   voting      — 4:00 PM to  4:14 PM  (16*60 – 16*60+15)
+//   winner      — 4:15 PM onward       (>= 16*60+15)
+//   closed      — before 9:00 AM
+function getPhotoPhase() {
+    const mins = getESTMins();
+    if (mins < 9 * 60)        return 'closed';
+    if (mins < 16 * 60)       return 'submission';
+    if (mins < 16 * 60 + 15)  return 'voting';
+    return 'winner';
+}
+
 function computeClassAttStats(clockBlock, side, today) {
     const classes = db.prepare(`
         SELECT DISTINCT s.ActivityName
@@ -768,7 +781,8 @@ try {
     const cCols = db.prepare("PRAGMA table_info(Counselors)").all().map(c => c.name);
     if (!cCols.includes('Phone')) db.exec("ALTER TABLE Counselors ADD COLUMN Phone TEXT");
     if (!cCols.includes('Email')) db.exec("ALTER TABLE Counselors ADD COLUMN Email TEXT");
-} catch(e) { console.error('[migration] Counselors.Phone/Email:', e.message); }
+    if (!cCols.includes('IncludeInStaffDropdown')) db.exec("ALTER TABLE Counselors ADD COLUMN IncludeInStaffDropdown INTEGER DEFAULT 0");
+} catch(e) { console.error('[migration] Counselors.Phone/Email/IncludeInStaffDropdown:', e.message); }
 
 try {
     db.exec(`CREATE TABLE IF NOT EXISTS NurseLog (
@@ -1353,6 +1367,10 @@ app.get('/master-schedule', (req, res) => {
             SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
             FROM Counselors st JOIN Schedules s ON st.CounselorID = s.PersonID AND s.PersonType = 'Instructor'
             WHERE s.PeriodNumber = ? AND s.ActivityName = ?
+            UNION
+            SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
+            FROM Counselors st JOIN StaffWeekSchedules sws ON sws.StaffID = st.CounselorID
+            WHERE sws.WeekNumber = ? AND sws.PeriodNumber = ? AND sws.ActivityName = ?
         `);
         const aw = getActiveWeek();
         const getCounselors = db.prepare(`
@@ -1381,7 +1399,7 @@ app.get('/master-schedule', (req, res) => {
                 location:    locRow ? locRow.Location : (cls.location || null),
                 enrolled:    getEnrollment.get(cls.periodNumber, cls.activityName).n,
                 colorGroups: getColorGroups.all(cls.periodNumber, cls.activityName).map(r => r.HomeGroupColor),
-                staff:       getStaff.all(cls.periodNumber, cls.activityName),
+                staff:       getStaff.all(cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName),
                 counselors:  getCounselors.all(aw, cls.periodNumber, cls.activityName, aw),
                 busPresent:  !!getBusPresence.get(cls.periodNumber, cls.activityName),
                 extGroups:   getExtGroups.all(cls.periodNumber, cls.activityName).map(r => r.ExtendedHours)
@@ -2241,13 +2259,30 @@ app.post('/upload-counselors', upload.single('file'), (req, res) => {
                             }
                             flagged.push(`${firstName} ${lastName} (dual-role: ${[...sides].join('+')})`);
                         } else {
-                            // Same side: keep highest-rank entry
-                            const winner = parsed.reduce((best, p) => (ROLE_RANK[p.role] || 1) >= (ROLE_RANK[best.role] || 1) ? p : best);
-                            const homeColor = mapCampToColor(winner.row.Positions, winner.row.Camp) || (winner.role === 'Swim Counselor' ? 'Swim' : null);
-                            const existing = findCounselor.get(fullName);
-                            if (existing) { updCounselor.run(homeColor, winner.role, existing.CounselorID); }
-                            else { insCounselor.run(firstName, lastName, homeColor, winner.role); }
-                            imported++;
+                            const hasCounselor    = parsed.some(p => p.role === 'Counselor');
+                            const hasSportsLeader = parsed.some(p => p.role === 'Sports Leader');
+                            if (hasCounselor && hasSportsLeader) {
+                                // Counselor + Sports Leader on same side: import as Counselor
+                                // with flag so they also appear in the scheduler staff dropdown
+                                const cEntry = parsed.find(p => p.role === 'Counselor');
+                                const homeColor = mapCampToColor(cEntry.row.Camp) || null;
+                                const existing = db.prepare("SELECT CounselorID FROM Counselors WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) AND StaffRole = 'Counselor' LIMIT 1").get(fullName);
+                                if (existing) {
+                                    db.prepare("UPDATE Counselors SET HomeGroupColor = ?, StaffRole = 'Counselor', IncludeInStaffDropdown = 1 WHERE CounselorID = ?").run(homeColor, existing.CounselorID);
+                                } else {
+                                    db.prepare("INSERT INTO Counselors (FirstName, LastName, HomeGroupColor, StaffRole, IncludeInStaffDropdown) VALUES (?, ?, ?, 'Counselor', 1)").run(firstName, lastName, homeColor);
+                                }
+                                flagged.push(`${firstName} ${lastName} (counselor + sports leader: imported as Counselor with staff dropdown access)`);
+                                imported++;
+                            } else {
+                                // Same side: keep highest-rank entry
+                                const winner = parsed.reduce((best, p) => (ROLE_RANK[p.role] || 1) >= (ROLE_RANK[best.role] || 1) ? p : best);
+                                const homeColor = mapCampToColor(winner.row.Camp) || (winner.role === 'Swim Counselor' ? 'Swim' : null);
+                                const existing = findCounselor.get(fullName);
+                                if (existing) { updCounselor.run(homeColor, winner.role, existing.CounselorID); }
+                                else { insCounselor.run(firstName, lastName, homeColor, winner.role); }
+                                imported++;
+                            }
                         }
                     }
                 }
@@ -3696,9 +3731,14 @@ app.get('/counselor-scheduling', (req, res) => {
     }));
 
     const staffMembers = db.prepare(`
-        SELECT CounselorID AS StaffID, FirstName, LastName, StaffRole AS StaffType
+        SELECT CounselorID AS StaffID, FirstName, LastName,
+            CASE WHEN IncludeInStaffDropdown = 1 AND StaffRole = 'Counselor'
+                 THEN 'Sports Leader'
+                 ELSE StaffRole
+            END AS StaffType
         FROM Counselors
         WHERE StaffRole IN ('Instructor', 'Unit Leader', 'Sports Leader')
+           OR IncludeInStaffDropdown = 1
         ORDER BY LastName, FirstName
     `).all();
 
@@ -4145,6 +4185,7 @@ app.post('/counselor-preferences', (req, res) => {
 app.get('/photo-day', (req, res) => {
     const today = todayStr();
     const isAdmin = req.cookies.viewMode === 'admin';
+    const photoPhase = getPhotoPhase();
     const viewerName = isAdmin
         ? (req.cookies.adminName || null)
         : (() => {
@@ -4156,12 +4197,16 @@ app.get('/photo-day', (req, res) => {
     const submissions = db.prepare(
         "SELECT id, counselorName, imageUrl FROM PhotoSubmissions WHERE date=? ORDER BY submittedAt DESC"
     ).all(today);
-    res.render('photo-day', { submissions, date: today, message: req.query.message, error: req.query.error, viewerName });
+    res.render('photo-day', { submissions, date: today, message: req.query.message, error: req.query.error, viewerName, photoPhase, isAdmin });
 });
 
 app.post('/photo-day', upload.single('photo'), async (req, res) => {
     if (!req.file) return res.redirect('/photo-day?error=No+file+selected');
     const isAdmin = req.cookies.viewMode === 'admin';
+    if (!isAdmin && getPhotoPhase() !== 'submission') {
+        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.redirect('/photo-day?error=' + encodeURIComponent('Photo submissions are only open from 9:00 AM to 4:00 PM.'));
+    }
     let counselorName = null;
     if (isAdmin) {
         counselorName = (req.cookies.adminName || '').trim();
@@ -4191,6 +4236,7 @@ app.post('/photo-day', upload.single('photo'), async (req, res) => {
 app.get('/photo-gallery', (req, res) => {
     const date = req.query.date || todayStr();
     const isAdmin = req.cookies.viewMode === 'admin';
+    const photoPhase = (date === todayStr()) ? getPhotoPhase() : 'winner';
     const viewerName = isAdmin
         ? (req.cookies.adminName || null)
         : (() => {
@@ -4210,7 +4256,7 @@ app.get('/photo-gallery', (req, res) => {
     const viewerVoteCount = viewerName
         ? (db.prepare("SELECT COUNT(*) as n FROM PhotoVotes WHERE voterName=? AND voteDate=?").get(viewerName, date)?.n || 0)
         : 0;
-    res.render('photo-gallery', { photos, date, viewerName, viewerVoteCount, voteLimit });
+    res.render('photo-gallery', { photos, date, viewerName, viewerVoteCount, voteLimit, photoPhase, isAdmin });
 });
 
 app.post('/photo-vote/:id', (req, res) => {
@@ -4220,6 +4266,9 @@ app.post('/photo-vote/:id', (req, res) => {
     if (!voterName) return res.status(400).json({ error: 'No name set' });
     const today = todayStr();
     const isAdmin = req.cookies.viewMode === 'admin';
+    if (!isAdmin && getPhotoPhase() !== 'voting') {
+        return res.json({ ok: false, error: 'Voting is only open from 4:00 PM to 4:15 PM.' });
+    }
     const voteLimit = isAdmin ? 3 : 1;
     const alreadyVoted = db.prepare("SELECT 1 FROM PhotoVotes WHERE voterName=? AND photoId=?").get(voterName, id);
     if (alreadyVoted) return res.json({ ok: false, error: 'Already voted on this photo' });

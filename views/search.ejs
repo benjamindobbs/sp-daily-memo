@@ -240,7 +240,7 @@
                     if (extVal === 'any') extMatch = !!ext;
                     else extMatch = ext === extVal;
                 }
-                group.style.display = (nameMatch && groupMatch && busMatch && extMatch) ? '' : 'none';
+                group.classList.toggle('filter-hidden', !(nameMatch && groupMatch && busMatch && extMatch));
             });
         }
 

@@ -131,8 +131,9 @@
             busAM.forEach(s => flatItems.push({ icon: '&#128652;', cat: 'Bus AM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
             hgAM.forEach(s => flatItems.push({ icon: '&#127968;', cat: 'Home Group AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             spAM.forEach(s => flatItems.push({ icon: '&#11088;', cat: 'Specialty AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
-            classSessions.forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null }));
+            classSessions.filter(s => parseInt(s.periodKey) <= 3).forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null }));
             hgLunch.forEach(s => flatItems.push({ icon: '&#127869;', cat: 'Home Group Lunch', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
+            classSessions.filter(s => parseInt(s.periodKey) > 3).forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null }));
             spPM.forEach(s => flatItems.push({ icon: '&#11088;', cat: 'Specialty PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             hgPM.forEach(s => flatItems.push({ icon: '&#127968;', cat: 'Home Group PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             busPM.forEach(s => flatItems.push({ icon: '&#128652;', cat: 'Bus PM', label: s.label, link: s.link, submitted: s.submitted, color: null }));

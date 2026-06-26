@@ -685,6 +685,7 @@ select.filter-dropdown { padding: 7px 12px; border-radius: 6px; border: 1px soli
 .search-table td { padding: 12px; }
 
 .camper-group { border-bottom: 8px solid var(--bg-app); }
+.camper-group.filter-hidden { display: none !important; }
 .main-info-row td { background: white; font-weight: 500; padding: 18px 12px; border-top: 1px solid #f1f5f9; }
 .schedule-row td  { background: #f8fafc; padding: 0 12px 12px; }
 

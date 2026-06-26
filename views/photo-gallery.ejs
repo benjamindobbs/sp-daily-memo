@@ -60,21 +60,61 @@
             </div>
         </header>
 
-        <% if (photos.length === 0) { %>
+        <%
+            const votingOpen = isAdmin || photoPhase === 'voting';
+            const showWinner = photoPhase === 'winner' || photoPhase === 'voting';
+            const winner = (showWinner && photos.length > 0) ? photos[0] : null;
+        %>
+
+        <% if (photoPhase === 'closed' && !isAdmin) { %>
+        <div class="card" style="text-align:center; padding:48px 24px; color:var(--text-muted);">
+            &#128337; Gallery opens at <strong>4:00 PM</strong> for voting.
+        </div>
+        <% } else if (photoPhase === 'submission' && !isAdmin) { %>
+        <div class="card" style="text-align:center; padding:48px 24px; color:var(--text-muted);">
+            &#128247; Submissions are open until 4:00 PM. Voting begins at 4:00 PM.
+            <% if (photos.length > 0) { %>
+            <p style="margin-top:12px; font-size:0.85rem;"><%= photos.length %> photo<%= photos.length !== 1 ? 's' : '' %> submitted so far.</p>
+            <% } %>
+        </div>
+        <% } else if (photos.length === 0) { %>
         <div class="card" style="text-align:center; padding:48px 24px; color:var(--text-muted);">
             No photos submitted for this date yet.
         </div>
         <% } else { %>
+
+        <% if (photoPhase === 'winner' && winner) { %>
+        <div style="margin-bottom:28px; border:3px solid #f59e0b; border-radius:16px; overflow:hidden; background:white; box-shadow:0 8px 24px rgba(245,158,11,0.18);">
+            <div style="background:#fef3c7; padding:10px 20px; display:flex; align-items:center; gap:10px;">
+                <span style="font-size:1.3rem;">&#127942;</span>
+                <span style="font-weight:800; font-size:1rem; color:#92400e;">Photo of the Day Winner</span>
+                <span style="margin-left:auto; font-size:0.82rem; color:#a16207; font-weight:600;"><%= winner.votes %> vote<%= winner.votes !== 1 ? 's' : '' %></span>
+            </div>
+            <div style="padding:16px;">
+                <img src="<%= winner.imageUrl %>" alt="Winner by <%= winner.counselorName %>"
+                     style="width:100%; border-radius:10px; object-fit:cover; aspect-ratio:4/3; margin-bottom:10px;">
+                <p style="margin:0; font-size:0.95rem; font-weight:700; color:var(--text);">&#128100; <%= winner.counselorName %></p>
+            </div>
+        </div>
+        <% if (photos.length > 1) { %>
+        <h3 style="font-size:0.9rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:14px;">All Submissions</h3>
+        <% } %>
+        <% } %>
+
         <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:20px;">
-            <% photos.forEach(p => { %>
+            <% photos.forEach((p, idx) => { %>
             <% const alreadyVoted = p.viewerVoted > 0; %>
             <% const noVotesLeft = viewerVoteCount >= voteLimit; %>
-            <div class="card" style="padding:14px;" id="photo-<%= p.id %>">
+            <% const isWinnerCard = photoPhase === 'winner' && idx === 0; %>
+            <% if (isWinnerCard) { %><% } else { %>
+            <div class="card" style="padding:14px;<%= isWinnerCard ? 'display:none;' : '' %>" id="photo-<%= p.id %>">
                 <img src="<%= p.imageUrl %>" alt="Photo by <%= p.counselorName %>"
                      style="width:100%; border-radius:8px; object-fit:cover; aspect-ratio:4/3; margin-bottom:10px;">
                 <div style="display:flex; align-items:center; justify-content:space-between;">
                     <span style="font-size:0.88rem; font-weight:600;"><%= p.counselorName %></span>
-                    <% if (!viewerName) { %>
+                    <% if (!votingOpen) { %>
+                    <span style="font-size:0.82rem; color:var(--text-muted); font-weight:600;">&#10084;&#65039; <%= p.votes %></span>
+                    <% } else if (!viewerName) { %>
                     <button disabled title="Set your name to vote"
                             style="display:flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid #e2e8f0;border-radius:20px;background:#f8fafc;cursor:not-allowed;font-size:0.82rem;font-weight:600;color:#94a3b8;">
                         &#10084;&#65039; <span><%= p.votes %></span>
@@ -93,6 +133,7 @@
                     <% } %>
                 </div>
             </div>
+            <% } %>
             <% }); %>
         </div>
         <% } %>
