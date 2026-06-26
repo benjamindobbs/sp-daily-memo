@@ -1280,6 +1280,7 @@
             OFFERINGS.forEach((act, idx) => {
                 if (!act.PeriodNumber) return;
                 state[idx].counselors.forEach(id => { if (id && id !== -1) usedThisPeriod[act.PeriodNumber].add(id); });
+                state[idx].staff.forEach(id => { if (id && id !== -1) usedThisPeriod[act.PeriodNumber].add(id); });
             });
 
             // Pre-fill: assign the same counselors across ALL periods of triple-period activities
@@ -1452,6 +1453,7 @@
                 OFFERINGS.forEach((a, i) => {
                     if (a.PeriodNumber === period) {
                         state[i].counselors.forEach(id => { if (id) usedThisPeriod.add(id); });
+                        state[i].staff.forEach(id => { if (id) usedThisPeriod.add(id); });
                     }
                 });
 
