@@ -538,6 +538,31 @@ try {
     }
 } catch(e) { console.error('[migration] StaffWeekSchedules FK fix:', e.message); }
 
+// Migration: add WeekNumber to CounselorScheduleAssignments and fix unique constraint
+try {
+    const csaCols = db.prepare("PRAGMA table_info(CounselorScheduleAssignments)").all().map(c => c.name);
+    if (!csaCols.includes('WeekNumber')) {
+        db.exec(`
+            PRAGMA foreign_keys = OFF;
+            CREATE TABLE CounselorScheduleAssignments_new (
+                AssignmentID INTEGER PRIMARY KEY AUTOINCREMENT,
+                WeekNumber   INTEGER NOT NULL DEFAULT 1,
+                PeriodNumber INTEGER NOT NULL,
+                ActivityName TEXT NOT NULL,
+                PersonID     INTEGER NOT NULL,
+                PersonType   TEXT NOT NULL CHECK(PersonType IN ('Counselor', 'Staff', 'Instructor')),
+                UNIQUE(WeekNumber, PeriodNumber, PersonID, PersonType)
+            );
+            INSERT INTO CounselorScheduleAssignments_new (WeekNumber, PeriodNumber, ActivityName, PersonID, PersonType)
+                SELECT 1, PeriodNumber, ActivityName, PersonID, PersonType FROM CounselorScheduleAssignments;
+            DROP TABLE CounselorScheduleAssignments;
+            ALTER TABLE CounselorScheduleAssignments_new RENAME TO CounselorScheduleAssignments;
+            PRAGMA foreign_keys = ON;
+        `);
+        console.log('[migration] CounselorScheduleAssignments: added WeekNumber column');
+    }
+} catch(e) { console.error('[migration] CounselorScheduleAssignments WeekNumber:', e.message); }
+
 // Migration: create schedule change log tables if they don't exist yet
 db.exec(`
     CREATE TABLE IF NOT EXISTS ScheduleChanges (
@@ -3708,8 +3733,8 @@ app.get('/counselor-scheduling', (req, res) => {
 
     // Load existing counselor assignments from CounselorWeekSchedules for this planning week
     const rawCounselorAssignments = db.prepare('SELECT CounselorID, PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE WeekNumber=?').all(planWeek);
-    // Load existing staff assignments from CounselorScheduleAssignments
-    const rawStaffAssignments = db.prepare("SELECT PersonID, PeriodNumber, ActivityName FROM CounselorScheduleAssignments WHERE PersonType='Instructor'").all();
+    // Load existing staff assignments from CounselorScheduleAssignments for this planning week
+    const rawStaffAssignments = db.prepare("SELECT PersonID, PeriodNumber, ActivityName FROM CounselorScheduleAssignments WHERE PersonType='Instructor' AND WeekNumber=?").all(planWeek);
     const existingAssignments = {};
     rawCounselorAssignments.forEach(a => {
         const key = `${a.PeriodNumber}|${a.ActivityName}`;
@@ -4009,9 +4034,9 @@ app.post('/save-counselor-assignments', (req, res) => {
             }
             // Re-insert counselor assignments for this week
             const insCws = db.prepare('INSERT OR REPLACE INTO CounselorWeekSchedules (CounselorID, WeekNumber, PeriodNumber, ActivityName) VALUES (?, ?, ?, ?)');
-            // Wipe all staff from CounselorScheduleAssignments and reinsert
-            db.prepare('DELETE FROM CounselorScheduleAssignments WHERE PersonType IN (\'Instructor\', \'Staff\')').run();
-            const insStaff = db.prepare('INSERT OR IGNORE INTO CounselorScheduleAssignments (PeriodNumber, ActivityName, PersonID, PersonType) VALUES (?, ?, ?, ?)');
+            // Wipe this week's staff assignments and reinsert
+            db.prepare("DELETE FROM CounselorScheduleAssignments WHERE WeekNumber=? AND PersonType IN ('Instructor', 'Staff')").run(w);
+            const insStaff = db.prepare('INSERT OR IGNORE INTO CounselorScheduleAssignments (WeekNumber, PeriodNumber, ActivityName, PersonID, PersonType) VALUES (?, ?, ?, ?, ?)');
 
             for (const a of assignments) {
                 if (!a.periodNumber || !a.activityName || !a.personID || !a.personType) continue;
@@ -4020,7 +4045,7 @@ app.post('/save-counselor-assignments', (req, res) => {
                     if (isNaN(pNum) || pNum < 1 || pNum > 6) continue; // skip invalid periods
                     insCws.run(parseInt(a.personID), w, pNum, a.activityName);
                 } else {
-                    insStaff.run(pNum || a.periodNumber, a.activityName, a.personID, a.personType);
+                    insStaff.run(w, pNum, a.activityName, a.personID, a.personType);
                 }
             }
         })();
