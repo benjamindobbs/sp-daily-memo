@@ -6,3 +6,4 @@ New Feature: Add a clone of the Nuse Check-in/checkout system called "Case Log",
 
 New:
 In the counselor scheduler if the number of counselor slots has been manunally set (even if it breaks the assignment rules) it must be enforced to the value the user set.
+

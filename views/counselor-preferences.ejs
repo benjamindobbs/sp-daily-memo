@@ -206,6 +206,12 @@
             });
         }
 
+        function setPrefsDisabled(disabled) {
+            document.querySelectorAll('#prefsContainer input, #prefsContainer textarea, #prefsContainer select').forEach(function(el) {
+                el.disabled = disabled;
+            });
+        }
+
         function onCounselorChange(val) {
             const prefsContainer = document.getElementById('prefsContainer');
             const noPrefsMsg     = document.getElementById('noPrefsMsg');
@@ -216,6 +222,7 @@
                 prefsContainer.style.display = 'none';
                 noPrefsMsg.style.display     = 'none';
                 saveNameBtn.style.display    = 'none';
+                setPrefsDisabled(true);
                 return;
             }
 
@@ -223,6 +230,7 @@
                 prefsContainer.style.display = '';
                 noPrefsMsg.style.display     = 'none';
                 saveNameBtn.style.display    = 'none';
+                setPrefsDisabled(false);
                 fetch('/api/counselor-preferences/' + val)
                     .then(function(r) { return r.json(); })
                     .then(function(prefs) { applyPrefs(prefs); })
@@ -231,8 +239,15 @@
                 prefsContainer.style.display = 'none';
                 noPrefsMsg.style.display     = '';
                 saveNameBtn.style.display    = '';
+                setPrefsDisabled(true);
             }
         }
+
+        // Disable pref inputs on initial load if the container is hidden
+        document.addEventListener('DOMContentLoaded', function() {
+            const prefsContainer = document.getElementById('prefsContainer');
+            if (prefsContainer.style.display === 'none') setPrefsDisabled(true);
+        });
 
         function filterActivities() {
             const term = document.getElementById('activityFilter').value.toLowerCase();
