@@ -1504,9 +1504,16 @@ app.get('/class-roster/:period/:activity', (req, res) => {
         const colorGroups = [...new Set(campers.map(c => c.HomeGroupColor).filter(Boolean))];
 
         // Period is now a clock block (1-6); no translation needed.
-        const locRow = db.prepare(
-            "SELECT Location FROM Schedules WHERE PersonType = 'Instructor' AND ActivityName = ? AND PeriodNumber = ? AND Location IS NOT NULL AND Location != '' LIMIT 1"
-        ).get(activityName, period);
+        const locRow = db.prepare(`
+            SELECT Location FROM Schedules
+            WHERE PersonType = 'Instructor' AND ActivityName = ? AND PeriodNumber = ?
+              AND Location IS NOT NULL AND Location != ''
+            UNION
+            SELECT Location FROM StaffWeekSchedules
+            WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
+              AND Location IS NOT NULL AND Location != ''
+            LIMIT 1
+        `).get(activityName, period, activeWeek, period, activityName);
 
         const staff = db.prepare(`
             SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
@@ -1544,9 +1551,13 @@ app.get('/class-roster/:period/:activity', (req, res) => {
 // Update location for all staff schedule rows at a given period + activity
 app.post('/update-class-location', (req, res) => {
     const { activityName, periodNumber, location } = req.body;
+    const aw = getActiveWeek();
     db.prepare(
         "UPDATE Schedules SET Location = ? WHERE PersonType = 'Instructor' AND PeriodNumber = ? AND ActivityName = ?"
     ).run(location || null, parseInt(periodNumber), activityName);
+    db.prepare(
+        "UPDATE StaffWeekSchedules SET Location = ? WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE"
+    ).run(location || null, aw, parseInt(periodNumber), activityName);
     res.redirect(`/class-roster/${periodNumber}/${encodeURIComponent(activityName)}`);
 });
 
