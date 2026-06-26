@@ -4742,23 +4742,47 @@ app.get('/reports/attendance-rosters', (_req, res) => {
 
     // ── Class rosters (Sports + Enrichment) ─────────────────────────────────
     const scheduleRows = db.prepare(`
-        SELECT cws.CounselorID, co.FirstName, co.LastName,
+        SELECT cws.CounselorID AS PersonID, co.FirstName, co.LastName,
                cws.PeriodNumber, cws.ActivityName,
                COALESCE(wo.SideOfCamp, a.SideOfCamp, 'Other') AS SideOfCamp
         FROM CounselorWeekSchedules cws
         JOIN Counselors co ON co.CounselorID = cws.CounselorID
-        LEFT JOIN WeeklyOfferings wo
+        LEFT JOIN (SELECT ActivityName, PeriodNumber, WeekNumber, MAX(SideOfCamp) AS SideOfCamp
+                   FROM WeeklyOfferings GROUP BY ActivityName, PeriodNumber, WeekNumber) wo
             ON wo.ActivityName = cws.ActivityName AND wo.PeriodNumber = cws.PeriodNumber AND wo.WeekNumber = ?
         LEFT JOIN Activities a ON a.Name = cws.ActivityName
         WHERE cws.WeekNumber = ?
-        ORDER BY co.LastName, co.FirstName, cws.PeriodNumber
-    `).all(aw, aw);
+        UNION
+        SELECT sws.StaffID AS PersonID, co.FirstName, co.LastName,
+               sws.PeriodNumber, sws.ActivityName,
+               COALESCE(wo.SideOfCamp, a.SideOfCamp, 'Other') AS SideOfCamp
+        FROM StaffWeekSchedules sws
+        JOIN Counselors co ON co.CounselorID = sws.StaffID
+        LEFT JOIN (SELECT ActivityName, PeriodNumber, WeekNumber, MAX(SideOfCamp) AS SideOfCamp
+                   FROM WeeklyOfferings GROUP BY ActivityName, PeriodNumber, WeekNumber) wo
+            ON wo.ActivityName = sws.ActivityName AND wo.PeriodNumber = sws.PeriodNumber AND wo.WeekNumber = ?
+        LEFT JOIN Activities a ON a.Name = sws.ActivityName
+        WHERE sws.WeekNumber = ?
+        UNION
+        SELECT csa.PersonID, co.FirstName, co.LastName,
+               csa.PeriodNumber, csa.ActivityName,
+               COALESCE(wo.SideOfCamp, a.SideOfCamp, 'Other') AS SideOfCamp
+        FROM CounselorScheduleAssignments csa
+        JOIN Counselors co ON co.CounselorID = csa.PersonID
+        LEFT JOIN (SELECT ActivityName, PeriodNumber, WeekNumber, MAX(SideOfCamp) AS SideOfCamp
+                   FROM WeeklyOfferings GROUP BY ActivityName, PeriodNumber, WeekNumber) wo
+            ON wo.ActivityName = csa.ActivityName AND wo.PeriodNumber = csa.PeriodNumber AND wo.WeekNumber = ?
+        LEFT JOIN Activities a ON a.Name = csa.ActivityName
+        WHERE csa.WeekNumber = ?
+          AND csa.PersonType IN ('Instructor', 'Staff')
+        ORDER BY LastName, FirstName, PeriodNumber
+    `).all(aw, aw, aw, aw, aw, aw);
 
     const counselorMap = {};
     scheduleRows.forEach(r => {
-        if (!counselorMap[r.CounselorID]) {
-            counselorMap[r.CounselorID] = {
-                CounselorID: r.CounselorID,
+        if (!counselorMap[r.PersonID]) {
+            counselorMap[r.PersonID] = {
+                CounselorID: r.PersonID,
                 FirstName: r.FirstName,
                 LastName: r.LastName,
                 periods: []
@@ -4778,7 +4802,7 @@ app.get('/reports/attendance-rosters', (_req, res) => {
             AND Location IS NOT NULL AND Location != '' LIMIT 1
         `).get(r.PeriodNumber, r.ActivityName);
 
-        counselorMap[r.CounselorID].periods.push({
+        counselorMap[r.PersonID].periods.push({
             PeriodNumber: r.PeriodNumber,
             ActivityName: r.ActivityName,
             SideOfCamp: r.SideOfCamp,
