@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Scheduled Pickups | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .date-section { margin-bottom: 28px; }
+        .date-heading {
+            font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--text-muted); margin: 0 0 10px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .date-heading .today-badge {
+            background: var(--primary); color: white;
+            font-size: 0.65rem; padding: 1px 7px; border-radius: 999px;
+        }
+        .pickup-card {
+            background: white; border: 1px solid var(--border-color); border-radius: 10px;
+            margin-bottom: 8px; overflow: hidden;
+        }
+        .pickup-card.past { opacity: 0.65; }
+        .pickup-card-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 16px;
+        }
+        .pickup-time { font-size: 1rem; font-weight: 700; color: var(--primary); min-width: 58px; }
+        .pickup-name { font-weight: 600; font-size: 0.95rem; }
+        .pickup-meta { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+        .pickup-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+        .btn-edit {
+            background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;
+            border-radius: 6px; padding: 5px 12px; font-size: 0.8rem;
+            font-weight: 600; cursor: pointer; font-family: inherit;
+        }
+        .btn-edit:hover { background: #dbeafe; }
+        .btn-delete {
+            background: none; border: 1px solid #fca5a5; color: #dc2626;
+            border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 0.8rem;
+            font-family: inherit;
+        }
+        .btn-delete:hover { background: #fee2e2; }
+        .edit-form {
+            border-top: 1px solid var(--border-color); background: #f8fafc;
+            padding: 14px 16px; display: none;
+        }
+        .edit-form.open { display: block; }
+        .edit-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+        .edit-field { display: flex; flex-direction: column; gap: 4px; }
+        .edit-field label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); }
+        .edit-field input[type="time"], .edit-field input[type="text"] {
+            padding: 7px 10px; border: 1px solid var(--border-color); border-radius: 7px;
+            font-size: 0.88rem; font-family: inherit;
+        }
+        .edit-field input[type="text"] { min-width: 220px; }
+        .btn-save {
+            background: var(--primary); color: white; border: none;
+            border-radius: 7px; padding: 7px 16px; font-size: 0.88rem;
+            font-weight: 600; cursor: pointer; font-family: inherit;
+        }
+        .btn-save:hover { opacity: 0.9; }
+        .btn-cancel-edit {
+            background: none; border: 1px solid var(--border-color); color: var(--text-muted);
+            border-radius: 7px; padding: 7px 12px; font-size: 0.88rem;
+            cursor: pointer; font-family: inherit;
+        }
+        .section-divider {
+            font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--text-muted);
+            border-top: 2px solid var(--border-color); padding-top: 16px;
+            margin: 24px 0 16px;
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
+        <a href="/dismissals/all" class="nav-btn primary">&#128197; All Pickups</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+    </nav>
+
+    <div class="container">
+        <header class="page-header">
+            <div>
+                <h1 style="margin:0;">&#128197; All Scheduled Pickups</h1>
+                <p class="text-muted" style="margin:2px 0 0;">All dates &mdash; click Edit to change time or notes.</p>
+            </div>
+            <a href="/dismissals" class="btn btn-primary">+ Schedule New</a>
+        </header>
+
+        <%
+        const upcoming = pickups.filter(p => p.Date >= today);
+        const past     = pickups.filter(p => p.Date <  today);
+
+        function groupByDate(list) {
+            const map = {};
+            list.forEach(p => { if (!map[p.Date]) map[p.Date] = []; map[p.Date].push(p); });
+            return map;
+        }
+        const upcomingByDate = groupByDate(upcoming);
+        const pastByDate     = groupByDate(past);
+
+        function fmtDate(d) {
+            const [y, m, day] = d.split('-').map(Number);
+            return new Date(y, m - 1, day).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        }
+        %>
+
+        <% if (upcoming.length === 0 && past.length === 0) { %>
+            <div style="text-align:center; padding:60px 20px; color:var(--text-muted);">
+                <div style="font-size:2.5rem; margin-bottom:12px;">&#9989;</div>
+                <p style="font-weight:600;">No pickups scheduled.</p>
+            </div>
+        <% } %>
+
+        <% if (upcoming.length > 0) { %>
+            <% Object.keys(upcomingByDate).sort().forEach(function(date) { %>
+            <div class="date-section">
+                <p class="date-heading">
+                    <%= fmtDate(date) %>
+                    <% if (date === today) { %><span class="today-badge">Today</span><% } %>
+                </p>
+                <% upcomingByDate[date].forEach(function(p) { %>
+                <div class="pickup-card" id="card-<%= p.PickupID %>">
+                    <div class="pickup-card-row">
+                        <span class="pickup-time"><%= fmtPickupTime(p.PickupTime) %></span>
+                        <div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span class="tag <%= p.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 6px;"><%= p.HomeGroupColor %></span>
+                                <span class="pickup-name"><%= p.FirstName %> <%= p.LastName %></span>
+                            </div>
+                            <div class="pickup-meta">
+                                <% if (p.PeriodNumber) { %>P<%= p.PeriodNumber %><% if (p.ActivityName) { %> &middot; <%= p.ActivityName %><% } %><% } %>
+                                <% if (p.Notes) { %><% if (p.PeriodNumber) { %> &middot; <% } %>&#128221; <%= p.Notes %><% } %>
+                                <% if (p.CreatedBy) { %> &middot; by <%= p.CreatedBy %><% } %>
+                            </div>
+                        </div>
+                        <div class="pickup-actions">
+                            <button class="btn-edit" onclick="toggleEdit(<%= p.PickupID %>)">Edit</button>
+                            <form action="/dismissals/cancel" method="POST" style="margin:0;"
+                                  onsubmit="return confirm('Remove this scheduled pickup?')">
+                                <input type="hidden" name="pickupId" value="<%= p.PickupID %>">
+                                <input type="hidden" name="returnTo" value="all">
+                                <button type="submit" class="btn-delete">Remove</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="edit-form" id="edit-<%= p.PickupID %>">
+                        <form action="/dismissals/update" method="POST">
+                            <input type="hidden" name="pickupId" value="<%= p.PickupID %>">
+                            <div class="edit-row">
+                                <div class="edit-field">
+                                    <label>Pickup Time</label>
+                                    <input type="time" name="pickupTime" value="<%= p.PickupTime %>" required>
+                                </div>
+                                <div class="edit-field" style="flex:1;">
+                                    <label>Notes</label>
+                                    <input type="text" name="notes" value="<%= p.Notes || '' %>" placeholder="e.g. Mom at main entrance">
+                                </div>
+                                <div class="edit-field" style="justify-content:flex-end;">
+                                    <div style="display:flex; gap:6px;">
+                                        <button type="submit" class="btn-save">Save</button>
+                                        <button type="button" class="btn-cancel-edit" onclick="toggleEdit(<%= p.PickupID %>)">Cancel</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                <% }); %>
+            </div>
+            <% }); %>
+        <% } %>
+
+        <% if (past.length > 0) { %>
+            <p class="section-divider">Past Pickups</p>
+            <% Object.keys(pastByDate).sort().reverse().forEach(function(date) { %>
+            <div class="date-section">
+                <p class="date-heading"><%= fmtDate(date) %></p>
+                <% pastByDate[date].forEach(function(p) { %>
+                <div class="pickup-card past">
+                    <div class="pickup-card-row">
+                        <span class="pickup-time"><%= fmtPickupTime(p.PickupTime) %></span>
+                        <div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span class="tag <%= p.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 6px;"><%= p.HomeGroupColor %></span>
+                                <span class="pickup-name"><%= p.FirstName %> <%= p.LastName %></span>
+                            </div>
+                            <div class="pickup-meta">
+                                <% if (p.PeriodNumber) { %>P<%= p.PeriodNumber %><% if (p.ActivityName) { %> &middot; <%= p.ActivityName %><% } %><% } %>
+                                <% if (p.Notes) { %><% if (p.PeriodNumber) { %> &middot; <% } %>&#128221; <%= p.Notes %><% } %>
+                                <% if (p.CreatedBy) { %> &middot; by <%= p.CreatedBy %><% } %>
+                            </div>
+                        </div>
+                        <div class="pickup-actions">
+                            <form action="/dismissals/cancel" method="POST" style="margin:0;"
+                                  onsubmit="return confirm('Remove this record?')">
+                                <input type="hidden" name="pickupId" value="<%= p.PickupID %>">
+                                <input type="hidden" name="returnTo" value="all">
+                                <button type="submit" class="btn-delete">Remove</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <% }); %>
+            </div>
+            <% }); %>
+        <% } %>
+    </div>
+
+    <script>
+        function toggleEdit(id) {
+            const form = document.getElementById('edit-' + id);
+            form.classList.toggle('open');
+        }
+    </script>
+</body>
+</html>

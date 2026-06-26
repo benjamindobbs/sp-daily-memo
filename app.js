@@ -1165,15 +1165,6 @@ app.post('/hub-content/:id', (req, res) => {
     res.json({ ok: true });
 });
 
-// --- TEMP DEBUG: activity name hex check ---
-app.get('/debug-activity', (req, res) => {
-    const name = req.query.name || 'Plaster It!';
-    const camper = db.prepare("SELECT DISTINCT ActivityName, hex(ActivityName) AS h FROM Schedules WHERE ActivityName LIKE ? AND PersonType='Camper'").all(`%${name}%`);
-    const staff  = db.prepare("SELECT DISTINCT ActivityName, hex(ActivityName) AS h FROM StaffWeekSchedules WHERE ActivityName LIKE ?").all(`%${name}%`);
-    const csa    = db.prepare("SELECT DISTINCT ActivityName, hex(ActivityName) AS h FROM CounselorScheduleAssignments WHERE ActivityName LIKE ?").all(`%${name}%`);
-    res.json({ camperSchedules: camper, staffWeekSchedules: staff, counselorScheduleAssignments: csa });
-});
-
 // --- DASHBOARD ---
 app.get('/admin', (req, res) => {
     const camperTotal = db.prepare("SELECT COUNT(*) AS count FROM Campers").get().count;
@@ -3775,9 +3766,44 @@ app.post('/dismissals/schedule', (req, res) => {
 });
 
 app.post('/dismissals/cancel', (req, res) => {
-    const { pickupId } = req.body;
+    const { pickupId, returnTo } = req.body;
     db.prepare(`DELETE FROM ScheduledPickups WHERE PickupID = ?`).run(parseInt(pickupId));
-    res.redirect('/dismissals');
+    res.redirect(returnTo === 'all' ? '/dismissals/all' : '/dismissals');
+});
+
+app.get('/dismissals/all', (_req, res) => {
+    const pickups = db.prepare(`
+        SELECT sp.PickupID, sp.Date, sp.PickupTime, sp.PeriodNumber, sp.Notes, sp.CreatedBy,
+               c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
+               s.ActivityName
+        FROM ScheduledPickups sp
+        JOIN Campers c ON c.CamperID = sp.CamperID
+        LEFT JOIN Schedules s ON s.PersonType='Camper' AND s.PersonID=sp.CamperID
+            AND s.PeriodNumber=sp.PeriodNumber
+        ORDER BY sp.Date ASC, sp.PickupTime ASC
+    `).all();
+    const today = todayStr();
+    res.render('dismissals-all', { pickups, today });
+});
+
+app.post('/dismissals/update', (req, res) => {
+    const { pickupId, pickupTime, notes } = req.body;
+    const id = parseInt(pickupId);
+    const row = db.prepare(`
+        SELECT sp.PeriodNumber, c.HomeGroupColor
+        FROM ScheduledPickups sp JOIN Campers c ON c.CamperID = sp.CamperID
+        WHERE sp.PickupID = ?
+    `).get(id);
+    if (!row) return res.redirect('/dismissals/all');
+    let periodNumber = null;
+    if (pickupTime) {
+        const [h, m] = pickupTime.split(':').map(Number);
+        periodNumber = inferPeriodFromTime(h * 60 + m, row.HomeGroupColor);
+    }
+    db.prepare(`
+        UPDATE ScheduledPickups SET PickupTime = ?, PeriodNumber = ?, Notes = ? WHERE PickupID = ?
+    `).run(pickupTime, periodNumber, notes || null, id);
+    res.redirect('/dismissals/all');
 });
 
 // --- Counselor Scheduling Tool ---
