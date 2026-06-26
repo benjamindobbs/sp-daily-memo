@@ -564,6 +564,10 @@
         const state = {};
         OFFERINGS.forEach((_, idx) => { state[idx] = { counselors: [], staff: [] }; });
 
+        // Tracks offering indices where the user has explicitly typed a slot count.
+        // Auto-assign must not change the length for these offerings.
+        const manualCounts = {};
+
         // ── Restore saved assignments on load ────────────────────────────────────
         function initState() {
             OFFERINGS.forEach((act, idx) => {
@@ -687,6 +691,8 @@
             const arr = state[offerIdx][type];
             while (arr.length < newCount) arr.push(null);
             arr.length = Math.max(0, newCount);
+            if (!manualCounts[offerIdx]) manualCounts[offerIdx] = {};
+            manualCounts[offerIdx][type] = newCount;
             renderSlots(offerIdx, type);
             const act = OFFERINGS[offerIdx];
             updateCounter(act.PeriodNumber, act.SideOfCamp);
@@ -1295,7 +1301,8 @@
                     if (cId === null) continue;
                     for (const idx of indices.slice(1)) {
                         if (state[idx].counselors.length <= slot) {
-                            state[idx].counselors.push(cId);
+                            const mc = manualCounts[idx]?.counselors;
+                            if (mc == null || state[idx].counselors.length < mc) state[idx].counselors.push(cId);
                         } else {
                             state[idx].counselors[slot] = cId;
                         }
@@ -1303,9 +1310,11 @@
                 }
             }
 
-            // Remove unfilled null slots so blank dropdowns don't appear
+            // Remove unfilled null slots, but preserve manually-set counts
             OFFERINGS.forEach((_, idx) => {
                 state[idx].counselors = state[idx].counselors.filter(id => id !== null);
+                const mc = manualCounts[idx]?.counselors;
+                if (mc != null) while (state[idx].counselors.length < mc) state[idx].counselors.push(null);
                 const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
                 if (card) {
                     const inp = card.querySelector('[data-count-type="counselors"]');
@@ -1417,8 +1426,11 @@
                             const idxRatio  = (OFFERINGS[idx].PreliminaryEnrollment || 0) / Math.max(state[idx].counselors.length, 1);
                             return idxRatio > bestRatio ? idx : best;
                         });
-                        state[targetIdx].counselors.push(null);
-                        newSlots.push({ idx: targetIdx, slotPos: state[targetIdx].counselors.length - 1 });
+                        const mc = manualCounts[targetIdx]?.counselors;
+                        if (mc == null || state[targetIdx].counselors.length < mc) {
+                            state[targetIdx].counselors.push(null);
+                            newSlots.push({ idx: targetIdx, slotPos: state[targetIdx].counselors.length - 1 });
+                        }
                     }
 
                     // Fill new slots
@@ -1457,9 +1469,11 @@
                 for (let slot = 0; slot < maxSlots; slot++) {
                     const cId = state[indices[0]].counselors[slot] ?? null;
                     if (cId === null) continue;
+
                     for (const idx of indices.slice(1)) {
                         if (state[idx].counselors.length <= slot) {
-                            state[idx].counselors.push(cId);
+                            const mc = manualCounts[idx]?.counselors;
+                            if (mc == null || state[idx].counselors.length < mc) state[idx].counselors.push(cId);
                         } else {
                             state[idx].counselors[slot] = cId;
                         }
@@ -1467,9 +1481,11 @@
                 }
             }
 
-            // Remove unfilled null slots so blank dropdowns don't appear
+            // Remove unfilled null slots, but preserve manually-set counts
             OFFERINGS.forEach((_, idx) => {
                 state[idx].counselors = state[idx].counselors.filter(id => id !== null);
+                const mc = manualCounts[idx]?.counselors;
+                if (mc != null) while (state[idx].counselors.length < mc) state[idx].counselors.push(null);
                 const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
                 if (card) {
                     const inp = card.querySelector('[data-count-type="counselors"]');
