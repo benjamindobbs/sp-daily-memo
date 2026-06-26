@@ -4796,7 +4796,7 @@ app.get('/reports/attendance-rosters', (_req, res) => {
         LEFT JOIN Activities a ON a.Name = csa.ActivityName
         WHERE csa.WeekNumber = ?
           AND csa.PersonType IN ('Instructor', 'Staff')
-        ORDER BY LastName, FirstName, PeriodNumber
+        ORDER BY 3, 2, 4
     `).all(aw, aw, aw, aw, aw, aw);
 
     const counselorMap = {};
