@@ -320,9 +320,9 @@
                     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                         <span style="font-weight:600;">&#127912; Enrichment:</span>
                         <label style="display:flex; align-items:center; gap:4px;"><span class="tag Red" style="font-size:0.7rem; margin:0;">Red</span><input type="number" id="enrichRed" value="2" min="1" max="8" style="width:40px; padding:2px 5px; border:1px solid var(--border-color); border-radius:5px; font-size:0.82rem; text-align:center;"></label>
-                        <label style="display:flex; align-items:center; gap:4px;"><span class="tag Carolina" style="font-size:0.7rem; margin:0;">Carolina</span><input type="number" id="enrichCarolina" value="1" min="1" max="8" style="width:40px; padding:2px 5px; border:1px solid var(--border-color); border-radius:5px; font-size:0.82rem; text-align:center;"></label>
+                        <label style="display:flex; align-items:center; gap:4px;"><span class="tag Carolina" style="font-size:0.7rem; margin:0;">Carolina</span><input type="number" id="enrichCarolina" value="2" min="1" max="8" style="width:40px; padding:2px 5px; border:1px solid var(--border-color); border-radius:5px; font-size:0.82rem; text-align:center;"></label>
                         <label style="display:flex; align-items:center; gap:4px;"><span style="font-size:0.75rem; font-weight:600; background:#e2e8f0; color:#475569; padding:1px 6px; border-radius:8px;">RC</span><input type="number" id="enrichRC" value="2" min="1" max="8" style="width:40px; padding:2px 5px; border:1px solid var(--border-color); border-radius:5px; font-size:0.82rem; text-align:center;"></label>
-                        <label style="display:flex; align-items:center; gap:4px;"><span style="font-size:0.75rem; font-weight:600; background:#e2e8f0; color:#475569; padding:1px 6px; border-radius:8px;">GN</span><input type="number" id="enrichGN" value="1" min="1" max="8" style="width:40px; padding:2px 5px; border:1px solid var(--border-color); border-radius:5px; font-size:0.82rem; text-align:center;"></label>
+                        <label style="display:flex; align-items:center; gap:4px;"><span style="font-size:0.75rem; font-weight:600; background:#e2e8f0; color:#475569; padding:1px 6px; border-radius:8px;">GN</span><input type="number" id="enrichGN" value="2" min="1" max="8" style="width:40px; padding:2px 5px; border:1px solid var(--border-color); border-radius:5px; font-size:0.82rem; text-align:center;"></label>
                     </div>
                 </div>
             </div>
@@ -619,7 +619,7 @@
             const side      = act.SideOfCamp;
             const arr       = state[offerIdx][type];
             const allPeople = type === 'counselors'
-                ? MAIN_COUNSELORS.filter(c => {
+                ? getAssignablePool().filter(c => {
                       const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                       const sched = sel ? sel.value : (c.ScheduleType || '');
                       return sched && isCounselorAvailableFor(sched, period, side);
@@ -717,13 +717,26 @@
             }
         }
 
+        // Returns MAIN_COUNSELORS plus specialty counselors who have a ScheduleType set in the DOM.
+        // Called at point-of-use so it reflects the current dropdown state.
+        function getAssignablePool() {
+            const mainIds = new Set(MAIN_COUNSELORS.map(c => c.CounselorID));
+            const extra   = SPECIALTY_COUNSELORS.filter(c => {
+                if (mainIds.has(c.CounselorID)) return false; // already in MAIN (dual-assigned)
+                const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                const sched = sel ? sel.value : (c.ScheduleType || '');
+                return !!sched;
+            });
+            return extra.length ? [...MAIN_COUNSELORS, ...extra] : MAIN_COUNSELORS;
+        }
+
         // ── Availability counter chip ────────────────────────────────────────────
         // Numerator  = counselors available (by group assignment) minus those already placed this period.
         // Denominator = total counselor slots requested across all activities in this period+side.
         function updateCounter(periodNum, side) {
             // Build available set from current group-assignment schedule dropdowns
             const available = new Set();
-            MAIN_COUNSELORS.forEach(c => {
+            getAssignablePool().forEach(c => {
                 const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                 const schedType = sel ? sel.value : (c.ScheduleType || '');
                 if (schedType && isCounselorAvailableFor(schedType, periodNum, side)) available.add(c.CounselorID);
@@ -1037,9 +1050,14 @@
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
                 const key = `${act.PeriodNumber}_${act.SideOfCamp}`;
                 let cnt;
-                if (act.SideOfCamp === 'Sports') {
+                if (/hartt.+chamber/i.test(act.ActivityName) && act.PeriodNumber > 3) {
+                    cnt = 0;
+                } else if (/archery/i.test(act.ActivityName)) {
+                    cnt = 2;
+                } else if (act.SideOfCamp === 'Sports') {
                     const enr = act.PreliminaryEnrollment || 0;
                     cnt = sMin + Math.ceil(Math.max(0, enr - sThr) / sPer);
+                    if (/swim/i.test(act.ActivityName)) cnt = Math.min(cnt, 2);
                 } else {
                     const ag = act.AllowedGroups || '';
                     cnt = ag === 'Red' ? eRed : ag === 'Carolina' ? eCar : ag === 'Red-Carolina' ? eRC : ag === 'Green-Navy' ? eGN : eRC;
@@ -1123,34 +1141,89 @@
             const sportsThreshold = parseInt(document.getElementById('sportsThreshold').value) || 16;
             const sportsPer       = parseInt(document.getElementById('sportsPer').value)       || 8;
             const enrichRed       = parseInt(document.getElementById('enrichRed').value)       || 2;
-            const enrichCarolina  = parseInt(document.getElementById('enrichCarolina').value)  || 1;
+            const enrichCarolina  = parseInt(document.getElementById('enrichCarolina').value)  || 2;
             const enrichRC        = parseInt(document.getElementById('enrichRC').value)        || 2;
-            const enrichGN        = parseInt(document.getElementById('enrichGN').value)        || 1;
+            const enrichGN        = parseInt(document.getElementById('enrichGN').value)        || 2;
 
+            // Step 1: Compute raw slot counts (skip offerings already manually set)
+            const rawCounts = {};
             OFFERINGS.forEach((act, idx) => {
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
+                if (state[idx].counselors.length !== 0) return;
+
                 let count;
-                if (act.SideOfCamp === 'Sports') {
+                if (/hartt.+chamber/i.test(act.ActivityName) && act.PeriodNumber > 3) {
+                    count = 0;
+                } else if (/archery/i.test(act.ActivityName)) {
+                    count = 2;
+                } else if (act.SideOfCamp === 'Sports') {
                     const enrollment = act.PreliminaryEnrollment || 0;
                     count = sportsMin + Math.ceil(Math.max(0, enrollment - sportsThreshold) / sportsPer);
+                    if (/swim/i.test(act.ActivityName)) count = Math.min(count, 2);
                 } else {
                     const ag = act.AllowedGroups || '';
                     if (ag === 'Red')               count = enrichRed;
                     else if (ag === 'Carolina')     count = enrichCarolina;
                     else if (ag === 'Red-Carolina') count = enrichRC;
                     else if (ag === 'Green-Navy')   count = enrichGN;
-                    else                            count = enrichRC; // cross-side or unclassified → RC default
+                    else                            count = enrichRC;
                 }
-                // Only auto-initialize if no count or assignments have been manually set
-                if (state[idx].counselors.length === 0) {
-                    state[idx].counselors = Array(count).fill(null);
-                    const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
-                    if (card) {
-                        const inp = card.querySelector('[data-count-type="counselors"]');
-                        if (inp) inp.value = count;
-                    }
+                rawCounts[idx] = count;
+            });
+
+            // Step 2: Bucket raw counts by period+side; compute supply from current DOM ScheduleTypes
+            const buckets = {};
+            Object.keys(rawCounts).forEach(idxStr => {
+                const idx = parseInt(idxStr);
+                const act = OFFERINGS[idx];
+                const key = `${act.PeriodNumber}_${act.SideOfCamp}`;
+                if (!buckets[key]) {
+                    const period = act.PeriodNumber;
+                    const side   = act.SideOfCamp;
+                    const avail  = getAssignablePool().filter(c => {
+                        const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                        const sched = sel ? sel.value : (c.ScheduleType || '');
+                        return sched && isCounselorAvailableFor(sched, period, side);
+                    }).length;
+                    buckets[key] = { totalRaw: 0, indices: [], avail };
+                }
+                buckets[key].totalRaw += rawCounts[idx];
+                buckets[key].indices.push(idx);
+            });
+
+            // Step 3: Scale down per bucket where raw demand exceeds known supply
+            const finalCounts = { ...rawCounts };
+            Object.values(buckets).forEach(({ totalRaw, indices, avail }) => {
+                if (avail === 0 || totalRaw <= avail) return; // no supply data or already within budget
+                const scale = avail / totalRaw;
+                let used = 0;
+                indices.forEach(idx => {
+                    finalCounts[idx] = rawCounts[idx] === 0 ? 0 : Math.max(1, Math.floor(rawCounts[idx] * scale));
+                    used += finalCounts[idx];
+                });
+                // Distribute remainder to highest-enrollment offerings
+                let rem = avail - used;
+                [...indices]
+                    .filter(idx => rawCounts[idx] > 0)
+                    .sort((a, b) => (OFFERINGS[b].PreliminaryEnrollment || 0) - (OFFERINGS[a].PreliminaryEnrollment || 0))
+                    .forEach(idx => {
+                        if (rem <= 0) return;
+                        finalCounts[idx]++;
+                        rem--;
+                    });
+            });
+
+            // Step 4: Apply to state and DOM
+            OFFERINGS.forEach((act, idx) => {
+                if (finalCounts[idx] == null) return;
+                state[idx].counselors = Array(finalCounts[idx]).fill(null);
+                const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                if (card) {
+                    const inp = card.querySelector('[data-count-type="counselors"]');
+                    if (inp) inp.value = finalCounts[idx];
                 }
             });
+
             renderAllFromState();
             updateAllCounters();
         }
@@ -1206,7 +1279,7 @@
                 const tBlock    = srcPeriod <= 3 ? 'am' : 'pm';
                 const slotCount = state[srcIdx].counselors.length;
                 // Eligible for the source period (skip same-name blockUsed; repeat is intentional)
-                const tEligible = MAIN_COUNSELORS.filter(c => {
+                const tEligible = getAssignablePool().filter(c => {
                     if (usedThisPeriod[srcPeriod].has(c.CounselorID)) return false;
                     const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
@@ -1255,7 +1328,7 @@
                 const oppBlock = block === 'am' ? 'pm' : 'am';
                 const slotPos  = state[bestIdx].counselors.indexOf(null);
 
-                const eligible = MAIN_COUNSELORS.filter(c => {
+                const eligible = getAssignablePool().filter(c => {
                     if (usedThisPeriod[period].has(c.CounselorID)) return false;
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
@@ -1363,7 +1436,7 @@
 
                 for (const side of ['Sports', 'Enrichment']) {
                     // Counselors that should be in this period+side but aren't placed
-                    const extras = MAIN_COUNSELORS.filter(c => {
+                    const extras = getAssignablePool().filter(c => {
                         if (usedThisPeriod.has(c.CounselorID)) return false;
                         const schedSel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                         const sched = schedSel ? schedSel.value : (c.ScheduleType || '');
@@ -1371,10 +1444,12 @@
                     });
                     if (extras.length === 0) continue;
 
-                    // Eligible offerings for this period+side
+                    // Eligible offerings for this period+side (exclude Hartt Chamber PM which always has 0 counselors)
                     const eligibleIdxs = [];
                     OFFERINGS.forEach((act, idx) => {
-                        if (act.PeriodNumber === period && act.SideOfCamp === side) eligibleIdxs.push(idx);
+                        if (act.PeriodNumber !== period || act.SideOfCamp !== side) return;
+                        if (/hartt.+chamber/i.test(act.ActivityName) && act.PeriodNumber > 3) return;
+                        eligibleIdxs.push(idx);
                     });
                     if (eligibleIdxs.length === 0) continue;
 
@@ -1426,8 +1501,13 @@
                             const idxRatio  = (OFFERINGS[idx].PreliminaryEnrollment || 0) / Math.max(state[idx].counselors.length, 1);
                             return idxRatio > bestRatio ? idx : best;
                         });
-                        const mc = manualCounts[targetIdx]?.counselors;
-                        if (mc == null || state[targetIdx].counselors.length < mc) {
+                        const mc  = manualCounts[targetIdx]?.counselors;
+                        const cap = Math.min(
+                            /swim/i.test(OFFERINGS[targetIdx].ActivityName)    ? 2         : Infinity,
+                            /archery/i.test(OFFERINGS[targetIdx].ActivityName) ? 2         : Infinity,
+                            OFFERINGS[targetIdx].SideOfCamp === 'Enrichment'   ? 3         : Infinity
+                        );
+                        if ((mc == null || state[targetIdx].counselors.length < mc) && state[targetIdx].counselors.length < cap) {
                             state[targetIdx].counselors.push(null);
                             newSlots.push({ idx: targetIdx, slotPos: state[targetIdx].counselors.length - 1 });
                         }
@@ -1450,6 +1530,54 @@
                         usedThisPeriod.add(chosen);
                         blockUsed[chosen][block].add(actName);
                         remaining.delete(chosen);
+                        totalAdded++;
+                    }
+                }
+            }
+
+            // Phase 3: Force-place any counselors still missing from required periods (ignores slot caps)
+            for (let p3 = 1; p3 <= 6; p3++) {
+                const block3 = p3 <= 3 ? 'am' : 'pm';
+
+                const usedP3 = new Set();
+                OFFERINGS.forEach((a, i) => {
+                    if (a.PeriodNumber === p3) state[i].counselors.forEach(id => { if (id) usedP3.add(id); });
+                });
+
+                for (const side3 of ['Sports', 'Enrichment']) {
+                    const unplaced = getAssignablePool().filter(c => {
+                        if (usedP3.has(c.CounselorID)) return false;
+                        const sel3   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                        const sched3 = sel3 ? sel3.value : (c.ScheduleType || '');
+                        return isCounselorAvailableFor(sched3, p3, side3);
+                    });
+                    if (unplaced.length === 0) continue;
+
+                    const tIdxs = [];
+                    OFFERINGS.forEach((act, idx) => {
+                        if (act.PeriodNumber !== p3 || act.SideOfCamp !== side3) return;
+                        if (/hartt.+chamber/i.test(act.ActivityName) && act.PeriodNumber > 3) return;
+                        tIdxs.push(idx);
+                    });
+                    if (tIdxs.length === 0) continue;
+
+                    for (const c of unplaced) {
+                        // Prefer variety (no repeated activity name in same block); fall back if needed
+                        let valid = tIdxs.filter(idx =>
+                            !blockUsed[c.CounselorID]?.[block3].has(OFFERINGS[idx].ActivityName) &&
+                            !state[idx].counselors.includes(c.CounselorID)
+                        );
+                        if (valid.length === 0) valid = tIdxs.filter(idx => !state[idx].counselors.includes(c.CounselorID));
+                        if (valid.length === 0) continue;
+
+                        const tIdx = valid.reduce((best, idx) => {
+                            const bR = (OFFERINGS[best].PreliminaryEnrollment || 0) / Math.max(state[best].counselors.length, 1);
+                            const iR = (OFFERINGS[idx].PreliminaryEnrollment  || 0) / Math.max(state[idx].counselors.length,  1);
+                            return iR > bR ? idx : best;
+                        });
+                        state[tIdx].counselors.push(c.CounselorID);
+                        usedP3.add(c.CounselorID);
+                        if (blockUsed[c.CounselorID]) blockUsed[c.CounselorID][block3].add(OFFERINGS[tIdx].ActivityName);
                         totalAdded++;
                     }
                 }
@@ -1505,10 +1633,14 @@
         document.addEventListener('DOMContentLoaded', () => {
             initState();
             renderAllFromState();
-            // Default staff slot count to 1 for sports activities only (enrichment has no staff section)
+            // Default staff slot count to 1 for sports activities, but only if never previously saved
+            // (preserves explicit 0-UL saves — EXISTING[key] exists even when staff array is empty)
             OFFERINGS.forEach((act, idx) => {
                 if (!act.PeriodNumber || act.SideOfCamp !== 'Sports') return;
-                if (state[idx].staff.length === 0) {
+                if (/hartt.+chamber/i.test(act.ActivityName) && act.PeriodNumber > 3) return;
+                if (/swim/i.test(act.ActivityName)) return; // Swim UL assigned manually
+                const key = `${act.PeriodNumber}|${act.ActivityName}`;
+                if (state[idx].staff.length === 0 && !EXISTING[key]) {
                     handleCountChange(idx, 'staff', 1);
                     const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
                     if (card) {

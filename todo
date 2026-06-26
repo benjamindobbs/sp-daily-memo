@@ -1,7 +1,0 @@
-Allow 0 slots to be saved for UL to save
-Force all swim classes to have a max of 2 counselors
-PM Only - Hartt Chamber Program should always have 0 counselors and 0 Unit Leaders
-Archery will always have 2 counselors
-Change the default of all enrichment classes to be 2 counselors and add a 3 counselor cap
-Change initial calculation to account for class ratios across both sides of camp to assign initial slots more fairly
-Counselors are remaining after running full auto. Ensure that all counselors are assigned to a class at the end of the function.
