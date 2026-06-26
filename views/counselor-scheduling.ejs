@@ -1149,12 +1149,33 @@
             const rawCounts = {};
             OFFERINGS.forEach((act, idx) => {
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
+
+                // Hard limits: always enforce regardless of existing state
+                if (/hartt.+chamber/i.test(act.ActivityName) && act.PeriodNumber > 3) {
+                    state[idx].counselors = [];
+                    state[idx].staff = [];
+                    const hCard = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                    if (hCard) {
+                        const hC = hCard.querySelector('[data-count-type="counselors"]');
+                        if (hC) hC.value = 0;
+                        const hS = hCard.querySelector('[data-count-type="staff"]');
+                        if (hS) hS.value = 0;
+                    }
+                    return;
+                }
+                if (/swim/i.test(act.ActivityName) && state[idx].counselors.length > 2) {
+                    state[idx].counselors = state[idx].counselors.slice(0, 2);
+                    const swCard = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                    if (swCard) {
+                        const swC = swCard.querySelector('[data-count-type="counselors"]');
+                        if (swC) swC.value = 2;
+                    }
+                }
+
                 if (state[idx].counselors.length !== 0) return;
 
                 let count;
-                if (/hartt.+chamber/i.test(act.ActivityName) && act.PeriodNumber > 3) {
-                    count = 0;
-                } else if (/archery/i.test(act.ActivityName)) {
+                if (/archery/i.test(act.ActivityName)) {
                     count = 2;
                 } else if (act.SideOfCamp === 'Sports') {
                     const enrollment = act.PreliminaryEnrollment || 0;
@@ -1563,11 +1584,13 @@
 
                     for (const c of unplaced) {
                         // Prefer variety (no repeated activity name in same block); fall back if needed
+                        const belowCap = idx => !(/swim/i.test(OFFERINGS[idx].ActivityName) && state[idx].counselors.length >= 2);
                         let valid = tIdxs.filter(idx =>
+                            belowCap(idx) &&
                             !blockUsed[c.CounselorID]?.[block3].has(OFFERINGS[idx].ActivityName) &&
                             !state[idx].counselors.includes(c.CounselorID)
                         );
-                        if (valid.length === 0) valid = tIdxs.filter(idx => !state[idx].counselors.includes(c.CounselorID));
+                        if (valid.length === 0) valid = tIdxs.filter(idx => belowCap(idx) && !state[idx].counselors.includes(c.CounselorID));
                         if (valid.length === 0) continue;
 
                         const tIdx = valid.reduce((best, idx) => {
