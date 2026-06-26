@@ -1353,6 +1353,10 @@ app.get('/master-schedule', (req, res) => {
             SELECT Location FROM Schedules
             WHERE PersonType = 'Instructor' AND PeriodNumber = ? AND ActivityName = ?
               AND Location IS NOT NULL AND Location != ''
+            UNION
+            SELECT Location FROM StaffWeekSchedules
+            WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ?
+              AND Location IS NOT NULL AND Location != ''
             LIMIT 1
         `);
         const getColorGroups = db.prepare(`
@@ -1393,7 +1397,7 @@ app.get('/master-schedule', (req, res) => {
 
         // Each row in Schedules now uses clock blocks (1-6) — no P3 AM/PM split needed.
         const enriched = classes.map(cls => {
-            const locRow = getLocation.get(cls.periodNumber, cls.activityName);
+            const locRow = getLocation.get(cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName);
             return {
                 ...cls,
                 location:    locRow ? locRow.Location : (cls.location || null),
