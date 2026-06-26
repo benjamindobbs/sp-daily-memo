@@ -1165,6 +1165,15 @@ app.post('/hub-content/:id', (req, res) => {
     res.json({ ok: true });
 });
 
+// --- TEMP DEBUG: activity name hex check ---
+app.get('/debug-activity', (req, res) => {
+    const name = req.query.name || 'Plaster It!';
+    const camper = db.prepare("SELECT DISTINCT ActivityName, hex(ActivityName) AS h FROM Schedules WHERE ActivityName LIKE ? AND PersonType='Camper'").all(`%${name}%`);
+    const staff  = db.prepare("SELECT DISTINCT ActivityName, hex(ActivityName) AS h FROM StaffWeekSchedules WHERE ActivityName LIKE ?").all(`%${name}%`);
+    const csa    = db.prepare("SELECT DISTINCT ActivityName, hex(ActivityName) AS h FROM CounselorScheduleAssignments WHERE ActivityName LIKE ?").all(`%${name}%`);
+    res.json({ camperSchedules: camper, staffWeekSchedules: staff, counselorScheduleAssignments: csa });
+});
+
 // --- DASHBOARD ---
 app.get('/admin', (req, res) => {
     const camperTotal = db.prepare("SELECT COUNT(*) AS count FROM Campers").get().count;
@@ -1398,11 +1407,11 @@ app.get('/master-schedule', (req, res) => {
 
         const getLocation = db.prepare(`
             SELECT Location FROM Schedules
-            WHERE PersonType = 'Instructor' AND PeriodNumber = ? AND ActivityName = ?
+            WHERE PersonType = 'Instructor' AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
               AND Location IS NOT NULL AND Location != ''
             UNION
             SELECT Location FROM StaffWeekSchedules
-            WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ?
+            WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
               AND Location IS NOT NULL AND Location != ''
             LIMIT 1
         `);
@@ -1421,11 +1430,11 @@ app.get('/master-schedule', (req, res) => {
             UNION
             SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
             FROM Counselors st JOIN StaffWeekSchedules sws ON sws.StaffID = st.CounselorID
-            WHERE sws.WeekNumber = ? AND sws.PeriodNumber = ? AND sws.ActivityName = ?
+            WHERE sws.WeekNumber = ? AND sws.PeriodNumber = ? AND sws.ActivityName = ? COLLATE NOCASE
             UNION
             SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
             FROM Counselors st JOIN CounselorScheduleAssignments csa ON csa.PersonID = st.CounselorID
-            WHERE csa.WeekNumber = ? AND csa.PeriodNumber = ? AND csa.ActivityName = ?
+            WHERE csa.WeekNumber = ? AND csa.PeriodNumber = ? AND csa.ActivityName = ? COLLATE NOCASE
               AND csa.PersonType IN ('Instructor', 'Staff')
         `);
         const aw = getActiveWeek();
@@ -1434,7 +1443,7 @@ app.get('/master-schedule', (req, res) => {
                    COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
             FROM Counselors c
             JOIN CounselorWeekSchedules cws
-                ON cws.CounselorID = c.CounselorID AND cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ?
+                ON cws.CounselorID = c.CounselorID AND cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ? COLLATE NOCASE
             LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
             ORDER BY HomeGroupColor, c.LastName
         `);
@@ -1518,7 +1527,7 @@ app.get('/class-roster/:period/:activity', (req, res) => {
             SELECT c.CounselorID, c.FirstName, c.LastName,
                    COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
             FROM Counselors c
-            JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID AND cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ?
+            JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID AND cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ? COLLATE NOCASE
             LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
             ORDER BY HomeGroupColor, c.LastName
         `).all(activeWeek, period, activityName, activeWeek);
@@ -2790,13 +2799,13 @@ app.get('/attendance', (req, res) => {
             const assignments = db.prepare(
                 'SELECT PeriodNumber, ActivityName FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ?'
             ).all(filterCid, getActiveWeek());
-            for (const a of assignments) allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName}`);
+            for (const a of assignments) allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName.toLowerCase()}`);
         } else {
             // Counselors: scheduled in CounselorWeekSchedules
             const assignments = db.prepare(
                 'SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ?'
             ).all(filterCid, getActiveWeek());
-            for (const a of assignments) allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName}`);
+            for (const a of assignments) allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName.toLowerCase()}`);
         }
     }
 
@@ -2998,7 +3007,7 @@ app.get('/attendance', (req, res) => {
     let filteredSpecialtySessions = specialtySessions;
     if (filterCid) {
         filteredClassSessions = classSessions.filter(s =>
-            allowedClasses.has(`${s.filterPeriod}|${s.activityName}`)
+            allowedClasses.has(`${s.filterPeriod}|${s.activityName.toLowerCase()}`)
         );
         if (isStaffMemberFilter) {
             // Instructors/ULs/SLs: no home groups, bus, extended, or specialty
@@ -3285,7 +3294,7 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
         SELECT c.FirstName, c.LastName
         FROM Counselors c
         JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID
-        WHERE cws.PeriodNumber = ? AND cws.ActivityName = ? AND cws.WeekNumber = ?
+        WHERE cws.PeriodNumber = ? AND cws.ActivityName = ? COLLATE NOCASE AND cws.WeekNumber = ?
         ORDER BY c.LastName, c.FirstName
     `).all(period, activityName, getActiveWeek());
 
@@ -4804,17 +4813,17 @@ app.get('/reports/attendance-rosters', (_req, res) => {
             SELECT ca.CamperID, ca.FirstName, ca.LastName
             FROM Campers ca
             JOIN Schedules s ON s.PersonID = ca.CamperID AND s.PersonType = 'Camper'
-            WHERE s.PeriodNumber = ? AND s.ActivityName = ?
+            WHERE s.PeriodNumber = ? AND s.ActivityName = ? COLLATE NOCASE
             ORDER BY ca.LastName, ca.FirstName
         `).all(r.PeriodNumber, r.ActivityName);
 
         const locRow = db.prepare(`
             SELECT Location FROM Schedules
-            WHERE PersonType = 'Instructor' AND PeriodNumber = ? AND ActivityName = ?
+            WHERE PersonType = 'Instructor' AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
               AND Location IS NOT NULL AND Location != ''
             UNION
             SELECT Location FROM StaffWeekSchedules
-            WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ?
+            WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
               AND Location IS NOT NULL AND Location != ''
             LIMIT 1
         `).get(r.PeriodNumber, r.ActivityName, aw, r.PeriodNumber, r.ActivityName);
