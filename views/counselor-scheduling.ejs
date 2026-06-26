@@ -1050,7 +1050,7 @@
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
                 const key = `${act.PeriodNumber}_${act.SideOfCamp}`;
                 let cnt;
-                if (/hartt.+chamber/i.test(act.ActivityName) && act.PeriodNumber > 3) {
+                if (/hartt.+chamber/i.test(act.ActivityName)) {
                     cnt = 0;
                 } else if (/archery/i.test(act.ActivityName)) {
                     cnt = 2;
@@ -1151,7 +1151,7 @@
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
 
                 // Hard limits: always enforce regardless of existing state
-                if (/hartt.+chamber/i.test(act.ActivityName) && act.PeriodNumber > 3) {
+                if (/hartt.+chamber/i.test(act.ActivityName)) {
                     state[idx].counselors = [];
                     state[idx].staff = [];
                     const hCard = document.querySelector(`.offering-card[data-offer="${idx}"]`);
@@ -1465,11 +1465,11 @@
                     });
                     if (extras.length === 0) continue;
 
-                    // Eligible offerings for this period+side (exclude Hartt Chamber PM which always has 0 counselors)
+                    // Eligible offerings for this period+side (exclude Hartt Chamber placeholder which always has 0 counselors)
                     const eligibleIdxs = [];
                     OFFERINGS.forEach((act, idx) => {
                         if (act.PeriodNumber !== period || act.SideOfCamp !== side) return;
-                        if (/hartt.+chamber/i.test(act.ActivityName) && act.PeriodNumber > 3) return;
+                        if (/hartt.+chamber/i.test(act.ActivityName)) return;
                         eligibleIdxs.push(idx);
                     });
                     if (eligibleIdxs.length === 0) continue;
@@ -1577,7 +1577,7 @@
                     const tIdxs = [];
                     OFFERINGS.forEach((act, idx) => {
                         if (act.PeriodNumber !== p3 || act.SideOfCamp !== side3) return;
-                        if (/hartt.+chamber/i.test(act.ActivityName) && act.PeriodNumber > 3) return;
+                        if (/hartt.+chamber/i.test(act.ActivityName)) return;
                         tIdxs.push(idx);
                     });
                     if (tIdxs.length === 0) continue;
@@ -1660,7 +1660,7 @@
             // (preserves explicit 0-UL saves — EXISTING[key] exists even when staff array is empty)
             OFFERINGS.forEach((act, idx) => {
                 if (!act.PeriodNumber || act.SideOfCamp !== 'Sports') return;
-                if (/hartt.+chamber/i.test(act.ActivityName) && act.PeriodNumber > 3) return;
+                if (/hartt.+chamber/i.test(act.ActivityName)) return;
                 if (/swim/i.test(act.ActivityName)) return; // Swim UL assigned manually
                 const key = `${act.PeriodNumber}|${act.ActivityName}`;
                 if (state[idx].staff.length === 0 && !EXISTING[key]) {
