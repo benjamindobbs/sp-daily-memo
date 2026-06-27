@@ -1219,7 +1219,11 @@
                 const scale = avail / totalRaw;
                 let used = 0;
                 indices.forEach(idx => {
-                    finalCounts[idx] = rawCounts[idx] === 0 ? 0 : Math.max(1, Math.floor(rawCounts[idx] * scale));
+                    // Enrichment classes have small fixed requirements — never scale below configured min.
+                    // Sports classes scale down when over-subscribed.
+                    finalCounts[idx] = OFFERINGS[idx].SideOfCamp === 'Enrichment'
+                        ? rawCounts[idx]
+                        : rawCounts[idx] === 0 ? 0 : Math.max(1, Math.floor(rawCounts[idx] * scale));
                     used += finalCounts[idx];
                 });
                 // Distribute remainder to highest-enrollment offerings
@@ -1249,12 +1253,16 @@
             updateAllCounters();
         }
 
-        function buildSchedule() {
+        function buildSchedule(forceReset = false) {
             const mode = document.querySelector('input[name="autoMode"]:checked').value;
             const statusEl = document.getElementById('autoStatus');
             statusEl.textContent = 'Building…';
 
             // Step 1: Set slot counts from slot calculation rules (all start as null)
+            // forceReset clears counselor arrays before autoCalculateSlots so the guard
+            // (state[idx].counselors.length !== 0) never blocks recalculation during Full Auto Build.
+            // Staff/UL arrays are intentionally NOT cleared — they must survive the reset.
+            if (forceReset) OFFERINGS.forEach((_, idx) => { state[idx].counselors = []; });
             autoCalculateSlots();
 
             const prefMap = {};
@@ -1564,7 +1572,10 @@
 
                 const usedP3 = new Set();
                 OFFERINGS.forEach((a, i) => {
-                    if (a.PeriodNumber === p3) state[i].counselors.forEach(id => { if (id) usedP3.add(id); });
+                    if (a.PeriodNumber === p3) {
+                        state[i].counselors.forEach(id => { if (id) usedP3.add(id); });
+                        state[i].staff.forEach(id => { if (id) usedP3.add(id); });
+                    }
                 });
 
                 for (const side3 of ['Sports', 'Enrichment']) {
@@ -1702,7 +1713,7 @@
             if (sessionStorage.getItem('pendingFullAuto')) {
                 sessionStorage.removeItem('pendingFullAuto');
                 autoAssignHomeGroups();
-                buildSchedule();
+                buildSchedule(true);
                 fillExtraCounselors();
                 saveCounselorGroups();
             }
