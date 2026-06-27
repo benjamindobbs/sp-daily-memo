@@ -39,6 +39,13 @@
         .counselor-assign-table tr:last-child td { border-bottom: none; }
         .counselor-assign-table .person-select { min-width: 140px; }
         .cg-bus-input { padding: 5px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.82rem; font-family: inherit; width: 100px; }
+        .search-select { position: relative; width: 100%; }
+        .search-select-input { width: 100%; padding: 5px 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.82rem; font-family: inherit; background: white; box-sizing: border-box; cursor: default; }
+        .search-select-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+        .search-select-dropdown { position: fixed; z-index: 9999; background: white; border: 1px solid var(--border-color); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); max-height: 200px; overflow-y: auto; }
+        .search-select-item { padding: 5px 8px; font-size: 0.82rem; font-family: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .search-select-item:hover, .search-select-item.highlighted { background: #eff6ff; }
+        .search-select-item.selected { background: #dbeafe; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -609,6 +616,128 @@
             return used;
         }
 
+        // ── Searchable dropdown widget ────────────────────────────────────────────
+        // Dropdown appended to document.body with position:fixed to escape overflow:hidden on .period-details.
+        // Caller must clean up by iterating [data-dd-id] inputs before wiping their container (see renderSlots).
+        function createSearchSelect(options, selectedValue) {
+            const wrap = document.createElement('div');
+            wrap.className = 'search-select';
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'search-select-input';
+            input.autocomplete = 'off';
+            input.spellcheck = false;
+
+            const ddId = 'ss-dd-' + Math.random().toString(36).slice(2);
+            const dropdown = document.createElement('div');
+            dropdown.className = 'search-select-dropdown';
+            dropdown.id = ddId;
+            dropdown.style.display = 'none';
+            input.dataset.ddId = ddId;
+            document.body.appendChild(dropdown);
+
+            let currentValue = selectedValue ?? null;
+            let highlightIdx = -1;
+
+            function getLabel(val) {
+                if (val == null) return '';
+                const o = options.find(op => op.value === val);
+                return o ? o.label : '';
+            }
+
+            function position() {
+                const r = input.getBoundingClientRect();
+                dropdown.style.left  = r.left + 'px';
+                dropdown.style.top   = (r.bottom + 2) + 'px';
+                dropdown.style.width = r.width + 'px';
+            }
+
+            function renderItems(filter) {
+                dropdown.innerHTML = '';
+                highlightIdx = -1;
+                const lower = (filter || '').toLowerCase();
+                const clearEl = document.createElement('div');
+                clearEl.className = 'search-select-item';
+                clearEl.textContent = '— Select —';
+                clearEl.dataset.val = '';
+                dropdown.appendChild(clearEl);
+                options.forEach(opt => {
+                    if (lower && !opt.label.toLowerCase().includes(lower)) return;
+                    const el = document.createElement('div');
+                    el.className = 'search-select-item' + (opt.value === currentValue ? ' selected' : '');
+                    el.textContent = opt.label;
+                    el.dataset.val = String(opt.value);
+                    dropdown.appendChild(el);
+                });
+            }
+
+            function open() {
+                position();
+                renderItems('');
+                dropdown.style.display = 'block';
+                const sel = dropdown.querySelector('.selected');
+                if (sel) sel.scrollIntoView({ block: 'nearest' });
+            }
+
+            function close() {
+                dropdown.style.display = 'none';
+                input.value = getLabel(currentValue);
+            }
+
+            function choose(val) {
+                currentValue = val !== '' ? parseInt(val) : null;
+                close();
+                wrap.dispatchEvent(new CustomEvent('change'));
+            }
+
+            Object.defineProperty(wrap, 'value', { get: () => currentValue });
+            input.value = getLabel(currentValue);
+            if (currentValue == null) input.placeholder = '— Select —';
+
+            input.addEventListener('focus', () => { input.select(); open(); });
+
+            input.addEventListener('input', () => {
+                renderItems(input.value);
+                position();
+                dropdown.style.display = 'block';
+            });
+
+            input.addEventListener('keydown', e => {
+                const items = [...dropdown.querySelectorAll('.search-select-item')];
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    items[highlightIdx]?.classList.remove('highlighted');
+                    highlightIdx = Math.min(highlightIdx + 1, items.length - 1);
+                    items[highlightIdx]?.classList.add('highlighted');
+                    items[highlightIdx]?.scrollIntoView({ block: 'nearest' });
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    items[highlightIdx]?.classList.remove('highlighted');
+                    highlightIdx = Math.max(highlightIdx - 1, 0);
+                    items[highlightIdx]?.classList.add('highlighted');
+                    items[highlightIdx]?.scrollIntoView({ block: 'nearest' });
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (items[highlightIdx]) choose(items[highlightIdx].dataset.val);
+                } else if (e.key === 'Escape') {
+                    close(); input.blur();
+                }
+            });
+
+            dropdown.addEventListener('mousedown', e => {
+                const item = e.target.closest('.search-select-item');
+                if (!item) return;
+                e.preventDefault();
+                choose(item.dataset.val);
+            });
+
+            input.addEventListener('blur', () => { setTimeout(close, 150); });
+
+            wrap.appendChild(input);
+            return wrap;
+        }
+
         // ── Render dropdown slots for one offering card ──────────────────────────
         function renderSlots(offerIdx, type) {
             const card = document.querySelector(`.offering-card[data-offer="${offerIdx}"]`);
@@ -635,15 +764,17 @@
 
             const container = card.querySelector(`.slot-dropdowns[data-slot="${type}"]`);
             if (!container) return;
+
+            // Remove body-appended dropdowns from the previous render before wiping the container
+            container.querySelectorAll('[data-dd-id]').forEach(inp => {
+                document.getElementById(inp.dataset.ddId)?.remove();
+            });
             container.innerHTML = '';
 
             arr.forEach((selectedId, slotIdx) => {
                 const usedElsewhere = getUsedElsewhere(offerIdx, type, slotIdx);
 
-                const sel = document.createElement('select');
-                sel.className = 'person-select';
-                sel.appendChild(new Option('— Select —', ''));
-
+                const opts = [];
                 const addedIds = new Set();
                 allPeople.forEach(person => {
                     const id = type === 'counselors' ? person.CounselorID : person.StaffID;
@@ -651,9 +782,7 @@
                     const label = type === 'counselors'
                         ? `${person.FirstName} ${person.LastName}${person.HomeGroupColor ? ` (${person.HomeGroupColor})` : ''}`
                         : `${person.FirstName} ${person.LastName} — ${person.StaffType}`;
-                    const opt = new Option(label, id);
-                    if (id === selectedId) opt.selected = true;
-                    sel.appendChild(opt);
+                    opts.push({ value: id, label });
                     addedIds.add(id);
                 });
 
@@ -667,14 +796,13 @@
                         const label = type === 'counselors'
                             ? `${saved.FirstName} ${saved.LastName}${saved.HomeGroupColor ? ` (${saved.HomeGroupColor})` : ''}`
                             : `${saved.FirstName} ${saved.LastName} — ${saved.StaffType}`;
-                        const opt = new Option(label, selectedId);
-                        opt.selected = true;
-                        sel.appendChild(opt);
+                        opts.push({ value: selectedId, label });
                     }
                 }
 
+                const sel = createSearchSelect(opts, selectedId ?? null);
                 sel.addEventListener('change', () => {
-                    state[offerIdx][type][slotIdx] = sel.value ? parseInt(sel.value) : null;
+                    state[offerIdx][type][slotIdx] = sel.value;
                     // Refresh all slots sharing the same period+side so availability stays consistent
                     OFFERINGS.forEach((a, i) => {
                         if (a.PeriodNumber === period && a.SideOfCamp === side) renderSlots(i, type);
