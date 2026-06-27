@@ -1264,6 +1264,23 @@
             updateGroupCounters();
         }
 
+        // Canonical block-used key: rec swim and swim lessons are the same class for scheduling purposes
+        function blockKey(name) { return /swim/i.test(name) ? 'swim' : name; }
+
+        // Minimum counselors for an enrichment offering based on its AllowedGroups and configured inputs
+        function getEnrichMin(act) {
+            const ag  = act.AllowedGroups || '';
+            const eRed = parseInt(document.getElementById('enrichRed').value)      || 2;
+            const eCar = parseInt(document.getElementById('enrichCarolina').value)  || 1;
+            const eRC  = parseInt(document.getElementById('enrichRC').value)        || 2;
+            const eGN  = parseInt(document.getElementById('enrichGN').value)        || 2;
+            if (ag === 'Red')               return eRed;
+            if (ag === 'Carolina')          return eCar;
+            if (ag === 'Red-Carolina')      return eRC;
+            if (ag === 'Green-Navy')        return eGN;
+            return eRC;
+        }
+
         function autoCalculateSlots() {
             const sportsMin       = parseInt(document.getElementById('sportsMin').value)       || 2;
             const sportsThreshold = parseInt(document.getElementById('sportsThreshold').value) || 16;
@@ -1279,7 +1296,7 @@
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
 
                 // Hard limits: always enforce regardless of existing state
-                if (/hartt.+chamber/i.test(act.ActivityName)) {
+                if (/hartt.+chamber/i.test(act.ActivityName) || /learning.zone/i.test(act.ActivityName)) {
                     state[idx].counselors = [];
                     state[idx].staff = [];
                     const hCard = document.querySelector(`.offering-card[data-offer="${idx}"]`);
@@ -1299,8 +1316,20 @@
                         if (swC) swC.value = 2;
                     }
                 }
+                if (/archery/i.test(act.ActivityName) && state[idx].counselors.length > 2) {
+                    state[idx].counselors = state[idx].counselors.slice(0, 2);
+                    const arCard = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                    if (arCard) {
+                        const arC = arCard.querySelector('[data-count-type="counselors"]');
+                        if (arC) arC.value = 2;
+                    }
+                }
 
                 if (state[idx].counselors.length !== 0) return;
+
+                // Respect counts the user manually typed before running Full Auto Build
+                const mcPre = manualCounts[idx]?.counselors;
+                if (mcPre != null) { rawCounts[idx] = mcPre; return; }
 
                 let count;
                 if (/archery/i.test(act.ActivityName)) {
@@ -1406,7 +1435,7 @@
                 if (!act.PeriodNumber) return;
                 const block = act.PeriodNumber <= 3 ? 'am' : 'pm';
                 state[idx].counselors.forEach(id => {
-                    if (id && id !== -1 && blockUsed[id]) blockUsed[id][block].add(act.ActivityName);
+                    if (id && id !== -1 && blockUsed[id]) blockUsed[id][block].add(blockKey(act.ActivityName));
                 });
             });
 
@@ -1454,7 +1483,7 @@
                         state[tidx].counselors[slot] = chosen.CounselorID;
                         usedThisPeriod[OFFERINGS[tidx].PeriodNumber].add(chosen.CounselorID);
                     }
-                    blockUsed[chosen.CounselorID][tBlock].add(tName);
+                    blockUsed[chosen.CounselorID][tBlock].add(blockKey(tName));
                 }
             }
 
@@ -1491,7 +1520,7 @@
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     if (!isCounselorAvailableFor(sched, period, side)) return false;
-                    if (blockUsed[c.CounselorID]?.[block].has(name)) return false;
+                    if (blockUsed[c.CounselorID]?.[block].has(blockKey(name))) return false;
                     return true;
                 });
 
@@ -1505,7 +1534,7 @@
                     const chosen = pool[0];
                     state[bestIdx].counselors[slotPos] = chosen.CounselorID;
                     usedThisPeriod[period].add(chosen.CounselorID);
-                    blockUsed[chosen.CounselorID][block].add(name);
+                    blockUsed[chosen.CounselorID][block].add(blockKey(name));
                 }
                 madeProgress = true;
             }
@@ -1541,11 +1570,12 @@
                 }
             }
 
-            // Remove unfilled null slots, but preserve manually-set counts
-            OFFERINGS.forEach((_, idx) => {
+            // Remove unfilled null slots, but preserve manually-set counts and enrichment minimums
+            OFFERINGS.forEach((act, idx) => {
                 state[idx].counselors = state[idx].counselors.filter(id => id !== null);
                 const mc = manualCounts[idx]?.counselors;
-                if (mc != null) while (state[idx].counselors.length < mc) state[idx].counselors.push(null);
+                const floor = mc != null ? mc : (act.SideOfCamp === 'Enrichment' ? getEnrichMin(act) : 0);
+                while (state[idx].counselors.length < floor) state[idx].counselors.push(null);
                 const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
                 if (card) {
                     const inp = card.querySelector('[data-count-type="counselors"]');
@@ -1574,7 +1604,7 @@
                 if (!act.PeriodNumber) return;
                 const block = act.PeriodNumber <= 3 ? 'am' : 'pm';
                 state[idx].counselors.forEach(id => {
-                    if (id && blockUsed[id]) blockUsed[id][block].add(act.ActivityName);
+                    if (id && blockUsed[id]) blockUsed[id][block].add(blockKey(act.ActivityName));
                 });
             });
 
@@ -1607,7 +1637,7 @@
                     const eligibleIdxs = [];
                     OFFERINGS.forEach((act, idx) => {
                         if (act.PeriodNumber !== period || act.SideOfCamp !== side) return;
-                        if (/hartt.+chamber/i.test(act.ActivityName)) return;
+                        if (/hartt.+chamber/i.test(act.ActivityName) || /learning.zone/i.test(act.ActivityName)) return;
                         eligibleIdxs.push(idx);
                     });
                     if (eligibleIdxs.length === 0) continue;
@@ -1626,7 +1656,7 @@
                         state[eligIdx].counselors.forEach((id, slotPos) => {
                             if (id !== null || extrasPool.length === 0) return;
                             const eligible_e = extrasPool.filter(c => {
-                                if (blockUsed[c.CounselorID]?.[block].has(actName)) return false;
+                                if (blockUsed[c.CounselorID]?.[block].has(blockKey(actName))) return false;
                                 return true;
                             });
                             const preferred = shuffle(eligible_e.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
@@ -1635,7 +1665,7 @@
                             if (!chosen) return;
                             state[eligIdx].counselors[slotPos] = chosen.CounselorID;
                             usedThisPeriod.add(chosen.CounselorID);
-                            blockUsed[chosen.CounselorID][block].add(actName);
+                            blockUsed[chosen.CounselorID][block].add(blockKey(actName));
                             extrasPool.splice(extrasPool.indexOf(chosen), 1);
                             totalAdded++;
                         });
@@ -1651,7 +1681,7 @@
                         // Only target activities not already run in this block; cross-block repeat only if preferred
                         const valid = eligibleIdxs.filter(idx => {
                             const actName = OFFERINGS[idx].ActivityName;
-                            if (blockUsed[extra.CounselorID][block].has(actName)) return false;
+                            if (blockUsed[extra.CounselorID][block].has(blockKey(actName))) return false;
                             return true;
                         });
                         if (valid.length === 0) continue;
@@ -1678,7 +1708,7 @@
                         if (state[idx].counselors[slotPos] != null) continue;
                         const actName = OFFERINGS[idx].ActivityName;
                         const eligible_r = [...remaining].filter(cid => {
-                            if (blockUsed[cid]?.[block].has(actName)) return false;
+                            if (blockUsed[cid]?.[block].has(blockKey(actName))) return false;
                             return true;
                         });
                         const preferred = shuffle(eligible_r.filter(cid =>  prefMap[cid]?.ActivityPreferences?.includes(actName)));
@@ -1687,7 +1717,7 @@
                         if (chosen == null) continue;
                         state[idx].counselors[slotPos] = chosen;
                         usedThisPeriod.add(chosen);
-                        blockUsed[chosen][block].add(actName);
+                        blockUsed[chosen][block].add(blockKey(actName));
                         remaining.delete(chosen);
                         totalAdded++;
                     }
@@ -1718,17 +1748,22 @@
                     const tIdxs = [];
                     OFFERINGS.forEach((act, idx) => {
                         if (act.PeriodNumber !== p3 || act.SideOfCamp !== side3) return;
-                        if (/hartt.+chamber/i.test(act.ActivityName)) return;
+                        if (/hartt.+chamber/i.test(act.ActivityName) || /learning.zone/i.test(act.ActivityName)) return;
                         tIdxs.push(idx);
                     });
                     if (tIdxs.length === 0) continue;
 
                     for (const c of unplaced) {
                         // Prefer variety (no repeated activity name in same block); fall back if needed
-                        const belowCap = idx => !(/swim/i.test(OFFERINGS[idx].ActivityName) && state[idx].counselors.length >= 2);
+                        const belowCap = idx => {
+                            const a = OFFERINGS[idx];
+                            if (/swim/i.test(a.ActivityName)    && state[idx].counselors.length >= 2) return false;
+                            if (/archery/i.test(a.ActivityName) && state[idx].counselors.length >= 2) return false;
+                            return true;
+                        };
                         let valid = tIdxs.filter(idx =>
                             belowCap(idx) &&
-                            !blockUsed[c.CounselorID]?.[block3].has(OFFERINGS[idx].ActivityName) &&
+                            !blockUsed[c.CounselorID]?.[block3].has(blockKey(OFFERINGS[idx].ActivityName)) &&
                             !state[idx].counselors.includes(c.CounselorID)
                         );
                         if (valid.length === 0) valid = tIdxs.filter(idx => belowCap(idx) && !state[idx].counselors.includes(c.CounselorID));
@@ -1741,7 +1776,7 @@
                         });
                         state[tIdx].counselors.push(c.CounselorID);
                         usedP3.add(c.CounselorID);
-                        if (blockUsed[c.CounselorID]) blockUsed[c.CounselorID][block3].add(OFFERINGS[tIdx].ActivityName);
+                        if (blockUsed[c.CounselorID]) blockUsed[c.CounselorID][block3].add(blockKey(OFFERINGS[tIdx].ActivityName));
                         totalAdded++;
                     }
                 }
@@ -1773,11 +1808,12 @@
                 }
             }
 
-            // Remove unfilled null slots, but preserve manually-set counts
-            OFFERINGS.forEach((_, idx) => {
+            // Remove unfilled null slots, but preserve manually-set counts and enrichment minimums
+            OFFERINGS.forEach((act, idx) => {
                 state[idx].counselors = state[idx].counselors.filter(id => id !== null);
                 const mc = manualCounts[idx]?.counselors;
-                if (mc != null) while (state[idx].counselors.length < mc) state[idx].counselors.push(null);
+                const floor = mc != null ? mc : (act.SideOfCamp === 'Enrichment' ? getEnrichMin(act) : 0);
+                while (state[idx].counselors.length < floor) state[idx].counselors.push(null);
                 const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
                 if (card) {
                     const inp = card.querySelector('[data-count-type="counselors"]');
