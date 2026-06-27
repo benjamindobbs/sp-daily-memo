@@ -87,6 +87,105 @@
             70%  { transform: scale(1.1); }
             100% { transform: scale(1.06); opacity: 1; }
         }
+
+        /* ── Sport Wheel ── */
+        .sport-wheel-card {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+        }
+        .sport-wheel-title {
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--text-muted);
+            margin-bottom: 14px;
+        }
+        .sport-wheel-layout {
+            display: flex;
+            gap: 24px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+        .sport-wheel-list-col { flex: 1 1 220px; }
+        .sport-wheel-list-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 6px;
+        }
+        .sport-wheel-textarea {
+            width: 100%;
+            min-height: 110px;
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-family: inherit;
+            resize: vertical;
+            box-sizing: border-box;
+            line-height: 1.6;
+        }
+        .sport-wheel-textarea:focus { outline: none; border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,0.15); }
+        .sport-wheel-spin-col {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+            padding-top: 24px;
+        }
+        .spin-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 18px;
+            border-radius: 20px;
+            border: none;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+            font-size: 0.88rem;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(245,158,11,0.35);
+            transition: transform 0.1s, box-shadow 0.1s;
+            white-space: nowrap;
+        }
+        .spin-btn:hover { box-shadow: 0 4px 14px rgba(245,158,11,0.45); }
+        .spin-btn:active { transform: scale(0.96); }
+        .spin-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .spin-result {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            border-radius: 12px;
+            background: #fffbeb;
+            border: 2px solid #fbbf24;
+            font-size: 1.25rem;
+            font-weight: 800;
+            color: #92400e;
+            white-space: nowrap;
+        }
+        .spin-result.spinning {
+            display: inline-flex;
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            font-weight: 700;
+        }
+        .spin-result.landed {
+            display: inline-flex;
+            transform: scale(1.06);
+            box-shadow: 0 4px 16px rgba(251,191,36,0.35);
+            animation: pop 0.25s ease-out;
+        }
     </style>
 </head>
 <body>
@@ -117,6 +216,26 @@
         <% if (alertMessage) { %>
             <div class="alert"><%= alertMessage %></div>
         <% } %>
+
+        <!-- ── SPLIT Sport Wheel ─────────────────────────────────── -->
+        <div class="sport-wheel-card">
+            <div class="sport-wheel-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleWheel()">
+                <span>&#127919; SPLIT Sport Wheel</span>
+                <span id="wheelToggleIcon" style="font-size:0.8rem;font-weight:700;color:var(--text-muted);">&#9650;</span>
+            </div>
+            <div id="wheelBody" class="sport-wheel-layout">
+                <div class="sport-wheel-list-col">
+                    <div class="sport-wheel-list-label">Sports &amp; Games <span style="font-weight:400;text-transform:none;letter-spacing:0;">(one per line)</span></div>
+                    <textarea id="sportWheelList" class="sport-wheel-textarea"
+                              placeholder="Kickball&#10;Ultimate Frisbee&#10;Capture the Flag&#10;Four Square&#10;Dodgeball"
+                              oninput="saveWheelList()"></textarea>
+                </div>
+                <div class="sport-wheel-spin-col">
+                    <button class="spin-btn" id="spinBtn" onclick="spinWheel()">&#127919; Spin the Wheel</button>
+                    <span class="spin-result" id="spinResult"></span>
+                </div>
+            </div>
+        </div>
 
         <% if (offerings.length === 0) { %>
             <div class="no-offerings">
@@ -325,6 +444,73 @@
         [1, 2, 5, 6].forEach(p => {
             if (document.getElementById(`draw-remaining-${p}`)) updateRemaining(p);
         });
+
+        // ── Sport Wheel ──────────────────────────────────────────────
+        (function() {
+            const STORAGE_KEY = 'splitSportWheelList';
+            const ta = document.getElementById('sportWheelList');
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved != null) ta.value = saved;
+
+            window.saveWheelList = function() {
+                localStorage.setItem(STORAGE_KEY, ta.value);
+            };
+
+            const body = document.getElementById('wheelBody');
+            const icon = document.getElementById('wheelToggleIcon');
+            if (localStorage.getItem('splitWheelCollapsed') === '1') {
+                body.style.display = 'none';
+                icon.innerHTML = '&#9660;';
+            }
+            window.toggleWheel = function() {
+                const collapsed = body.style.display === 'none';
+                body.style.display = collapsed ? '' : 'none';
+                icon.innerHTML = collapsed ? '&#9650;' : '&#9660;';
+                localStorage.setItem('splitWheelCollapsed', collapsed ? '0' : '1');
+            };
+
+            window.spinWheel = function() {
+                const items = ta.value.split('\n').map(s => s.trim()).filter(Boolean);
+                if (items.length === 0) {
+                    ta.focus();
+                    ta.style.borderColor = '#ef4444';
+                    setTimeout(() => { ta.style.borderColor = ''; }, 1200);
+                    return;
+                }
+
+                const winner = items[Math.floor(Math.random() * items.length)];
+                const btn    = document.getElementById('spinBtn');
+                const result = document.getElementById('spinResult');
+
+                btn.disabled = true;
+                result.className = 'spin-result spinning';
+                result.textContent = '…';
+
+                const TOTAL_MS  = 2200;
+                const START_INT = 55;
+                const END_INT   = 220;
+                let elapsed  = 0;
+                let interval = START_INT;
+                let step     = null;
+
+                function tick() {
+                    result.textContent = items[Math.floor(Math.random() * items.length)];
+                    elapsed += interval;
+                    const progress = Math.min(elapsed / TOTAL_MS, 1);
+                    interval = START_INT + (END_INT - START_INT) * (progress * progress);
+                    if (elapsed >= TOTAL_MS) {
+                        clearTimeout(step);
+                        result.className = 'spin-result landed';
+                        result.textContent = '⭐ ' + winner;
+                        btn.disabled = false;
+                    } else {
+                        step = setTimeout(tick, interval);
+                    }
+                }
+
+                step = setTimeout(tick, interval);
+            };
+        })();
 
         async function saveAssignments() {
             const btn = document.getElementById('saveBtn');
