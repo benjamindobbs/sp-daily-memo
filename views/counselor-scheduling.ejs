@@ -2030,7 +2030,6 @@
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     if (!isCounselorAvailableFor(sched, period, targetSide)) return false;
-                    if (blockUsed[c.CounselorID]?.[block].has(blockKey(name))) return false;
                     return true;
                 });
                 const preferred = shuffle(eligible.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
@@ -2117,7 +2116,7 @@
                     const actName = OFFERINGS[eligIdx].ActivityName;
                     state[eligIdx].counselors.forEach((id, slotPos) => {
                         if (id !== null || extrasPool.length === 0) return;
-                        const elig_e  = extrasPool.filter(c => !blockUsed[c.CounselorID]?.[block].has(blockKey(actName)));
+                        const elig_e  = extrasPool;
                         const pref    = shuffle(elig_e.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
                         const nonP    = shuffle(elig_e.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
                         const chosen  = mode === 'pref' ? (pref[0] ?? null) : (pref[0] ?? nonP[0]);
@@ -2134,7 +2133,7 @@
                 // Phase 2: add new slots for remaining extras
                 const newSlots = [];
                 for (const extra of extrasPool) {
-                    const valid = eligibleIdxs.filter(idx => !blockUsed[extra.CounselorID][block].has(blockKey(OFFERINGS[idx].ActivityName)));
+                    const valid = eligibleIdxs;
                     if (valid.length === 0) continue;
                     const tgtIdx = valid.reduce((best, idx) => {
                         const bR = (OFFERINGS[best].PreliminaryEnrollment || 0) / Math.max(state[best].counselors.length, 1);
@@ -2200,12 +2199,10 @@
                     return true;
                 };
                 for (const c of unplaced) {
-                    let valid = tIdxs.filter(idx =>
+                    const valid = tIdxs.filter(idx =>
                         belowCap(idx) &&
-                        !blockUsed[c.CounselorID]?.[block3].has(blockKey(OFFERINGS[idx].ActivityName)) &&
                         !state[idx].counselors.includes(c.CounselorID)
                     );
-                    if (valid.length === 0) valid = tIdxs.filter(idx => belowCap(idx) && !state[idx].counselors.includes(c.CounselorID));
                     if (valid.length === 0) continue;
                     const tIdx = valid.reduce((best, idx) => {
                         const bR = (OFFERINGS[best].PreliminaryEnrollment || 0) / Math.max(state[best].counselors.length, 1);
@@ -2232,6 +2229,8 @@
                 }
             });
 
+            // Restore blank slots for any offerings still at 0 after compact
+            autoCalculateSlots();
             renderAllFromState();
             updateAllCounters();
             updateGroupCounters();
