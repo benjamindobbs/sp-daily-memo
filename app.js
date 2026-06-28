@@ -928,6 +928,35 @@ db.exec(`CREATE TABLE IF NOT EXISTS CounselorScheduleBackups (
     AssignmentsJSON TEXT    NOT NULL
 )`);
 
+db.exec(`CREATE TABLE IF NOT EXISTS PdfDocuments (
+    slug        TEXT PRIMARY KEY,
+    filename    TEXT,
+    data        BLOB NOT NULL,
+    uploadedAt  DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
+
+// Migrate any PDFs already on disk into the database, then remove them.
+(function migratePdfsFromDisk() {
+    const PDF_SLUGS = [
+        'camper-notes', 'icp-notes', 'am-enrichment-locations',
+        'snack-break-locations', 'lunch-enrichment-locations',
+        'popsicle-break-locations', 'enrichment-map'
+    ];
+    const insert = db.prepare(`INSERT OR IGNORE INTO PdfDocuments (slug, filename, data) VALUES (?, ?, ?)`);
+    for (const slug of PDF_SLUGS) {
+        const filePath = path.join(__dirname, 'uploads', `${slug}.pdf`);
+        if (fs.existsSync(filePath)) {
+            try {
+                insert.run(slug, `${slug}.pdf`, fs.readFileSync(filePath));
+                fs.unlinkSync(filePath);
+                console.log(`[pdf-migrate] ${slug} moved to database`);
+            } catch (e) {
+                console.error(`[pdf-migrate] failed for ${slug}:`, e.message);
+            }
+        }
+    }
+})();
+
 // --- WEEK HELPERS ---
 function getActiveWeek() {
     return db.prepare("SELECT weekNumber FROM Sessions WHERE isActive=1 LIMIT 1").get()?.weekNumber ?? 1;
@@ -1820,8 +1849,9 @@ app.get('/settings', (req, res) => {
         s.counselorCount = totalActiveStaff;
         s.offeringCount  = db.prepare('SELECT COUNT(*) as n FROM WeeklyOfferings WHERE WeekNumber=?').get(s.weekNumber).n;
     });
+    const uploadedSlugs = new Set(db.prepare("SELECT slug FROM PdfDocuments").all().map(r => r.slug));
     const pdfExists = {};
-    PDF_DOCS.forEach(d => { pdfExists[d.slug] = fs.existsSync(path.join(__dirname, 'uploads', `${d.slug}.pdf`)); });
+    PDF_DOCS.forEach(d => { pdfExists[d.slug] = uploadedSlugs.has(d.slug); });
     res.render('settings', {
         activities, periodOverrides, sessions, alertMessage: req.query.message,
         confirmWeek: req.query.confirmWeek || null, weekCount: req.query.weekCount || null,
@@ -5374,7 +5404,8 @@ const ALLOWED_PDF_TYPES = new Set(PDF_DOCS.map(d => d.slug));
 
 app.get('/docs', (_req, res) => {
     const pdfExists = {};
-    PDF_DOCS.forEach(d => { pdfExists[d.slug] = fs.existsSync(path.join(__dirname, 'uploads', `${d.slug}.pdf`)); });
+    const uploadedSlugs = new Set(db.prepare("SELECT slug FROM PdfDocuments").all().map(r => r.slug));
+    PDF_DOCS.forEach(d => { pdfExists[d.slug] = uploadedSlugs.has(d.slug); });
     res.render('docs', { docs: PDF_DOCS, pdfExists });
 });
 
@@ -5386,23 +5417,28 @@ app.post('/upload-pdf/:type', upload.single('file'), (req, res) => {
         fs.unlinkSync(req.file.path);
         return res.redirect('/settings?message=File+must+be+a+PDF');
     }
-    const dest = path.join(__dirname, 'uploads', `${type}.pdf`);
-    fs.renameSync(req.file.path, dest);
+    try {
+        const data = fs.readFileSync(req.file.path);
+        db.prepare(`INSERT OR REPLACE INTO PdfDocuments (slug, filename, data, uploadedAt) VALUES (?, ?, ?, CURRENT_TIMESTAMP)`)
+          .run(type, req.file.originalname, data);
+    } finally {
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    }
     res.redirect('/settings?message=PDF+uploaded+successfully');
 });
 
 app.get('/pdf/:type', (req, res) => {
     const type = req.params.type;
     if (!ALLOWED_PDF_TYPES.has(type)) return res.status(404).send('Not found');
-    const filePath = path.join(__dirname, 'uploads', `${type}.pdf`);
-    if (!fs.existsSync(filePath)) {
+    const doc = db.prepare("SELECT data FROM PdfDocuments WHERE slug = ?").get(type);
+    if (!doc) {
         return res.status(404).type('html').send(
             '<p style="font-family:sans-serif;padding:40px;">No PDF has been uploaded yet. Ask an admin to upload this document via Settings.</p>'
         );
     }
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline');
-    res.sendFile(filePath);
+    res.send(doc.data);
 });
 
 const PORT = process.env.PORT || 3000;

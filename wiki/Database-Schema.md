@@ -456,3 +456,18 @@ Allowlist of admin user names. Checked against the login form.
 |---|---|---|
 | `id` | INTEGER PK | |
 | `name` | TEXT | UNIQUE |
+
+---
+
+## PdfDocuments
+
+Stores uploaded PDF files as BLOBs so they persist across server restarts without relying on the filesystem.
+
+| Column | Type | Notes |
+|---|---|---|
+| `slug` | TEXT PK | Identifies the document type (e.g. `camper-notes`, `enrichment-map`) |
+| `filename` | TEXT | Original filename at upload time |
+| `data` | BLOB | Raw PDF bytes |
+| `uploadedAt` | DATETIME | |
+
+On first startup after this table was added, any existing PDFs in `uploads/` are automatically migrated into this table and removed from disk.
