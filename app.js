@@ -1839,13 +1839,13 @@ app.get('/settings', (req, res) => {
         s.counselorCount = totalActiveStaff;
         s.offeringCount  = db.prepare('SELECT COUNT(*) as n FROM WeeklyOfferings WHERE WeekNumber=?').get(s.weekNumber).n;
     });
-    const hasCamperNotesPdf = fs.existsSync(path.join(__dirname, 'uploads', 'camper-notes.pdf'));
-    const hasIcpNotesPdf    = fs.existsSync(path.join(__dirname, 'uploads', 'icp-notes.pdf'));
+    const pdfExists = {};
+    PDF_DOCS.forEach(d => { pdfExists[d.slug] = fs.existsSync(path.join(__dirname, 'uploads', `${d.slug}.pdf`)); });
     res.render('settings', {
         activities, periodOverrides, sessions, alertMessage: req.query.message,
         confirmWeek: req.query.confirmWeek || null, weekCount: req.query.weekCount || null,
         confirmOfferWeek: req.query.confirmOfferWeek || null, offerCount: req.query.offerCount || null,
-        hasCamperNotesPdf, hasIcpNotesPdf
+        pdfExists, docs: PDF_DOCS
     });
 });
 // --- CREATE STAFF ---
@@ -5289,7 +5289,22 @@ app.get('/reports/name-cards', (_req, res) => {
 
 // ─── DOCUMENT PDF UPLOAD / SERVE ──────────────────────────────────────────────
 
-const ALLOWED_PDF_TYPES = new Set(['camper-notes', 'icp-notes']);
+const PDF_DOCS = [
+    { slug: 'camper-notes',               label: 'Camper Notes',                       icon: '📄' },
+    { slug: 'icp-notes',                  label: 'ICP Notes',                          icon: '📄' },
+    { slug: 'am-enrichment-locations',    label: 'AM Enrichment Meeting Locations',    icon: '🗺️' },
+    { slug: 'snack-break-locations',      label: 'Snack Break Meeting Locations',      icon: '🗺️' },
+    { slug: 'lunch-enrichment-locations', label: 'Lunch Enrichment Meeting Locations', icon: '🗺️' },
+    { slug: 'popsicle-break-locations',   label: 'Popsicle Break Meeting Locations',   icon: '🗺️' },
+    { slug: 'enrichment-map',             label: 'Enrichment Locations Map',           icon: '🗺️' },
+];
+const ALLOWED_PDF_TYPES = new Set(PDF_DOCS.map(d => d.slug));
+
+app.get('/docs', (_req, res) => {
+    const pdfExists = {};
+    PDF_DOCS.forEach(d => { pdfExists[d.slug] = fs.existsSync(path.join(__dirname, 'uploads', `${d.slug}.pdf`)); });
+    res.render('docs', { docs: PDF_DOCS, pdfExists });
+});
 
 app.post('/upload-pdf/:type', upload.single('file'), (req, res) => {
     const type = req.params.type;

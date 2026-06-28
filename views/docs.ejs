@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documents | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .doc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 16px;
+            margin-top: 8px;
+        }
+        .doc-card {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px 20px;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 10px;
+            text-decoration: none;
+            color: var(--text-main);
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .doc-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.1); }
+        .doc-card.unavailable { opacity: 0.5; cursor: default; pointer-events: none; }
+        .doc-icon { font-size: 2.2rem; }
+        .doc-label { font-weight: 700; font-size: 0.95rem; line-height: 1.3; }
+        .doc-status { font-size: 0.78rem; }
+        .doc-status.uploaded { color: #16a34a; }
+        .doc-status.missing  { color: var(--text-muted); font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <% if (viewMode === 'admin') { %>
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/docs" class="nav-btn primary">&#128196; Documents</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
+        <a href="/nurse" class="nav-btn">&#128137; Nurse</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
+    </nav>
+    <% } else { %>
+    <nav class="nav-bar">
+        <a href="/staff" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/docs" class="nav-btn primary">&#128196; Documents</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="admin">
+            <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
+        </form>
+    </nav>
+    <% } %>
+
+    <div class="container">
+        <header style="margin-bottom: 24px;">
+            <h1>&#128196; Documents</h1>
+            <p style="color: var(--text-muted); margin: 4px 0 0 0;">Camp reference documents. Click a card to open the PDF.</p>
+            <% if (viewMode === 'admin') { %>
+            <p style="color: var(--text-muted); font-size: 0.82rem; margin: 6px 0 0 0;">Upload or replace documents in <a href="/settings" style="color:var(--primary);">Settings → Documents</a>.</p>
+            <% } %>
+        </header>
+
+        <div class="doc-grid">
+            <% docs.forEach(function(doc) {
+                const hasFile = pdfExists[doc.slug];
+            %>
+            <a href="/pdf/<%= doc.slug %>" target="_blank"
+               class="doc-card<%= hasFile ? '' : ' unavailable' %>">
+                <div class="doc-icon"><%= doc.icon %></div>
+                <div class="doc-label"><%= doc.label %></div>
+                <div class="doc-status <%= hasFile ? 'uploaded' : 'missing' %>">
+                    <% if (hasFile) { %>&#10003; Available<% } else { %>Not uploaded yet<% } %>
+                </div>
+            </a>
+            <% }); %>
+        </div>
+    </div>
+
+</body>
+</html>
