@@ -74,6 +74,8 @@ Imports have dependencies. Always follow this sequence for a fresh setup:
 
 **Period mapping:** Red/Carolina group ordinal periods are remapped to clock blocks during import (ordinal 3→block 4, 4→5, 5→6). Green/Navy ordinals already equal clock blocks.
 
+**Page-break handling:** CampBrain's CSV export repeats header blocks at each page boundary, and occasionally splits a camper's row across two pages (first name, shirt size, and some activity names land on the next page). The parser automatically strips repeated header blocks and merges split rows by concatenating the continuation fields back into the correct column positions. No manual CSV editing is needed.
+
 ---
 
 ## Instructor Schedules

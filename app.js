@@ -2360,7 +2360,55 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
     }
 });
 
-// Master Schedule upload: enriches existing campers with grade, bus, extended hours, and P1–P5 schedules.
+// Strips CampBrain page-break artifacts from an ACR-255 CSV export, then merges any
+// continuation rows (where a camper's data was split across a page boundary) back into
+// their base rows by concatenating the non-empty fields at each column position.
+function preprocessACR255CSV(rawText) {
+    const lines = rawText.split(/\r?\n/);
+    const cleaned = [];
+    let inPageBreak = false;
+    let foundHeader = false;
+
+    for (const line of lines) {
+        if (/^Master Camper Schedule/i.test(line)) { inPageBreak = true; continue; }
+        if (/^"?Camper"?,"?Shirt"?/i.test(line)) {
+            inPageBreak = false;
+            if (!foundHeader) { foundHeader = true; cleaned.push(line); }
+            continue; // skip repeated headers
+        }
+        if (inPageBreak || !foundHeader || !line.trim()) continue;
+        cleaned.push(line);
+    }
+
+    // A continuation row is any non-header row whose first field is not in "Last, First"
+    // quoted format (i.e. does not open with a quoted string containing a comma).
+    const result = [];
+    for (const line of cleaned) {
+        if (/^"?Camper"?,"?Shirt"?/i.test(line) || /^"[^"]+,[^"]+"/.test(line)) {
+            result.push(line);
+        } else if (result.length > 0) {
+            // Merge continuation fields onto the previous row
+            const base = parseCsvLine(result[result.length - 1]);
+            const cont = parseCsvLine(line);
+            const len = Math.max(base.length, cont.length);
+            const merged = [];
+            for (let i = 0; i < len; i++) {
+                const b = base[i] || '';
+                const c = (cont[i] || '').trim();
+                merged.push(c ? b + c : b);
+            }
+            result[result.length - 1] = merged.map(f => {
+                if (f.includes(',') || f.includes('"') || f.includes('\n'))
+                    return '"' + f.replace(/"/g, '""') + '"';
+                return f;
+            }).join(',');
+        }
+    }
+
+    return result.join('\n');
+}
+
+// ACR-255 upload: enriches existing campers with grade, bus, extended hours, and P1–P5 schedules.
 // Update-only — never inserts (ACR-005 is the roster authority).
 app.post('/upload-campers-schedule', upload.single('file'), (req, res) => {
     if (!req.file) return res.redirect('/settings?message=No+file+uploaded');
@@ -2370,11 +2418,9 @@ app.post('/upload-campers-schedule', upload.single('file'), (req, res) => {
     catch (e) { return res.redirect('/settings?message=File+Read+Error'); }
     finally { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); }
 
-    // Find the real header row (starts with "Camper,Shirt" or similar)
-    const lines = rawText.split(/\r?\n/);
-    const headerIdx = lines.findIndex(l => /^"?Camper"?,"?Shirt"?/i.test(l));
-    if (headerIdx === -1) return res.redirect('/settings?message=Invalid+file+format+(Master+Schedule+expected)');
-    const csvSlice = lines.slice(headerIdx).join('\n');
+    const csvSlice = preprocessACR255CSV(rawText);
+    if (!csvSlice || !/^"?Camper"?,"?Shirt"?/i.test(csvSlice.split(/\r?\n/)[0]))
+        return res.redirect('/settings?message=Invalid+file+format+(Master+Camper+Schedule+ACR-255+expected)');
 
     const results = [];
     const Readable = require('stream').Readable;
@@ -2426,7 +2472,7 @@ app.post('/upload-campers-schedule', upload.single('file'), (req, res) => {
             for (const { weekNumber } of allSessions) {
                 try { syncOfferingsForWeek(weekNumber); } catch(e) { console.error('[sync offerings]', e.message); }
             }
-            res.redirect('/settings?message=Master+Schedule+Import+Success+(offerings+synced)');
+            res.redirect('/settings?message=Master+Camper+Schedule+Import+Success+(offerings+synced)');
         } catch (err) {
             console.error('Master Schedule upload error:', err);
             res.redirect('/settings?message=Database+Error+Check+Console');
