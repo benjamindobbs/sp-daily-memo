@@ -82,6 +82,7 @@
                         <th>Home Group</th>
                         <th>Schedule Type</th>
                         <th>Activity Preferences</th>
+                        <th>Pref Match</th>
                         <th>Submitted</th>
                     </tr>
                 </thead>
@@ -92,6 +93,7 @@
                         <td>
                             <% if (r.HomeGroupPreference) { %>
                                 <span class="pref-chip hg"><%= r.HomeGroupPreference %></span>
+                                <% if (r.hgMatch) { %><span style="color:#15803d; font-weight:700; margin-left:4px;">✓</span><% } %>
                             <% } else { %>
                                 <span class="no-pref">—</span>
                             <% } %>
@@ -99,6 +101,7 @@
                         <td>
                             <% if (r.SchedulePreference) { %>
                                 <span class="pref-chip sched"><%= r.SchedulePreference %></span>
+                                <% if (r.schedMatch) { %><span style="color:#1d4ed8; font-weight:700; margin-left:4px;">✓</span><% } %>
                             <% } else { %>
                                 <span class="no-pref">—</span>
                             <% } %>
@@ -139,6 +142,16 @@
                                     <% } %>
                                 </div>
                             </details>
+                            <% } %>
+                        </td>
+                        <td style="white-space:nowrap;">
+                            <% if (r.assignedCount > 0) { %>
+                                <% const pct = r.assignedCount > 0 ? Math.round(r.matchedCount / r.assignedCount * 100) : 0; %>
+                                <span style="font-weight:700; color:<%= r.matchedCount === r.assignedCount ? '#15803d' : r.matchedCount === 0 ? '#b91c1c' : '#92400e' %>;">
+                                    <%= r.matchedCount %>/<%= r.assignedCount %>
+                                </span>
+                            <% } else { %>
+                                <span class="no-pref">—</span>
                             <% } %>
                         </td>
                         <td>

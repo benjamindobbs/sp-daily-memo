@@ -4741,6 +4741,7 @@ app.get('/counselor-preferences-summary', (_req, res) => {
         SELECT c.CounselorID, c.FirstName, c.LastName, c.StaffRole,
                c.HomeGroupColor AS defaultColor,
                cwa.HomeGroupColor AS weekColor,
+               cwa.ScheduleType AS weekScheduleType,
                p.HomeGroupPreference, p.SchedulePreference, p.ActivityPreferences, p.SubmittedAt
         FROM Counselors c
         LEFT JOIN CounselorWeekAttributes cwa ON c.CounselorID = cwa.CounselorID AND cwa.WeekNumber = ?
@@ -4755,6 +4756,15 @@ app.get('/counselor-preferences-summary', (_req, res) => {
     const activityMap = {};
     weekActivities.forEach(a => { activityMap[a.Name] = a.SideOfCamp; });
 
+    const assignmentRows = db.prepare(
+        "SELECT CounselorID, ActivityName FROM CounselorWeekSchedules WHERE WeekNumber = ?"
+    ).all(activeWeek);
+    const assignmentMap = {};
+    for (const a of assignmentRows) {
+        if (!assignmentMap[a.CounselorID]) assignmentMap[a.CounselorID] = [];
+        assignmentMap[a.CounselorID].push(a.ActivityName);
+    }
+
     const MAIN_COLORS    = new Set(['Red', 'Carolina', 'Green', 'Navy']);
     const SPECIALTY_COLORS = new Set(['LilPlace', 'KinderPlace', 'SPLIT', 'SPRC', 'Swim']);
 
@@ -4762,14 +4772,22 @@ app.get('/counselor-preferences-summary', (_req, res) => {
         const effectiveColor = c.weekColor || c.defaultColor || '';
         const isSpecialty = c.StaffRole === 'Swim Counselor' || SPECIALTY_COLORS.has(effectiveColor);
         const inMainCamp  = MAIN_COLORS.has(effectiveColor);
-        // Excluded from counts if purely specialty (not also assigned to a main-camp color group)
         const excludeFromStats = isSpecialty && !inMainCamp;
 
         const prefs = c.ActivityPreferences ? JSON.parse(c.ActivityPreferences) : [];
         const sports = prefs.filter(n => activityMap[n] === 'Sports');
         const enrichment = prefs.filter(n => activityMap[n] === 'Enrichment');
         const unclassified = prefs.filter(n => !activityMap[n]);
-        return { ...c, sports, enrichment, unclassified, hasPrefs: !!c.HomeGroupPreference, excludeFromStats };
+
+        const assigned = assignmentMap[c.CounselorID] || [];
+        const assignedCount = assigned.length;
+        const matchedCount = assigned.filter(a => prefs.includes(a)).length;
+
+        const hgMatch = c.HomeGroupPreference && effectiveColor && c.HomeGroupPreference === effectiveColor;
+        const schedMatch = c.SchedulePreference && c.weekScheduleType && c.SchedulePreference === c.weekScheduleType;
+
+        return { ...c, sports, enrichment, unclassified, hasPrefs: !!c.HomeGroupPreference, excludeFromStats,
+                 assignedCount, matchedCount, hgMatch, schedMatch };
     });
 
     res.render('counselor-preferences-summary', { rows, activeWeek });
