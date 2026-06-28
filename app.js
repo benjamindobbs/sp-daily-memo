@@ -4670,9 +4670,9 @@ app.get('/export-master-schedule', (_req, res) => {
                WHERE sws.WeekNumber = ${aw} AND sws.PeriodNumber = s.PeriodNumber AND sws.ActivityName = s.ActivityName
                UNION
                SELECT c.FirstName || ' ' || c.LastName AS name
-               FROM Counselors c JOIN CounselorWeekSchedules cws ON c.CounselorID = cws.CounselorID
-               WHERE cws.WeekNumber = ${aw} AND cws.PeriodNumber = s.PeriodNumber AND cws.ActivityName = s.ActivityName
-                 AND c.StaffRole IN ('Unit Leader', 'Sports Leader')
+               FROM Counselors c JOIN CounselorScheduleAssignments csa ON c.CounselorID = csa.PersonID
+               WHERE csa.WeekNumber = ${aw} AND csa.PeriodNumber = s.PeriodNumber AND csa.ActivityName = s.ActivityName
+                 AND c.StaffRole IN ('Unit Leader', 'Sports Leader', 'Instructor')
              )) AS Staff,
             COALESCE(
               (SELECT sws.Location FROM StaffWeekSchedules sws
