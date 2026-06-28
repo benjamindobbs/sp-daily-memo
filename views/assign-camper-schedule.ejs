@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assign Classes | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Schedule</a>
+        <a href="/settings" class="nav-btn primary">&#9881;&#65039; Settings</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
+        <a href="/nurse" class="nav-btn">&#128137; Nurse</a>
+    </nav>
+
+    <div class="container">
+        <header style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h1 style="margin: 0 0 4px;">Assign Classes</h1>
+                <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">Select a period, then pick an activity.</p>
+            </div>
+            <a href="/settings" class="btn">&#8592; Done &mdash; Back to Settings</a>
+        </header>
+
+        <% if (alertMessage) { %>
+            <div class="alert"><%= alertMessage %></div>
+        <% } %>
+
+        <div class="swap-grid">
+            <div class="sidebar">
+                <div class="card" style="margin-bottom: 20px;">
+                    <span class="tag <%= camper.HomeGroupColor %>"><%= camper.HomeGroupColor || 'No Group' %></span>
+                    <h2 style="margin: 10px 0 5px 0;"><%= camper.FirstName %> <%= camper.LastName %></h2>
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">Select a period to assign a class.</p>
+                </div>
+
+                <% if (periods.length === 0) { %>
+                    <div class="card" style="color: var(--text-muted); font-size: 0.875rem;">
+                        No periods configured for this home group color. Classes can be assigned via the Swap Tool once the camper has a schedule.
+                    </div>
+                <% } %>
+
+                <% periods.forEach(p => { %>
+                    <div class="card period-card" id="period-<%= p.clockBlock %>"
+                         onclick="loadOptions('<%= camper.CamperID %>', '<%= p.clockBlock %>', '<%= p.side %>', this)">
+                        <div>
+                            <small style="text-transform: uppercase; color: var(--text-muted); font-weight: bold;">
+                                <%= p.label %> &mdash; Period <%= p.clockBlock %>
+                            </small>
+                            <div style="font-weight: 600;">
+                                <%= schedMap[p.clockBlock] || '— Unassigned —' %>
+                            </div>
+                        </div>
+                        <span style="color: var(--primary);">&#8594;</span>
+                    </div>
+                <% }) %>
+            </div>
+
+            <div class="main-content">
+                <div id="controls-container" style="display: none;">
+                    <div class="card" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <div id="side-indicator" style="font-weight: bold; color: var(--primary);"></div>
+                        <input type="text" id="activitySearch" placeholder="Filter activities..."
+                               onkeyup="filterActivities()" class="search-bar" style="max-width: 250px;">
+                    </div>
+                    <div id="options-container"></div>
+                </div>
+
+                <div id="placeholder-msg" class="card" style="text-align: center; padding: 100px; color: var(--text-muted);">
+                    <span style="font-size: 3rem;">&#128072;</span>
+                    <p>Select a period on the left to see available classes.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentOptions = [];
+        let activeCamperId = '<%= camper.CamperID %>';
+        let activePeriod = null;
+
+        async function loadOptions(camperId, period, side, element) {
+            document.querySelectorAll('.period-card').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+            document.getElementById('controls-container').style.display = 'block';
+            document.getElementById('placeholder-msg').style.display = 'none';
+
+            activePeriod = period;
+
+            const res = await fetch(`/get-new-camper-options/${camperId}/${period}`);
+            const data = await res.json();
+            currentOptions = data.options;
+
+            const sideLabel = data.sideOfCamp ? ` · ${data.sideOfCamp}` : '';
+            document.getElementById('side-indicator').innerText = `Options for Period ${period}${sideLabel}`;
+            document.getElementById('activitySearch').value = '';
+            renderList();
+        }
+
+        function renderList() {
+            const term = document.getElementById('activitySearch').value.toLowerCase();
+            const container = document.getElementById('options-container');
+
+            const filtered = currentOptions.filter(opt => opt.Name.toLowerCase().includes(term));
+
+            container.innerHTML = filtered.map(opt => {
+                const isFull = opt.CurrentEnrollment >= opt.MaxCapacity;
+                const statusClass = isFull ? 'option-full' : 'option-open';
+                const warning = isFull
+                    ? `onclick="return confirm('This class is FULL. Camper will be added to WAITLIST. Proceed?')"`
+                    : '';
+
+                return `
+                    <a href="/assign-camper-class?camperId=${activeCamperId}&period=${activePeriod}&activity=${encodeURIComponent(opt.Name)}"
+                       class="option-link ${statusClass}" ${warning}>
+                        <div class="option-inner">
+                            <div>
+                                <strong>${opt.Name}</strong>
+                                ${isFull ? '<br><small class="waitlist-warning">Will trigger waitlist</small>' : ''}
+                            </div>
+                            <div class="capacity-pill">${opt.CurrentEnrollment} / ${opt.MaxCapacity}</div>
+                        </div>
+                    </a>
+                `;
+            }).join('') || '<p style="color:var(--text-muted); padding: 12px 0;">No activities available for this period.</p>';
+        }
+
+        function filterActivities() { renderList(); }
+    </script>
+</body>
+</html>

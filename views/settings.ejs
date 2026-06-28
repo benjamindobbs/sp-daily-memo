@@ -400,6 +400,138 @@
             </div>
         </div>
 
+        <div class="card" style="margin-top:24px;">
+            <h2 style="margin:0 0 16px;">&#128100; Add Staff Member</h2>
+            <form action="/create-staff" method="POST">
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">First Name *</label>
+                        <input type="text" name="firstName" required placeholder="First" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; min-width:110px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Last Name *</label>
+                        <input type="text" name="lastName" required placeholder="Last" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; min-width:110px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Role</label>
+                        <select name="staffRole" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem;">
+                            <option value="Counselor">Counselor</option>
+                            <option value="Swim Counselor">Swim Counselor</option>
+                            <option value="Unit Leader">Unit Leader</option>
+                            <option value="Sports Leader">Sports Leader</option>
+                            <option value="Instructor">Instructor</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Home Group Color</label>
+                        <select name="homeGroupColor" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem;">
+                            <option value="">— None —</option>
+                            <option value="Red">Red</option>
+                            <option value="Carolina">Carolina</option>
+                            <option value="Green">Green</option>
+                            <option value="Navy">Navy</option>
+                            <option value="LilPlace">LilPlace</option>
+                            <option value="KinderPlace">KinderPlace</option>
+                            <option value="SPLIT">SPLIT</option>
+                            <option value="SPRC">SPRC</option>
+                            <option value="Swim">Swim</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Schedule Type</label>
+                        <select name="scheduleType" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem;">
+                            <option value="">— Auto —</option>
+                            <option value="All Sports">All Sports</option>
+                            <option value="All Enrichment">All Enrichment</option>
+                            <option value="AM Sports / PM Enrichment">AM Sports / PM Enrichment</option>
+                            <option value="AM Enrichment / PM Sports">AM Enrichment / PM Sports</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Bus Route</label>
+                        <input type="text" name="busRoute" placeholder="Optional" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; min-width:90px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Extended Hours</label>
+                        <select name="extendedHours" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem;">
+                            <option value="">— None —</option>
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                            <option value="Both">Both</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Phone</label>
+                        <input type="text" name="phone" placeholder="Optional" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; min-width:110px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Email</label>
+                        <input type="text" name="email" placeholder="Optional" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; min-width:140px;">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="padding:7px 18px; white-space:nowrap;">Add Staff</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="card" style="margin-top:24px;">
+            <h2 style="margin:0 0 16px;">&#127978; Add Camper</h2>
+            <form action="/create-camper" method="POST">
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">First Name *</label>
+                        <input type="text" name="firstName" required placeholder="First" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; min-width:110px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Last Name *</label>
+                        <input type="text" name="lastName" required placeholder="Last" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; min-width:110px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Grade</label>
+                        <input type="number" name="grade" placeholder="0" min="0" max="12" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; width:70px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Home Group Color</label>
+                        <select name="homeGroupColor" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem;">
+                            <option value="">— None —</option>
+                            <option value="Red">Red</option>
+                            <option value="Carolina">Carolina</option>
+                            <option value="Green">Green</option>
+                            <option value="Navy">Navy</option>
+                            <option value="LilPlace">LilPlace</option>
+                            <option value="KinderPlace">KinderPlace</option>
+                            <option value="SPLIT">SPLIT</option>
+                            <option value="SPRC">SPRC</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Bus Route</label>
+                        <input type="text" name="busRoute" placeholder="Optional" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; min-width:90px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Extended Hours</label>
+                        <select name="extendedHours" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem;">
+                            <option value="">— None —</option>
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                            <option value="Both">Both</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Camp Lunch</label>
+                        <select name="campLunch" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem;">
+                            <option value="No">No</option>
+                            <option value="Yes">Yes</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Shirt Size</label>
+                        <input type="text" name="shirtSize" placeholder="Optional" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; min-width:80px;">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="padding:7px 18px; white-space:nowrap;">Add Camper &amp; Assign Classes</button>
+                </div>
+            </form>
+        </div>
+
     </div>
 
 </body>

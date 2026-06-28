@@ -277,6 +277,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/case-log', '/case-log/archive',
     '/split-scheduling', '/save-split-assignments',
     '/reports', '/upload-pdf',
+    '/create-staff', '/create-camper', '/assign-camper-schedule', '/get-new-camper-options', '/assign-camper-class',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -1847,6 +1848,198 @@ app.get('/settings', (req, res) => {
         hasCamperNotesPdf, hasIcpNotesPdf
     });
 });
+// --- CREATE STAFF ---
+app.post('/create-staff', (req, res) => {
+    const firstName = (req.body.firstName || '').trim();
+    const lastName  = (req.body.lastName  || '').trim();
+    if (!firstName || !lastName) return res.redirect('/settings?message=First+and+last+name+required');
+
+    const staffRole     = (req.body.staffRole     || 'Counselor').trim();
+    const homeGroupColor = (req.body.homeGroupColor || '').trim() || null;
+    const scheduleType  = (req.body.scheduleType  || '').trim() || null;
+    const busRoute      = (req.body.busRoute      || '').trim() || null;
+    const extendedHours = (req.body.extendedHours || '').trim() || null;
+    const phone         = (req.body.phone         || '').trim() || null;
+    const email         = (req.body.email         || '').trim() || null;
+
+    try {
+        const result = db.prepare(`
+            INSERT INTO Counselors (FirstName, LastName, StaffRole, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours, Phone, Email)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(firstName, lastName, staffRole, homeGroupColor, scheduleType, busRoute, extendedHours, phone, email);
+
+        const newId = result.lastInsertRowid;
+        const aw = getActiveWeek();
+        db.prepare(`
+            INSERT OR IGNORE INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `).run(newId, aw, homeGroupColor, scheduleType, busRoute, extendedHours);
+
+        res.redirect('/settings?message=Staff+member+added');
+    } catch (err) {
+        console.error(err);
+        res.redirect('/settings?message=Error+adding+staff+member');
+    }
+});
+
+// --- CREATE CAMPER ---
+app.post('/create-camper', (req, res) => {
+    const firstName = (req.body.firstName || '').trim();
+    const lastName  = (req.body.lastName  || '').trim();
+    if (!firstName || !lastName) return res.redirect('/settings?message=First+and+last+name+required');
+
+    const grade         = parseInt(req.body.grade) || 0;
+    const homeGroupColor = (req.body.homeGroupColor || '').trim() || null;
+    const busRoute      = (req.body.busRoute      || '').trim() || null;
+    const extendedHours = (req.body.extendedHours || '').trim() || null;
+    const campLunch     = (req.body.campLunch     || 'No').trim();
+    const shirtSize     = (req.body.shirtSize     || '').trim() || null;
+
+    try {
+        const result = db.prepare(`
+            INSERT INTO Campers (FirstName, LastName, Grade, Age, HomeGroupColor, BusRoute, ExtendedHours, CampLunch, ShirtSize)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(firstName, lastName, grade, grade, homeGroupColor, busRoute, extendedHours, campLunch, shirtSize);
+
+        const newId = result.lastInsertRowid;
+        res.redirect(`/assign-camper-schedule/${newId}`);
+    } catch (err) {
+        console.error(err);
+        res.redirect('/settings?message=Error+adding+camper');
+    }
+});
+
+// --- ASSIGN CAMPER SCHEDULE (view) ---
+app.get('/assign-camper-schedule/:id', (req, res) => {
+    const id = req.params.id;
+    const camper = db.prepare('SELECT * FROM Campers WHERE CamperID = ?').get(id);
+    if (!camper) return res.redirect('/settings?message=Camper+not+found');
+
+    const scheduleRows = db.prepare(`
+        SELECT PeriodNumber, ActivityName FROM Schedules
+        WHERE PersonID = ? AND PersonType = 'Camper'
+        ORDER BY PeriodNumber ASC
+    `).all(id);
+
+    const schedMap = {};
+    scheduleRows.forEach(r => { schedMap[r.PeriodNumber] = r.ActivityName; });
+
+    const color = camper.HomeGroupColor;
+    let periods = [];
+    if (color === 'Red' || color === 'Carolina') {
+        periods = [
+            { clockBlock: 1, side: 'Enrichment', label: 'E1' },
+            { clockBlock: 2, side: 'Enrichment', label: 'E2' },
+            { clockBlock: 4, side: 'Sports',     label: 'S4' },
+            { clockBlock: 5, side: 'Sports',     label: 'S5' },
+            { clockBlock: 6, side: 'Sports',     label: 'S6' },
+        ];
+    } else if (color === 'Green' || color === 'Navy') {
+        periods = [
+            { clockBlock: 1, side: 'Sports',     label: 'S1' },
+            { clockBlock: 2, side: 'Sports',     label: 'S2' },
+            { clockBlock: 3, side: 'Sports',     label: 'S3' },
+            { clockBlock: 4, side: 'Enrichment', label: 'E3' },
+            { clockBlock: 5, side: 'Enrichment', label: 'E4' },
+        ];
+    }
+
+    res.render('assign-camper-schedule', {
+        camper, schedMap, periods, alertMessage: req.query.message || null
+    });
+});
+
+// --- GET OPTIONS FOR NEW CAMPER (AJAX) ---
+app.get('/get-new-camper-options/:camperId/:period', (req, res) => {
+    const { camperId, period } = req.params;
+    const week = getActiveWeek();
+
+    const camper = db.prepare('SELECT HomeGroupColor FROM Campers WHERE CamperID = ?').get(camperId);
+    const color = camper ? camper.HomeGroupColor : null;
+
+    // Derive side of camp from color + period
+    let sideOfCamp = null;
+    const p = parseInt(period);
+    if (color === 'Red' || color === 'Carolina') {
+        sideOfCamp = p <= 2 ? 'Enrichment' : 'Sports';
+    } else if (color === 'Green' || color === 'Navy') {
+        sideOfCamp = p <= 3 ? 'Sports' : 'Enrichment';
+    }
+
+    const options = db.prepare(`
+        WITH effective AS (
+            SELECT wo.ActivityName AS Name, wo.SideOfCamp,
+                   COALESCE(wo.MaxCapacity, a.MaxCapacity) AS MaxCapacity,
+                   COALESCE(apg.AllowedGroups, a.AllowedGroups) AS EffectiveGroups,
+                   (SELECT COUNT(*) FROM Schedules s
+                    WHERE s.ActivityName = wo.ActivityName AND s.PeriodNumber = @period AND s.PersonType = 'Camper') AS CurrentEnrollment
+            FROM WeeklyOfferings wo
+            JOIN Activities a ON a.Name = wo.ActivityName
+            LEFT JOIN ActivityPeriodGroups apg
+                   ON apg.ActivityName = wo.ActivityName AND apg.PeriodNumber = @period
+            WHERE wo.PeriodNumber = @period AND wo.WeekNumber = @week
+        )
+        SELECT * FROM effective
+        WHERE (@sideOfCamp IS NULL OR SideOfCamp = @sideOfCamp)
+          AND (
+              EffectiveGroups IS NULL OR
+              EffectiveGroups = @color OR
+              (EffectiveGroups = 'Red-Carolina' AND @color IN ('Red', 'Carolina')) OR
+              (EffectiveGroups = 'Green-Navy'   AND @color IN ('Green', 'Navy'))
+          )
+        ORDER BY CurrentEnrollment ASC, Name ASC
+    `).all({ period, color, sideOfCamp, week });
+
+    res.json({ options, sideOfCamp });
+});
+
+// --- ASSIGN CAMPER CLASS ---
+app.get('/assign-camper-class', (req, res) => {
+    const { camperId, period, activity } = req.query;
+    if (!camperId || !period || !activity) {
+        return res.redirect('/settings?message=Missing+parameters');
+    }
+
+    const act = db.prepare('SELECT * FROM Activities WHERE Name = ?').get(activity);
+    if (!act) return res.redirect(`/assign-camper-schedule/${camperId}?message=Activity+not+found`);
+
+    // Check capacity (use WeeklyOfferings capacity override if present)
+    const offering = db.prepare(`
+        SELECT COALESCE(wo.MaxCapacity, a.MaxCapacity) AS MaxCapacity
+        FROM WeeklyOfferings wo
+        JOIN Activities a ON a.Name = wo.ActivityName
+        WHERE wo.ActivityName = ? AND wo.PeriodNumber = ? AND wo.WeekNumber = ?
+    `).get(activity, period, getActiveWeek());
+
+    const maxCap = offering ? offering.MaxCapacity : act.MaxCapacity;
+
+    const enrollment = db.prepare(`
+        SELECT COUNT(*) as count FROM Schedules
+        WHERE ActivityName = ? AND PeriodNumber = ? AND PersonType = 'Camper'
+    `).get(activity, period).count;
+
+    if (enrollment >= maxCap) {
+        db.prepare(`
+            INSERT INTO Waitlists (CamperID, PeriodNumber, RequestedActivity)
+            VALUES (?, ?, ?)
+        `).run(camperId, period, activity);
+        return res.redirect(`/assign-camper-schedule/${camperId}?message=Class+full+%E2%80%94+added+to+waitlist`);
+    }
+
+    // DELETE + INSERT in a transaction
+    db.transaction(() => {
+        db.prepare(`
+            DELETE FROM Schedules WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper'
+        `).run(camperId, period);
+        db.prepare(`
+            INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName)
+            VALUES (?, 'Camper', ?, ?)
+        `).run(camperId, period, activity);
+    })();
+
+    res.redirect(`/assign-camper-schedule/${camperId}?message=Class+assigned`);
+});
+
 app.post('/upload-activity-rules', upload.single('file'), (req, res) => {
     const results = [];
     fs.createReadStream(req.file.path)

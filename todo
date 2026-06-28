@@ -1,2 +1,0 @@
-New feature in data managment view to build a staff. Allows you to create a new staff and set each table value manually (this will not need to be able to assign classes).
-Similary I would like to add another feature to make a new camper, this will need to be able to assign classes. The class assignment should be functional mirror of the swap tool, but it is always swapping null -> new class
