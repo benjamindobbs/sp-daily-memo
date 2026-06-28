@@ -4739,12 +4739,15 @@ app.get('/counselor-preferences-summary', (_req, res) => {
     const activeWeek = getActiveWeek();
     const counselors = db.prepare(`
         SELECT c.CounselorID, c.FirstName, c.LastName, c.StaffRole,
+               c.HomeGroupColor AS defaultColor,
+               cwa.HomeGroupColor AS weekColor,
                p.HomeGroupPreference, p.SchedulePreference, p.ActivityPreferences, p.SubmittedAt
         FROM Counselors c
+        LEFT JOIN CounselorWeekAttributes cwa ON c.CounselorID = cwa.CounselorID AND cwa.WeekNumber = ?
         LEFT JOIN CounselorPreferences p ON c.CounselorID = p.CounselorID
         WHERE c.StaffRole IN ('Counselor', 'Swim Counselor')
         ORDER BY c.LastName, c.FirstName
-    `).all();
+    `).all(activeWeek);
 
     const weekActivities = db.prepare(
         "SELECT DISTINCT ActivityName AS Name, SideOfCamp FROM WeeklyOfferings WHERE WeekNumber = ? ORDER BY SideOfCamp, ActivityName"
@@ -4752,12 +4755,21 @@ app.get('/counselor-preferences-summary', (_req, res) => {
     const activityMap = {};
     weekActivities.forEach(a => { activityMap[a.Name] = a.SideOfCamp; });
 
+    const MAIN_COLORS    = new Set(['Red', 'Carolina', 'Green', 'Navy']);
+    const SPECIALTY_COLORS = new Set(['LilPlace', 'KinderPlace', 'SPLIT', 'SPRC', 'Swim']);
+
     const rows = counselors.map(c => {
+        const effectiveColor = c.weekColor || c.defaultColor || '';
+        const isSpecialty = c.StaffRole === 'Swim Counselor' || SPECIALTY_COLORS.has(effectiveColor);
+        const inMainCamp  = MAIN_COLORS.has(effectiveColor);
+        // Excluded from counts if purely specialty (not also assigned to a main-camp color group)
+        const excludeFromStats = isSpecialty && !inMainCamp;
+
         const prefs = c.ActivityPreferences ? JSON.parse(c.ActivityPreferences) : [];
         const sports = prefs.filter(n => activityMap[n] === 'Sports');
         const enrichment = prefs.filter(n => activityMap[n] === 'Enrichment');
         const unclassified = prefs.filter(n => !activityMap[n]);
-        return { ...c, sports, enrichment, unclassified, hasPrefs: !!c.HomeGroupPreference };
+        return { ...c, sports, enrichment, unclassified, hasPrefs: !!c.HomeGroupPreference, excludeFromStats };
     });
 
     res.render('counselor-preferences-summary', { rows, activeWeek });

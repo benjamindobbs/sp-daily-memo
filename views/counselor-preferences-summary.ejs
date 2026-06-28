@@ -52,13 +52,14 @@
 
         <div class="page-header" style="margin-bottom: 16px;">
             <h1 style="margin:0;">Counselor Preference Summary</h1>
-            <p style="color:var(--text-muted); margin: 4px 0 0; font-size:0.9rem;">Week <%= activeWeek %> — main counselors only</p>
+            <p style="color:var(--text-muted); margin: 4px 0 0; font-size:0.9rem;">Week <%= activeWeek %></p>
         </div>
 
         <%
-        const submitted = rows.filter(r => r.hasPrefs).length;
-        const total = rows.length;
-        const noPrefs = rows.filter(r => !r.hasPrefs);
+        const mainRows = rows.filter(r => !r.excludeFromStats);
+        const submitted = mainRows.filter(r => r.hasPrefs).length;
+        const total = mainRows.length;
+        const noPrefs = mainRows.filter(r => !r.hasPrefs);
         %>
 
         <div class="stats-bar">
