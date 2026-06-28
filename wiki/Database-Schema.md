@@ -1,0 +1,458 @@
+# Database Schema
+
+All tables in `camp.db`. Columns added via `ALTER TABLE` migrations are marked **[migrated]**.
+
+---
+
+## Campers
+
+Primary record for every enrolled camper.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `CamperID` | INTEGER | PK, AUTOINCREMENT | |
+| `FirstName` | TEXT | NOT NULL | |
+| `LastName` | TEXT | NOT NULL | |
+| `Age` | INTEGER | | Populated from ACR-005 import |
+| `Grade` | INTEGER | | **[migrated]** — same source; copied from `Age` on migration |
+| `HomeGroupColor` | TEXT | | `Red`, `Carolina`, `Green`, `Navy`, `LilPlace`, `KinderPlace`, `SPLIT`, `SPRC`, `Swim` |
+| `HomeGroupCounselorID` | INTEGER | | FK → `Counselors.CounselorID` (soft reference, not enforced) |
+| `BusRoute` | TEXT | | Stored as a string (e.g. `"3"`). Null = no bus. |
+| `ExtendedHours` | TEXT | | `AM`, `PM`, `AM+PM`, or NULL |
+| `CampLunch` | TEXT | DEFAULT `'No'` | `No – Packed`, `Yes`, `Allergy Meal` |
+| `ShirtSize` | TEXT | | **[migrated]** — from ACR-005 import |
+
+**Normalizations applied at startup:**
+- `BusRoute` values of `'null'`, `''`, or a color group name are cleared to NULL.
+- Float bus routes (e.g. `"3.0"`) are cast to integer strings (`"3"`).
+
+---
+
+## Counselors
+
+Unified people table for all staff. Replaced the legacy `Staff` table.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `CounselorID` | INTEGER | PK, AUTOINCREMENT | |
+| `FirstName` | TEXT | NOT NULL | |
+| `LastName` | TEXT | NOT NULL | |
+| `HomeGroupColor` | TEXT | | Default/fallback color. Week-specific color lives in `CounselorWeekAttributes`. |
+| `ScheduleType` | TEXT | | Default/fallback. Week-specific in `CounselorWeekAttributes`. |
+| `BusRoute` | TEXT | | |
+| `ExtendedHours` | TEXT | | |
+| `StaffRole` | TEXT | DEFAULT `'Counselor'` | **[migrated]** — `Counselor`, `Swim Counselor`, `Unit Leader`, `Sports Leader`, `Instructor`, `Director`, etc. |
+| `Phone` | TEXT | | **[migrated]** |
+| `Email` | TEXT | | **[migrated]** |
+| `IncludeInStaffDropdown` | INTEGER | DEFAULT `0` | **[migrated]** — `1` = appears in camper home counselor dropdowns |
+
+**Normalizations applied at startup:**
+- `HomeGroupColor` values that aren't a recognized group name are set to NULL.
+
+**StaffRole values in use:**
+`Counselor` · `Swim Counselor` · `Unit Leader` · `Sports Leader` · `Instructor` · `Director`
+
+The scheduler treats roles as two buckets: **main counselors** (`Counselor`, `Swim Counselor`) are eligible for class slot assignments; everyone else is specialty/leadership.
+
+---
+
+## Staff *(legacy — do not write)*
+
+Retained for historical data. All rows were migrated into `Counselors` on first startup. No routes write to this table anymore.
+
+| Column | Type | Notes |
+|---|---|---|
+| `StaffID` | INTEGER PK | |
+| `FirstName` | TEXT | |
+| `LastName` | TEXT | |
+| `HomeGroupColor` | TEXT | |
+| `StaffType` | TEXT | `Instructor` or `Unit Leader` |
+
+---
+
+## Activities
+
+Master list of camp activities. Used by the swap tool, offerings sync, and scheduling.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `ActivityID` | INTEGER | PK, AUTOINCREMENT | |
+| `Name` | TEXT | UNIQUE, NOT NULL | Referenced by name (not ID) throughout the system |
+| `SideOfCamp` | TEXT | CHECK `Sports` or `Enrichment` | |
+| `MaxCapacity` | INTEGER | DEFAULT `20` | |
+| `Location` | TEXT | | Default location; can be overridden per class roster |
+| `AllowedGroups` | TEXT | **[migrated]** | NULL = open to all. `Red`, `Carolina`, `Red-Carolina`, `Green-Navy` |
+
+---
+
+## ActivityPeriodGroups
+
+Period-specific group overrides for an activity. Takes precedence over `Activities.AllowedGroups` for the given period.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `ActivityName` | TEXT | PK part, FK → `Activities.Name` ON DELETE CASCADE |
+| `PeriodNumber` | INTEGER | PK part |
+| `AllowedGroups` | TEXT | NOT NULL, CHECK `Red`, `Carolina`, `Red-Carolina`, `Green-Navy` |
+
+---
+
+## Schedules
+
+Period assignments for campers and instructors.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `ScheduleID` | INTEGER | PK, AUTOINCREMENT | |
+| `PersonID` | INTEGER | NOT NULL | `CamperID` or `CounselorID` depending on `PersonType` |
+| `PersonType` | TEXT | CHECK `Camper`, `Counselor`, `Staff`, `Instructor` | `Staff` is legacy; `Instructor` is current |
+| `PeriodNumber` | INTEGER | NOT NULL | Clock block 1–6 |
+| `ActivityName` | TEXT | NOT NULL | |
+| `Location` | TEXT | | |
+
+**Period numbers** are clock blocks, not ordinal positions. Red/Carolina campers have blocks 4–6 for their enrichment periods; Green/Navy have blocks 1–3. See [Scheduling System](./Scheduling-System.md).
+
+---
+
+## Sessions
+
+One row per camp week (6 total). Controls the active week for all tools.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `weekNumber` | INTEGER | PK, CHECK 1–6 | |
+| `label` | TEXT | NOT NULL, DEFAULT `'Week N'` | Display name (editable) |
+| `startDate` | TEXT | | ISO date string |
+| `isActive` | INTEGER | NOT NULL, DEFAULT `0` | Only one row should be `1` at a time |
+| `isReleased` | INTEGER | NOT NULL, DEFAULT `0` | `1` = counselor schedule visible to staff |
+
+---
+
+## CounselorWeekAttributes
+
+Week-specific scheduling attributes for each counselor. The scheduler always reads from here, not from `Counselors`.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `CounselorID` | INTEGER | PK part, FK → `Counselors` ON DELETE CASCADE | |
+| `WeekNumber` | INTEGER | PK part, CHECK 1–6 | |
+| `HomeGroupColor` | TEXT | | |
+| `ScheduleType` | TEXT | | `All Sports`, `All Enrichment`, `AM Sports / PM Enrichment`, `AM Enrichment / PM Sports` |
+| `BusRoute` | TEXT | | |
+| `ExtendedHours` | TEXT | | |
+| `SpecialtyGroup` | TEXT | **[migrated]** | Used for SPLIT/specialty counselor grouping |
+
+---
+
+## CounselorWeekSchedules
+
+Week-specific period assignments for counselors (output of the counselor scheduler).
+
+| Column | Type | Constraints |
+|---|---|---|
+| `CounselorID` | INTEGER | PK part, FK → `Counselors` ON DELETE CASCADE |
+| `WeekNumber` | INTEGER | PK part, CHECK 1–6 |
+| `PeriodNumber` | INTEGER | PK part, CHECK 1–6 |
+| `ActivityName` | TEXT | NOT NULL |
+
+---
+
+## StaffWeekSchedules
+
+Full-summer period assignments for instructors and unit leaders. Populated via the Faculty Full Summer upload.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `StaffID` | INTEGER | PK part, FK → `Counselors.CounselorID` ON DELETE CASCADE | Name is legacy; references Counselors |
+| `WeekNumber` | INTEGER | PK part, CHECK 1–6 | |
+| `PeriodNumber` | INTEGER | PK part, CHECK 1–6 | |
+| `ActivityName` | TEXT | NOT NULL | |
+| `Location` | TEXT | | |
+
+---
+
+## WeeklyOfferings
+
+Per-week list of class offerings used to populate the counselor scheduler.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `OfferingID` | INTEGER | PK, AUTOINCREMENT | |
+| `ActivityName` | TEXT | NOT NULL | |
+| `PreliminaryEnrollment` | INTEGER | DEFAULT `0` | Used to calculate slot counts |
+| `SideOfCamp` | TEXT | | |
+| `PeriodNumber` | INTEGER | **[migrated]** | Clock block 1–6 |
+| `WeekNumber` | INTEGER | **[migrated]**, DEFAULT `1` | |
+| `MaxCapacity` | INTEGER | **[migrated]** | |
+| `Location` | TEXT | **[migrated]** | |
+| `AllowedGroups` | TEXT | **[migrated]** | |
+
+---
+
+## CounselorScheduleAssignments
+
+Final counselor-to-class slot assignments. Written by the scheduler save action.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `AssignmentID` | INTEGER | PK, AUTOINCREMENT | |
+| `WeekNumber` | INTEGER | NOT NULL, DEFAULT `1` | **[migrated]** |
+| `PeriodNumber` | INTEGER | NOT NULL | |
+| `ActivityName` | TEXT | NOT NULL | |
+| `PersonID` | INTEGER | NOT NULL | `CounselorID` or `StaffID` |
+| `PersonType` | TEXT | CHECK `Counselor`, `Staff`, `Instructor` | |
+| UNIQUE | | `(WeekNumber, PeriodNumber, PersonID, PersonType)` | |
+
+---
+
+## CounselorScheduleBackups
+
+Named JSON snapshots of the counselor assignment state.
+
+| Column | Type | Notes |
+|---|---|---|
+| `BackupID` | INTEGER PK | |
+| `WeekNumber` | INTEGER | |
+| `Label` | TEXT | Admin-provided name |
+| `CreatedAt` | DATETIME | |
+| `AssignmentsJSON` | TEXT | Full serialized assignment state |
+
+---
+
+## CounselorPreferences
+
+Counselor activity preferences, used by the auto-scheduler to influence assignments.
+
+| Column | Type | Notes |
+|---|---|---|
+| `CounselorID` | INTEGER PK, FK → `Counselors` ON DELETE CASCADE | |
+| `HomeGroupPreference` | TEXT | |
+| `SchedulePreference` | TEXT | |
+| `ActivityPreferences` | TEXT | JSON array of preferred activity names |
+| `SubmittedAt` | DATETIME | |
+
+---
+
+## CamperHomeGroups
+
+Week-specific assignment of a camper to a counselor's home group.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `CamperID` | INTEGER | PK part, FK → `Campers` |
+| `WeekNumber` | INTEGER | PK part, CHECK 1–6 |
+| `CounselorID` | INTEGER | FK → `Counselors` |
+
+---
+
+## Attendance
+
+Attendance marks across all roster types.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `AttendanceID` | INTEGER | PK, AUTOINCREMENT | |
+| `Date` | TEXT | NOT NULL | ISO date string |
+| `CamperID` | INTEGER | NOT NULL, FK → `Campers` | |
+| `SessionType` | TEXT | NOT NULL | `homegroup`, `class`, `bus`, `extended`, `specialty`, `late-arrival` |
+| `PeriodNumber` | INTEGER | NOT NULL, DEFAULT `0` | `0` for non-class sessions |
+| `ActivityName` | TEXT | NOT NULL, DEFAULT `''` | Empty for non-class sessions |
+| `Status` | TEXT | NOT NULL, DEFAULT `'present'` | `present` or `absent` |
+| `Notes` | TEXT | | |
+| `MarkedAt` | DATETIME | | |
+| `MarkedBy` | TEXT | **[migrated]** | |
+| UNIQUE | | `(Date, CamperID, SessionType, PeriodNumber, ActivityName)` | |
+
+---
+
+## EarlyDismissals
+
+Records a camper being dismissed early on a given date.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `DismissalID` | INTEGER | PK, AUTOINCREMENT | |
+| `Date` | TEXT | NOT NULL | |
+| `CamperID` | INTEGER | NOT NULL, FK → `Campers` | |
+| `DismissalTime` | TEXT | | |
+| `Notes` | TEXT | | |
+| `CreatedAt` | DATETIME | | |
+| `MarkedBy` | TEXT | **[migrated]** | |
+| UNIQUE | | `(Date, CamperID)` | One dismissal per camper per day |
+
+---
+
+## ScheduledPickups
+
+Pre-scheduled pickup times entered before the dismissal occurs.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `PickupID` | INTEGER | PK, AUTOINCREMENT | |
+| `Date` | TEXT | NOT NULL | |
+| `CamperID` | INTEGER | NOT NULL, FK → `Campers` | |
+| `PickupTime` | TEXT | NOT NULL | |
+| `Notes` | TEXT | | |
+| `CreatedBy` | TEXT | | |
+| `CreatedAt` | DATETIME | | |
+| `PeriodNumber` | INTEGER | **[migrated]** | Which period the pickup falls during |
+| UNIQUE | | `(Date, CamperID)` | |
+
+---
+
+## NurseLog
+
+Nurse station visit records.
+
+| Column | Type | Notes |
+|---|---|---|
+| `VisitID` | INTEGER PK | |
+| `Date` | TEXT | |
+| `CamperID` | INTEGER, FK → `Campers` | |
+| `CheckInTime` | TEXT | |
+| `CheckOutTime` | TEXT | NULL = still checked in |
+| `Notes` | TEXT | |
+| `Dismissed` | INTEGER | `1` = camper was sent home from nurse |
+| `CreatedBy` | TEXT | |
+
+---
+
+## CaseLog
+
+Detailed incident case tracking. Same structure as `NurseLog` but for more significant cases requiring documentation.
+
+| Column | Type | Notes |
+|---|---|---|
+| `VisitID` | INTEGER PK | |
+| `Date` | TEXT | |
+| `CamperID` | INTEGER, FK → `Campers` | |
+| `CheckInTime` | TEXT | |
+| `CheckOutTime` | TEXT | |
+| `Notes` | TEXT | |
+| `Dismissed` | INTEGER | |
+| `CreatedBy` | TEXT | |
+
+---
+
+## ScheduleChanges
+
+Log of camper class swaps (swap tool activity). Cleared to archive periodically.
+
+| Column | Type | Notes |
+|---|---|---|
+| `ChangeID` | INTEGER PK | |
+| `CamperID` | INTEGER, FK → `Campers` | |
+| `CamperName` | TEXT | Denormalized for display without join |
+| `ColorGroup` | TEXT | |
+| `PeriodNumber` | INTEGER | |
+| `OldActivity` | TEXT | |
+| `NewActivity` | TEXT | |
+| `ChangedAt` | DATETIME | |
+
+---
+
+## ScheduleChangesArchive
+
+Archived swap log entries. Same schema as `ScheduleChanges` plus `ArchivedAt`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `ChangeID` | INTEGER PK | |
+| `CamperID` | INTEGER | |
+| `CamperName` | TEXT | |
+| `ColorGroup` | TEXT | |
+| `PeriodNumber` | INTEGER | |
+| `OldActivity` | TEXT | |
+| `NewActivity` | TEXT | |
+| `ChangedAt` | DATETIME | |
+| `ArchivedAt` | DATETIME | |
+
+---
+
+## Waitlists
+
+Campers waiting to be placed into a full activity.
+
+| Column | Type | Notes |
+|---|---|---|
+| `WaitlistID` | INTEGER PK | |
+| `CamperID` | INTEGER, FK → `Campers` | |
+| `PeriodNumber` | INTEGER | |
+| `RequestedActivity` | TEXT | |
+| `TimeOfDay` | TEXT | `AM` or `PM` |
+| `Timestamp` | DATETIME | |
+
+---
+
+## SplitFieldTrip
+
+Flags a date as a SPLIT field trip day. Single-column truth table.
+
+| Column | Type | Notes |
+|---|---|---|
+| `Date` | TEXT PK | ISO date |
+| `MarkedAt` | DATETIME | |
+
+---
+
+## HubContent
+
+Key/value store for editable hub page text blocks.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | TEXT PK | `'announcement'` or `'director_notes'` |
+| `content` | TEXT | Markdown/plain text |
+| `updatedAt` | DATETIME | |
+
+---
+
+## DirectorNotes
+
+Timestamped director note entries shown on the admin hub.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `body` | TEXT | |
+| `author` | TEXT | DEFAULT `'Admin'` |
+| `createdAt` | DATETIME | |
+
+---
+
+## PhotoSubmissions
+
+Photo of the Day uploads.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `date` | TEXT | |
+| `counselorName` | TEXT | |
+| `imageUrl` | TEXT | |
+| `submittedAt` | DATETIME | |
+
+---
+
+## PhotoVotes
+
+Staff votes on Photo of the Day submissions.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `photoId` | INTEGER, FK → `PhotoSubmissions.id` | |
+| `voterName` | TEXT | **[migrated]** |
+| `voteDate` | TEXT | **[migrated]** |
+| `votedAt` | DATETIME | |
+
+---
+
+## AdminUsers
+
+Allowlist of admin user names. Checked against the login form.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `name` | TEXT | UNIQUE |

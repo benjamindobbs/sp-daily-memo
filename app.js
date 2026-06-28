@@ -2798,7 +2798,11 @@ app.get('/swap-tool', (req, res) => {
         }
     }
 
-    res.render('swap-tool', { camper, currentSchedule, query });
+    const allCampers = db.prepare(
+        `SELECT CamperID, FirstName, LastName FROM Campers ORDER BY LastName, FirstName`
+    ).all();
+
+    res.render('swap-tool', { camper, currentSchedule, query, allCampers });
 });
 
 // Returns available activity options for a given camper's period
