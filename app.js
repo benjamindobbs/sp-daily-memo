@@ -708,10 +708,10 @@ try {
     const hasTextPeriod = db.prepare(
         "SELECT 1 FROM WeeklyOfferings WHERE TYPEOF(PeriodNumber)='text' LIMIT 1"
     ).get();
-    const hasEnrichP5 = db.prepare(
-        "SELECT 1 FROM WeeklyOfferings WHERE PeriodNumber=5 AND SideOfCamp='Enrichment' LIMIT 1"
+    const hasEnrichP6 = db.prepare(
+        "SELECT 1 FROM WeeklyOfferings WHERE PeriodNumber=6 AND SideOfCamp='Enrichment' LIMIT 1"
     ).get();
-    if (hasTextPeriod || hasEnrichP5) {
+    if (hasTextPeriod || hasEnrichP6) {
         db.exec(`
             UPDATE WeeklyOfferings SET PeriodNumber = 3 WHERE TYPEOF(PeriodNumber)='text' AND PeriodNumber = '3AM';
             UPDATE WeeklyOfferings SET PeriodNumber = 4 WHERE TYPEOF(PeriodNumber)='text' AND PeriodNumber = '3PM';

@@ -21,7 +21,12 @@
         .side-heading { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9; }
         .offering-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 20px; }
         .offering-card { border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; background: #fafafa; }
+        .offering-card.locked { border-color: #f59e0b; background: #fffbeb; }
         .offering-card-header { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+        .offering-name-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; }
+        .lock-btn { font-size: 0.9rem; background: none; border: none; cursor: pointer; padding: 0 2px; line-height: 1; opacity: 0.35; flex-shrink: 0; margin-top: 1px; }
+        .lock-btn:hover { opacity: 0.8; }
+        .offering-card.locked .lock-btn { opacity: 1; }
         .offering-card-badges { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
         .offering-name { font-weight: 700; font-size: 0.95rem; overflow-wrap: break-word; word-break: break-word; }
         .enrollment-pill { font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: #f1f5f9; color: var(--text-muted); white-space: nowrap; }
@@ -183,7 +188,10 @@
                     %>
                         <div class="offering-card" data-offer="<%= idx %>">
                             <div class="offering-card-header">
-                                <span class="offering-name"><%= act.ActivityName %></span>
+                                <div class="offering-name-row">
+                                    <span class="offering-name"><%= act.ActivityName %></span>
+                                    <button class="lock-btn" data-offer-lock="<%= idx %>" onclick="toggleLock(<%= idx %>)" title="Lock — build functions will not modify this class">&#128275;</button>
+                                </div>
                                 <div class="offering-card-badges">
                                     <% if (parseInt(act.PeriodNumber) <= 3) { %>
                                         <span style="font-size:0.68rem;font-weight:700;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:12px;white-space:nowrap;">AM · Green / Navy</span>
@@ -224,7 +232,10 @@
                     %>
                         <div class="offering-card" data-offer="<%= idx %>">
                             <div class="offering-card-header">
-                                <span class="offering-name"><%= act.ActivityName %></span>
+                                <div class="offering-name-row">
+                                    <span class="offering-name"><%= act.ActivityName %></span>
+                                    <button class="lock-btn" data-offer-lock="<%= idx %>" onclick="toggleLock(<%= idx %>)" title="Lock — build functions will not modify this class">&#128275;</button>
+                                </div>
                                 <div class="offering-card-badges">
                                     <% if (act.AllowedGroups) { %>
                                         <span class="enrollment-pill"><%= act.AllowedGroups %></span>
@@ -254,7 +265,10 @@
                     %>
                         <div class="offering-card" data-offer="<%= idx %>">
                             <div class="offering-card-header">
-                                <span class="offering-name"><%= act.ActivityName %></span>
+                                <div class="offering-name-row">
+                                    <span class="offering-name"><%= act.ActivityName %></span>
+                                    <button class="lock-btn" data-offer-lock="<%= idx %>" onclick="toggleLock(<%= idx %>)" title="Lock — build functions will not modify this class">&#128275;</button>
+                                </div>
                                 <span class="enrollment-pill"><%= act.PreliminaryEnrollment %> expected</span>
                             </div>
                             <div class="slot-group">
@@ -339,6 +353,8 @@
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn btn-primary" onclick="buildSchedule()">Build Schedule</button>
                 <button class="btn btn-primary" onclick="runFullAutoBuild();" style="background:var(--success, #16a34a);">⚡ Full Auto Build</button>
+                <button class="btn btn-small" style="background:#fff7ed; color:#c2410c; border-color:#fed7aa;" onclick="rebuildSide('Sports')">&#9917; Re-Build Sports</button>
+                <button class="btn btn-small" style="background:#faf5ff; color:#7e22ce; border-color:#e9d5ff;" onclick="rebuildSide('Enrichment')">&#127912; Re-Build Enrichment</button>
                 <span id="autoStatus" style="font-size:0.82rem; color:var(--text-muted); margin-left:4px;"></span>
             </div>
             <% if (sessions.filter(s => s.weekNumber !== planWeek).length > 0) { %>
@@ -578,6 +594,49 @@
         // Tracks offering indices where the user has explicitly typed a slot count.
         // Auto-assign must not change the length for these offerings.
         const manualCounts = {};
+
+        // Tracks offering indices locked by the user — all build functions skip these entirely.
+        const lockedOfferings = new Set();
+        const LOCK_STORAGE_KEY = `counselorLocks_w${PLAN_WEEK}`;
+
+        function lockKey(idx) {
+            const act = OFFERINGS[idx];
+            return act ? `${act.PeriodNumber}|${act.ActivityName}` : String(idx);
+        }
+
+        function loadLockedState() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(LOCK_STORAGE_KEY) || '[]');
+                // saved is an array of lock keys; map back to current indices
+                const keyToIdx = {};
+                OFFERINGS.forEach((act, idx) => { keyToIdx[lockKey(idx)] = idx; });
+                for (const k of saved) {
+                    if (keyToIdx[k] != null) {
+                        lockedOfferings.add(keyToIdx[k]);
+                        applyLockUI(keyToIdx[k], true);
+                    }
+                }
+            } catch { /* ignore stale localStorage */ }
+        }
+
+        function saveLockedState() {
+            const keys = [...lockedOfferings].map(lockKey);
+            localStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify(keys));
+        }
+
+        function applyLockUI(idx, locked) {
+            const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+            const btn  = document.querySelector(`.lock-btn[data-offer-lock="${idx}"]`);
+            if (card) card.classList.toggle('locked', locked);
+            if (btn)  btn.innerHTML = locked ? '&#128274;' : '&#128275;';
+        }
+
+        function toggleLock(idx) {
+            const nowLocked = !lockedOfferings.has(idx);
+            if (nowLocked) lockedOfferings.add(idx); else lockedOfferings.delete(idx);
+            applyLockUI(idx, nowLocked);
+            saveLockedState();
+        }
 
         // ── Restore saved assignments on load ────────────────────────────────────
         function initState() {
@@ -1321,6 +1380,7 @@
             const rawCounts = {};
             OFFERINGS.forEach((act, idx) => {
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
+                if (lockedOfferings.has(idx)) return; // never touch locked classes
 
                 // Hard limits: always enforce regardless of existing state
                 if (/hartt.+chamber/i.test(act.ActivityName) || /learning.zone/i.test(act.ActivityName)) {
@@ -1446,7 +1506,7 @@
             // forceReset clears counselor arrays before autoCalculateSlots so the guard
             // (state[idx].counselors.length !== 0) never blocks recalculation during Full Auto Build.
             // Staff/UL arrays are intentionally NOT cleared — they must survive the reset.
-            if (forceReset) OFFERINGS.forEach((_, idx) => { state[idx].counselors = []; });
+            if (forceReset) OFFERINGS.forEach((_, idx) => { if (!lockedOfferings.has(idx)) state[idx].counselors = []; });
             autoCalculateSlots();
 
             const prefMap = {};
@@ -1525,6 +1585,7 @@
                 let bestIdx = -1, bestRatio = -Infinity;
                 OFFERINGS.forEach((act, idx) => {
                     if (!act.PeriodNumber || !act.SideOfCamp) return;
+                    if (lockedOfferings.has(idx)) return; // skip locked
                     if (!state[idx].counselors.some(id => id === null)) return;
                     const placed = state[idx].counselors.filter(id => id !== null && id !== -1).length;
                     const enrollment = act.PreliminaryEnrollment || 0;
@@ -1665,6 +1726,7 @@
                     OFFERINGS.forEach((act, idx) => {
                         if (act.PeriodNumber !== period || act.SideOfCamp !== side) return;
                         if (/hartt.+chamber/i.test(act.ActivityName) || /learning.zone/i.test(act.ActivityName)) return;
+                        if (lockedOfferings.has(idx)) return; // skip locked
                         eligibleIdxs.push(idx);
                     });
                     if (eligibleIdxs.length === 0) continue;
@@ -1776,6 +1838,7 @@
                     OFFERINGS.forEach((act, idx) => {
                         if (act.PeriodNumber !== p3 || act.SideOfCamp !== side3) return;
                         if (/hartt.+chamber/i.test(act.ActivityName) || /learning.zone/i.test(act.ActivityName)) return;
+                        if (lockedOfferings.has(idx)) return; // skip locked
                         tIdxs.push(idx);
                     });
                     if (tIdxs.length === 0) continue;
@@ -1856,6 +1919,325 @@
                 : 'Done! Review and save when ready.';
         }
 
+        // ── Side-specific rebuild ─────────────────────────────────────────────────
+        // Re-scrambles only the counselors currently assigned to one side (Sports or Enrichment).
+        // The other side's assignments are never touched.
+        function rebuildSide(targetSide) {
+            const statusEl = document.getElementById('autoStatus');
+            const mode     = document.querySelector('input[name="autoMode"]:checked').value;
+            const prefMap  = {};
+            PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
+
+            // Collect the rebuild pool: counselors currently assigned to any unlocked target-side class
+            const rebuildPoolIds = new Set();
+            OFFERINGS.forEach((act, idx) => {
+                if (act.SideOfCamp !== targetSide || lockedOfferings.has(idx)) return;
+                state[idx].counselors.forEach(id => { if (id) rebuildPoolIds.add(id); });
+            });
+            if (rebuildPoolIds.size === 0) {
+                statusEl.textContent = `No counselors assigned to unlocked ${targetSide} classes to rebuild.`;
+                return;
+            }
+            const rebuildPool = getAssignablePool().filter(c => rebuildPoolIds.has(c.CounselorID));
+            statusEl.textContent = `Rebuilding ${targetSide}…`;
+
+            // Clear unlocked target-side counselors only; autoCalculateSlots recalculates empty arrays.
+            OFFERINGS.forEach((act, idx) => {
+                if (act.SideOfCamp === targetSide && !lockedOfferings.has(idx)) state[idx].counselors = [];
+            });
+            autoCalculateSlots();
+
+            // Seed blockUsed from: other side AND locked target-side classes (all stay untouched)
+            const blockUsed = {};
+            COUNSELORS.forEach(c => { blockUsed[c.CounselorID] = { am: new Set(), pm: new Set() }; });
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber) return;
+                if (act.SideOfCamp !== targetSide || lockedOfferings.has(idx)) {
+                    const block = act.PeriodNumber <= 3 ? 'am' : 'pm';
+                    state[idx].counselors.forEach(id => {
+                        if (id && blockUsed[id]) blockUsed[id][block].add(blockKey(act.ActivityName));
+                    });
+                }
+            });
+
+            // usedThisPeriod: pre-lock other-side AND locked target-side counselors; always lock staff
+            const usedThisPeriod = {};
+            for (let p = 1; p <= 6; p++) usedThisPeriod[p] = new Set();
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber) return;
+                if (act.SideOfCamp !== targetSide || lockedOfferings.has(idx)) {
+                    state[idx].counselors.forEach(id => { if (id) usedThisPeriod[act.PeriodNumber].add(id); });
+                }
+                state[idx].staff.forEach(id => { if (id) usedThisPeriod[act.PeriodNumber].add(id); });
+            });
+
+            // Triple-period pre-fill (target side only)
+            const tripleGroupsPre = {};
+            OFFERINGS.forEach((act, idx) => {
+                if (act.SideOfCamp !== targetSide || !act.ActivityName.toLowerCase().includes('triple period')) return;
+                if (!tripleGroupsPre[act.ActivityName]) tripleGroupsPre[act.ActivityName] = [];
+                tripleGroupsPre[act.ActivityName].push(idx);
+            });
+            for (const [tName, tIndices] of Object.entries(tripleGroupsPre)) {
+                if (tIndices.length < 2) continue;
+                tIndices.sort((a, b) => OFFERINGS[a].PeriodNumber - OFFERINGS[b].PeriodNumber);
+                const srcIdx    = tIndices[0];
+                const srcPeriod = OFFERINGS[srcIdx].PeriodNumber;
+                const tBlock    = srcPeriod <= 3 ? 'am' : 'pm';
+                const slotCount = state[srcIdx].counselors.length;
+                const tEligible = rebuildPool.filter(c => {
+                    if (usedThisPeriod[srcPeriod].has(c.CounselorID)) return false;
+                    const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                    const sched = sel ? sel.value : (c.ScheduleType || '');
+                    return isCounselorAvailableFor(sched, srcPeriod, targetSide);
+                });
+                const tPreferred = shuffle(tEligible.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(tName)));
+                const tNonPref   = shuffle(tEligible.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(tName)));
+                const tPool = mode === 'pref' ? [...tPreferred] : [...tPreferred, ...tNonPref];
+                for (let slot = 0; slot < slotCount; slot++) {
+                    if (!tPool[slot]) break;
+                    const chosen = tPool[slot];
+                    for (const tidx of tIndices) {
+                        while (state[tidx].counselors.length <= slot) state[tidx].counselors.push(null);
+                        state[tidx].counselors[slot] = chosen.CounselorID;
+                        usedThisPeriod[OFFERINGS[tidx].PeriodNumber].add(chosen.CounselorID);
+                    }
+                    blockUsed[chosen.CounselorID][tBlock].add(blockKey(tName));
+                }
+            }
+
+            // Greedy fill — target side, rebuild pool only, skip locked
+            let madeProgress = true;
+            while (madeProgress) {
+                madeProgress = false;
+                let bestIdx = -1, bestRatio = -Infinity;
+                OFFERINGS.forEach((act, idx) => {
+                    if (act.SideOfCamp !== targetSide || !act.PeriodNumber) return;
+                    if (lockedOfferings.has(idx)) return; // skip locked
+                    if (!state[idx].counselors.some(id => id === null)) return;
+                    const placed = state[idx].counselors.filter(id => id !== null && id !== -1).length;
+                    const ratio  = placed === 0 ? (1e9 + (act.PreliminaryEnrollment || 0)) : ((act.PreliminaryEnrollment || 0) / placed);
+                    if (ratio > bestRatio) { bestRatio = ratio; bestIdx = idx; }
+                });
+                if (bestIdx === -1) break;
+                const act    = OFFERINGS[bestIdx];
+                const period = act.PeriodNumber;
+                const name   = act.ActivityName;
+                const block  = period <= 3 ? 'am' : 'pm';
+                const slotPos = state[bestIdx].counselors.indexOf(null);
+                const eligible = rebuildPool.filter(c => {
+                    if (usedThisPeriod[period].has(c.CounselorID)) return false;
+                    const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                    const sched = sel ? sel.value : (c.ScheduleType || '');
+                    if (!isCounselorAvailableFor(sched, period, targetSide)) return false;
+                    if (blockUsed[c.CounselorID]?.[block].has(blockKey(name))) return false;
+                    return true;
+                });
+                const preferred = shuffle(eligible.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
+                const nonPref   = shuffle(eligible.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
+                const pool = mode === 'pref' ? [...preferred] : [...preferred, ...nonPref];
+                if (pool.length === 0) {
+                    state[bestIdx].counselors[slotPos] = -1;
+                } else {
+                    const chosen = pool[0];
+                    state[bestIdx].counselors[slotPos] = chosen.CounselorID;
+                    usedThisPeriod[period].add(chosen.CounselorID);
+                    blockUsed[chosen.CounselorID][block].add(blockKey(name));
+                }
+                madeProgress = true;
+            }
+
+            // Restore -1 sentinels to null
+            OFFERINGS.forEach((act, idx) => {
+                if (act.SideOfCamp !== targetSide) return;
+                state[idx].counselors = state[idx].counselors.map(id => id === -1 ? null : id);
+            });
+
+            // Triple-period sync
+            const tripleGroups = {};
+            OFFERINGS.forEach((act, idx) => {
+                if (act.SideOfCamp !== targetSide || !act.ActivityName.toLowerCase().includes('triple period')) return;
+                if (!tripleGroups[act.ActivityName]) tripleGroups[act.ActivityName] = [];
+                tripleGroups[act.ActivityName].push(idx);
+            });
+            for (const [, indices] of Object.entries(tripleGroups)) {
+                if (indices.length < 2) continue;
+                indices.sort((a, b) => OFFERINGS[a].PeriodNumber - OFFERINGS[b].PeriodNumber);
+                const maxSlots = Math.max(...indices.map(i => state[i].counselors.length));
+                for (let slot = 0; slot < maxSlots; slot++) {
+                    const cId = state[indices[0]].counselors[slot] ?? null;
+                    if (cId === null) continue;
+                    for (const idx of indices.slice(1)) {
+                        if (state[idx].counselors.length <= slot) {
+                            const mc = manualCounts[idx]?.counselors;
+                            if (mc == null || state[idx].counselors.length < mc) state[idx].counselors.push(cId);
+                        } else {
+                            state[idx].counselors[slot] = cId;
+                        }
+                    }
+                }
+            }
+
+            // Fill extras — target side, rebuild pool only
+            for (let period = 1; period <= 6; period++) {
+                const block = period <= 3 ? 'am' : 'pm';
+
+                // Re-snapshot used set including newly placed target-side counselors
+                const usedP = new Set(usedThisPeriod[period]);
+                OFFERINGS.forEach((a, i) => {
+                    if (a.PeriodNumber === period && a.SideOfCamp === targetSide)
+                        state[i].counselors.forEach(id => { if (id) usedP.add(id); });
+                });
+
+                const extras = rebuildPool.filter(c => {
+                    if (usedP.has(c.CounselorID)) return false;
+                    const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                    const sched = sel ? sel.value : (c.ScheduleType || '');
+                    return isCounselorAvailableFor(sched, period, targetSide);
+                });
+                if (extras.length === 0) continue;
+
+                const eligibleIdxs = [];
+                OFFERINGS.forEach((act, idx) => {
+                    if (act.PeriodNumber !== period || act.SideOfCamp !== targetSide) return;
+                    if (/hartt.+chamber/i.test(act.ActivityName) || /learning.zone/i.test(act.ActivityName)) return;
+                    if (lockedOfferings.has(idx)) return; // skip locked
+                    eligibleIdxs.push(idx);
+                });
+                if (eligibleIdxs.length === 0) continue;
+
+                // Phase 1: fill existing null slots
+                eligibleIdxs.sort((a, b) =>
+                    state[b].counselors.filter(id => id === null).length -
+                    state[a].counselors.filter(id => id === null).length
+                );
+                const extrasPool = [...extras];
+                for (const eligIdx of eligibleIdxs) {
+                    if (extrasPool.length === 0) break;
+                    const actName = OFFERINGS[eligIdx].ActivityName;
+                    state[eligIdx].counselors.forEach((id, slotPos) => {
+                        if (id !== null || extrasPool.length === 0) return;
+                        const elig_e  = extrasPool.filter(c => !blockUsed[c.CounselorID]?.[block].has(blockKey(actName)));
+                        const pref    = shuffle(elig_e.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
+                        const nonP    = shuffle(elig_e.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
+                        const chosen  = mode === 'pref' ? (pref[0] ?? null) : (pref[0] ?? nonP[0]);
+                        if (!chosen) return;
+                        state[eligIdx].counselors[slotPos] = chosen.CounselorID;
+                        usedP.add(chosen.CounselorID);
+                        blockUsed[chosen.CounselorID][block].add(blockKey(actName));
+                        extrasPool.splice(extrasPool.indexOf(chosen), 1);
+                    });
+                }
+
+                if (eligibleIdxs.some(idx => state[idx].counselors.some(id => id === null))) continue;
+
+                // Phase 2: add new slots for remaining extras
+                const newSlots = [];
+                for (const extra of extrasPool) {
+                    const valid = eligibleIdxs.filter(idx => !blockUsed[extra.CounselorID][block].has(blockKey(OFFERINGS[idx].ActivityName)));
+                    if (valid.length === 0) continue;
+                    const tgtIdx = valid.reduce((best, idx) => {
+                        const bR = (OFFERINGS[best].PreliminaryEnrollment || 0) / Math.max(state[best].counselors.length, 1);
+                        const iR = (OFFERINGS[idx].PreliminaryEnrollment  || 0) / Math.max(state[idx].counselors.length,  1);
+                        return iR > bR ? idx : best;
+                    });
+                    const mc  = manualCounts[tgtIdx]?.counselors;
+                    const cap = Math.min(
+                        /swim/i.test(OFFERINGS[tgtIdx].ActivityName)    ? 2 : Infinity,
+                        /archery/i.test(OFFERINGS[tgtIdx].ActivityName) ? 2 : Infinity,
+                        OFFERINGS[tgtIdx].SideOfCamp === 'Enrichment'   ? 3 : Infinity
+                    );
+                    if ((mc == null || state[tgtIdx].counselors.length < mc) && state[tgtIdx].counselors.length < cap) {
+                        state[tgtIdx].counselors.push(null);
+                        newSlots.push({ idx: tgtIdx, slotPos: state[tgtIdx].counselors.length - 1 });
+                    }
+                }
+                const remaining = new Set(extrasPool.map(c => c.CounselorID));
+                for (const { idx, slotPos } of newSlots) {
+                    if (state[idx].counselors[slotPos] != null) continue;
+                    const actName  = OFFERINGS[idx].ActivityName;
+                    const elig_r   = [...remaining].filter(cid => !blockUsed[cid]?.[block].has(blockKey(actName)));
+                    const pref     = shuffle(elig_r.filter(cid =>  prefMap[cid]?.ActivityPreferences?.includes(actName)));
+                    const nonP     = shuffle(elig_r.filter(cid => !prefMap[cid]?.ActivityPreferences?.includes(actName)));
+                    const chosen   = mode === 'pref' ? (pref[0] ?? null) : (pref[0] ?? nonP[0]);
+                    if (chosen == null) continue;
+                    state[idx].counselors[slotPos] = chosen;
+                    usedP.add(chosen);
+                    blockUsed[chosen][block].add(blockKey(actName));
+                    remaining.delete(chosen);
+                }
+            }
+
+            // Phase 3: force-place any rebuild-pool counselors still missing from required periods
+            for (let p3 = 1; p3 <= 6; p3++) {
+                const block3 = p3 <= 3 ? 'am' : 'pm';
+                const usedP3 = new Set(usedThisPeriod[p3]);
+                OFFERINGS.forEach((a, i) => {
+                    if (a.PeriodNumber === p3) {
+                        state[i].counselors.forEach(id => { if (id) usedP3.add(id); });
+                        state[i].staff.forEach(id => { if (id) usedP3.add(id); });
+                    }
+                });
+                const unplaced = rebuildPool.filter(c => {
+                    if (usedP3.has(c.CounselorID)) return false;
+                    const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                    const sched = sel ? sel.value : (c.ScheduleType || '');
+                    return isCounselorAvailableFor(sched, p3, targetSide);
+                });
+                if (unplaced.length === 0) continue;
+                const tIdxs = [];
+                OFFERINGS.forEach((act, idx) => {
+                    if (act.PeriodNumber !== p3 || act.SideOfCamp !== targetSide) return;
+                    if (/hartt.+chamber/i.test(act.ActivityName) || /learning.zone/i.test(act.ActivityName)) return;
+                    if (lockedOfferings.has(idx)) return; // skip locked
+                    tIdxs.push(idx);
+                });
+                if (tIdxs.length === 0) continue;
+                const belowCap = idx => {
+                    const a = OFFERINGS[idx];
+                    if (/swim/i.test(a.ActivityName)    && state[idx].counselors.length >= 2) return false;
+                    if (/archery/i.test(a.ActivityName) && state[idx].counselors.length >= 2) return false;
+                    return true;
+                };
+                for (const c of unplaced) {
+                    let valid = tIdxs.filter(idx =>
+                        belowCap(idx) &&
+                        !blockUsed[c.CounselorID]?.[block3].has(blockKey(OFFERINGS[idx].ActivityName)) &&
+                        !state[idx].counselors.includes(c.CounselorID)
+                    );
+                    if (valid.length === 0) valid = tIdxs.filter(idx => belowCap(idx) && !state[idx].counselors.includes(c.CounselorID));
+                    if (valid.length === 0) continue;
+                    const tIdx = valid.reduce((best, idx) => {
+                        const bR = (OFFERINGS[best].PreliminaryEnrollment || 0) / Math.max(state[best].counselors.length, 1);
+                        const iR = (OFFERINGS[idx].PreliminaryEnrollment  || 0) / Math.max(state[idx].counselors.length,  1);
+                        return iR > bR ? idx : best;
+                    });
+                    state[tIdx].counselors.push(c.CounselorID);
+                    usedP3.add(c.CounselorID);
+                    if (blockUsed[c.CounselorID]) blockUsed[c.CounselorID][block3].add(blockKey(OFFERINGS[tIdx].ActivityName));
+                }
+            }
+
+            // Compact: remove nulls, enforce enrichment minimums, sync count inputs (skip locked)
+            OFFERINGS.forEach((act, idx) => {
+                if (act.SideOfCamp !== targetSide || lockedOfferings.has(idx)) return;
+                state[idx].counselors = state[idx].counselors.filter(id => id !== null);
+                const mc    = manualCounts[idx]?.counselors;
+                const floor = mc != null ? mc : (act.SideOfCamp === 'Enrichment' ? getEnrichMin(act) : 0);
+                while (state[idx].counselors.length < floor) state[idx].counselors.push(null);
+                const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                if (card) {
+                    const inp = card.querySelector('[data-count-type="counselors"]');
+                    if (inp) inp.value = state[idx].counselors.length;
+                }
+            });
+
+            renderAllFromState();
+            updateAllCounters();
+            updateGroupCounters();
+            statusEl.textContent = `${targetSide} rebuilt from ${rebuildPool.length} counselor${rebuildPool.length !== 1 ? 's' : ''}. Review and save when ready.`;
+        }
+
         // ── Full Auto Build ──────────────────────────────────────────────────────
         async function runFullAutoBuild() {
             const statusEl = document.getElementById('autoStatus');
@@ -1879,6 +2261,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             initState();
             renderAllFromState();
+            loadLockedState();
             // Default staff slot count to 1 for sports activities, but only if never previously saved
             // (preserves explicit 0-UL saves — EXISTING[key] exists even when staff array is empty)
             OFFERINGS.forEach((act, idx) => {
