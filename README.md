@@ -1,0 +1,321 @@
+# Camp Hub — Admin User Manual
+
+## Table of Contents
+
+- [Quick Reference](#quick-reference)
+  - [Importing Data](#importing-data)
+  - [Faculty Full Summer — Multi-Week Setup](#faculty-full-summer--multi-week-setup)
+  - [Session Management & Active Weeks](#session-management--active-weeks)
+  - [Counselor Scheduling](#counselor-scheduling)
+  - [Editing Campers & Staff Profiles](#editing-campers--staff-profiles)
+  - [Attendance Sheet Symbols](#attendance-sheet-symbols)
+- [Feature Map](#feature-map)
+  - [Hub](#hub)
+  - [Schedule & Lookup](#schedule--lookup)
+  - [Scheduling Tools](#scheduling-tools)
+  - [Attendance](#attendance)
+  - [Dismissals](#dismissals)
+  - [Health](#health)
+  - [Settings & Data Management](#settings--data-management)
+  - [Other Admin Tools](#other-admin-tools)
+
+---
+
+## Quick Reference
+
+### Importing Data
+
+All imports happen on the **Settings** page (`/settings`).
+
+> **Import order is required.** Camper data depends on staff existing first, and the Master Schedule import depends on the Camper Roster existing first. Always follow this sequence:
+>
+> **All Staff → Camper Roster → Master Schedule**
+>
+> Instructor Schedules can be uploaded any time after staff are imported.
+
+**Full setup sequence for a new session:**
+
+1. Import Activities (CSV bulk upload or add individually in the Activity Manager)
+2. **Import All Staff Roster**
+3. **Import Camper Roster** (ACR-005 report)
+4. **Import Master Schedule** (enriches campers with grade, bus, extended hours, activity schedule)
+5. Set the target week as **Active**
+6. **Sync** offerings from the imported schedule (or upload a Weekly Offerings CSV)
+7. Build the counselor schedule
+8. Import Instructor Schedules when ready (uploads to the active week)
+
+**CSV formats:**
+
+| Upload | Required Columns | Notes |
+|---|---|---|
+| Activities | `Name`, `SideOfCamp`, `MaxCapacity`, `AllowedGroups` | `AllowedGroups`: `Red`, `Carolina`, `Red-Carolina`, `Green-Navy`, or blank for all |
+| All Staff | `Name` (Last, First), `Positions`, `Camp` | Handles all roles. Home group color is set in the Schedule Builder, not here. |
+| Camper Roster (ACR-005) | ACR-005 export from camp management | Creates/updates: name, color group, lunch, shirt size. Must run **after** staff import. |
+| Master Schedule | Master Schedule export from camp management | Enriches existing campers with: grade, bus route, extended hours, activity schedule. Must run **after** camper roster import. |
+| Instructor Schedules | `FirstName`, `LastName`, `P1`–`P6`, `L1`–`L6` | Locations (`L1`–`L6`) are optional. Unknown names are auto-created as Instructors. Uploads to the **active week**. |
+
+---
+
+### Faculty Full Summer — Multi-Week Setup
+
+The **Faculty Full Summer** view (`/faculty-summer`) is used to load instructor and unit leader schedules for every week of camp in one place, independent of the active-week setting.
+
+**When to use it:** Upload all six weeks of instructor/faculty assignments at the start of the summer so staff can view their schedule week-by-week from their profile page. The per-week data stored here is separate from the active-week instructor data used by Counselor Scheduling.
+
+**CSV format:**
+
+```
+FirstName, LastName, P1, L1, P2, L2, P3, L3, P4, L4, P5, L5, P6, L6
+```
+
+- `P1`–`P6` = activity name for each period
+- `L1`–`L6` = location for each period (optional)
+- Uploading a week **replaces all existing data** for that week — uploading the same week twice is safe and will overwrite, not duplicate
+
+**Workflow:**
+
+1. Go to **Full Summer** (`/faculty-summer`) from the nav bar in Settings
+2. Upload a CSV for each week (W1–W6) using the upload cards at the top of the page
+3. Each card shows a count badge of how many staff records are loaded for that week
+4. Staff schedules appear in the table below; use the **week selector dropdown** on each row to view that person's schedule for any uploaded week
+5. To fix a mistake, re-upload the corrected CSV for that week, or use **Clear Week** to remove a week's data entirely
+
+---
+
+### Session Management & Active Weeks
+
+Managed in **Settings → Session Management** (`/settings`).
+
+The **Active Week** is the session all scheduling, attendance, and reporting tools operate against. Only one week is active at a time.
+
+**Released** marks a week's counselor schedule as visible to staff.
+
+| Action | What it does |
+|---|---|
+| **Set Active** | Makes this the current working week for all tools |
+| **Release / Unrelease** | Toggles staff visibility of the week's counselor schedule |
+| **Save** (floppy icon) | Saves the week label and start date |
+| **Clear** | Removes all counselor scheduling data for that week |
+| **Sync** | Rebuilds weekly offerings from the imported camper schedule data |
+
+**Typical weekly workflow:**
+
+```
+Upload camper data → Set target week as Active → Sync offerings
+→ Build counselor schedule → Save → Release
+```
+
+---
+
+### Counselor Scheduling
+
+The Schedule Builder is at `/counselor-scheduling`.
+
+#### Key Concepts
+
+**Sides of camp** — each period, camp splits into Sports and Enrichment:
+- Red / Carolina groups: Periods 1–2 = Enrichment, Periods 3–6 = Sports
+- Green / Navy groups: Periods 1–3 = Sports, Periods 4–6 = Enrichment
+
+**Schedule Types** — controls which periods a counselor is eligible for:
+
+| Type | Assigned to |
+|---|---|
+| All Sports | All sports periods for their group |
+| All Enrichment | All enrichment periods for their group |
+| AM Sports / PM Enrichment | AM block = sports, PM block = enrichment |
+| AM Enrichment / PM Sports | Reverse of above |
+| *(blank)* | Auto-detected from group color |
+
+**Slots** — each offering has a slot count that auto-calculates from enrollment. The scheduler fills these slots with eligible counselors.
+
+**Locked offerings** — lock an offering to exclude it from rebuild/auto-build passes. Use this to protect manually set assignments.
+
+#### Build Workflow
+
+1. Upload or Sync **Weekly Offerings** to populate the offerings list
+2. Set **Schedule Types** for counselors using the dropdowns in the counselor grid
+3. Click **Full Auto Build** to run the greedy assignment algorithm across all offerings
+4. Optionally use **Rebuild Side** (Sports or Enrichment) to re-roll only one side
+5. **Lock** individual offerings before a partial rebuild to preserve their assignments
+6. Click **Fill Extras** to run a second pass and place any remaining unassigned counselors
+7. **Save** to commit all assignments to the database
+8. **Backup** to create a named snapshot before making major changes
+
+#### Backups
+
+Backups are managed at `/counselor-schedule-backups`. Each backup stores the full counselor assignment state for its week. Restoring overwrites the live schedule for that week.
+
+#### Exports
+
+| Export | What's included |
+|---|---|
+| Counselor Schedule CSV | Per-counselor period assignments |
+| Staff Schedule CSV | Instructor and unit leader assignments |
+| Master Schedule CSV | Full class-by-period view |
+
+---
+
+### Editing Campers & Staff Profiles
+
+All profile editing requires **admin view**. Staff view shows the same pages read-only.
+
+#### Editing a Camper
+
+1. Go to **Camper Lookup** (`/search`) and search by name
+2. Click the camper's name to open their profile (`/camper/:id`)
+3. The left column in admin view shows an editable **Camper Details** form with:
+   - Home Counselor (dropdown, grouped by color)
+   - Bus Route
+   - Extended Hours (No / AM Only / PM Only / AM + PM)
+   - Camp Lunch (No – Packed / Yes / Allergy Meal)
+4. Click **Save Changes** to commit
+5. To remove the camper from the roster entirely, use the **Remove Camper** button at the bottom of the form (confirmation required, cannot be undone)
+
+> Camper schedule changes (swapping classes) are done through the **Swap Tool** (`/swap-tool`), not the profile page.
+
+#### Editing a Staff Member
+
+1. Go to **Staff Directory** (`/counselor-directory`) and click the staff member's name
+2. Their profile page (`/counselor-profile/:id`) opens with an **Edit Profile** section in admin view containing:
+   - First Name, Last Name
+   - Role (Counselor, Swim Counselor, Unit Leader, Sports Leader, Instructor, Director, etc.)
+   - Home Group Color
+   - Schedule Type (controls which periods they're placed in by the auto-scheduler)
+   - Bus Route
+   - Extended Hours
+   - Phone, Email
+3. Click **Save** to commit — this updates both the staff record and the active week's scheduling attributes
+4. **Instructors and Unit Leaders** also have a **Weekly Schedule** section below the profile form where you can add, edit, or remove period assignments week by week
+5. To permanently delete the staff member, use the **Delete** button in the page header (confirmation required, cannot be undone)
+
+> Newly created staff members (added via **Settings → Add Staff Member**) can also be edited the same way through their profile immediately after creation.
+
+---
+
+### Attendance Sheet Symbols
+
+Every attendance roster (home group, class, bus, extended care) shows status badges next to camper names. These reflect information from across the system and update automatically.
+
+| Badge | Meaning |
+|---|---|
+| 🏥 **In Nurse** | Camper was checked into the Nurse Station this morning and has not been checked out |
+| ⚠️ **Absent AM** | Camper was marked absent on their morning home group sheet |
+| 🚌 **Absent Bus AM** | Camper was marked absent on their bus route's AM sheet |
+| 📓 **With Noël** | Camper has an active visit logged in the Case Log |
+| 🚗 **Dismissed** | Camper has been given an early dismissal during today's session |
+| 🚗 **Pickup [time]** | A scheduled pickup has been entered for this camper (yellow badge, clickable to see pickup time and notes) |
+| ✓ **Seen Earlier** | Camper was marked present on a different roster earlier in the same session |
+| 🏕️ **Field Trip** | Shown on SPLIT AM specialty sheets when the group has been marked as on a field trip; individual SPLIT campers appearing on class sheets show a bus icon next to their name |
+
+**SPLIT campers** appearing on a class roster show a read-only status pulled from the Specialty AM sheet — they cannot be marked from the class roster directly.
+
+**Marking attendance:**
+- **Present** and **Absent** buttons save immediately (no submit button needed)
+- The counter at the top of each roster updates in real time
+- Use **Dismiss** to log an early dismissal directly from any attendance sheet
+
+---
+
+## Feature Map
+
+### Hub
+
+| Page | URL | Admin Only | Description |
+|---|---|:---:|---|
+| Admin Hub | `/admin` | ✓ | Dashboard: director notes, announcements, camper/staff counts, links to all admin tools |
+| Staff Hub | `/staff` | | Counselor-facing dashboard: daily schedule, home group roster, attendance links |
+
+---
+
+### Schedule & Lookup
+
+| Page | URL | Description |
+|---|---|---|
+| Master Schedule | `/master-schedule` | All classes by period. Filter by period, side, and color group. Click a class name to open its roster. |
+| Class Roster | `/class-roster/:period/:activity` | Full camper list for one class period. Admin can update the location. |
+| Camper Lookup | `/search` | Search campers by name. Shows full schedule, bus route, and extended hours. |
+| Camper Profile | `/camper/:id` | Full detail for one camper: schedule, contacts, notes. Admin can edit all fields or delete the record. |
+| Staff Directory | `/counselor-directory` | All staff listed by role. Admin mode links to individual profile pages. |
+| Staff Profile | `/counselor-profile/:id` | Individual staff detail: schedule, home group roster, contact info. Admin can edit all profile fields. |
+| Full Summer (Instructors) | `/faculty-summer` | Week-by-week instructor schedule view. Upload or clear assignments per week. |
+
+---
+
+### Scheduling Tools
+
+| Page | URL | Description |
+|---|---|---|
+| Swap Tool | `/swap-tool` | Move a camper from one class to another. Shows capacity and waitlist status for all available options. |
+| Schedule History | `/schedule-history` | Log of recent swap and assignment changes. Admin can archive entries. |
+| Waitlist / Promotions | `/promotions` | Lists campers eligible to be promoted off the waitlist into an open spot. Promote individually or all at once. |
+| Counselor Scheduling | `/counselor-scheduling` | Full counselor assignment builder — see [Counselor Scheduling](#counselor-scheduling) above. |
+| Counselor Schedule Backups | `/counselor-schedule-backups` | Named snapshots of saved counselor assignments. Restore or delete from here. |
+| Home Group Assignment | `/homegroup-assignment` | Assign counselors to color-group home groups by week. Can mirror assignments from one week to another. |
+| SPLIT Scheduling | `/split-scheduling` | Dedicated view for managing SPLIT camper period assignments. |
+| Audit Roster | `/audit` | Flags scheduling issues: missing grades, duplicate assignments, unassigned campers, classes with no counselor. |
+
+---
+
+### Attendance
+
+| Page | URL | Description |
+|---|---|---|
+| Attendance Overview | `/attendance` | Entry point. Links to all attendance roster types for the active session. |
+| Class Attendance | `/attendance/class/:period/:activity` | Mark present/absent for a specific class period. |
+| Home Group (by counselor) | `/attendance/homegroup/counselor/:id/:session` | Morning or afternoon home group roster for one counselor. |
+| Home Group (by color) | `/attendance/homegroup/:color/:session` | All home groups in a color, combined. |
+| Specialty Attendance | `/attendance/specialty/:color/:session` | Attendance for specialty programs (LilPlace, KinderPlace, etc.). |
+| Bus Attendance | `/attendance/bus/:route/:session` | Riders grouped by bus route. |
+| Extended Care | `/attendance/extended/:session` | AM and PM extended hours roster. |
+| Late Arrivals | `/attendance/late-arrivals` | Check in campers who arrive after the normal start time. |
+| Dismissal Archive | `/attendance/dismissal-archive` | Historical log of early dismissal records. |
+
+---
+
+### Dismissals
+
+| Page | URL | Description |
+|---|---|---|
+| Dismissals | `/dismissals` | Schedule an early pickup, view all pending dismissals, and mark them complete. |
+| All Dismissals | `/dismissals/all` | Full dismissal list across all sessions. |
+
+---
+
+### Health
+
+| Page | URL | Description |
+|---|---|---|
+| Nurse Station | `/nurse` | Log camper health visits: check-in, check-out, notes, and dismissal. Separate tabs for active and completed visits. |
+| Nurse Archive | `/nurse/archive` | Historical visit log organized by date. |
+| Case Log | `/case-log` | Detailed case tracking for incidents requiring fuller documentation. |
+| Case Log Archive | `/case-log/archive` | Historical case entries organized by date. |
+
+---
+
+### Settings & Data Management
+
+All at `/settings`.
+
+| Section | Description |
+|---|---|
+| **Session Management** | Set active/released weeks; edit labels and start dates; clear week data; sync offerings from imported schedule |
+| **Activity Manager** | Add, edit, and delete activities; configure side of camp, max capacity, and allowed groups; set period-specific group overrides; bulk CSV import |
+| **CSV Data Imports** | Import all staff, instructor schedules, camper roster (ACR-005), and camper master schedule |
+| **Documents** | Upload Camper Notes PDF and ICP Notes PDF — accessible to all users from relevant pages |
+| **Print Reports** | Printable attendance rosters and camper name cards |
+| **Add Staff Member** | Create an individual staff record with all profile fields (name, role, group color, schedule type, bus, extended hours, phone, email) |
+| **Add Camper** | Create an individual camper record and immediately assign classes through the class assignment tool |
+
+---
+
+### Other Admin Tools
+
+| Tool | URL | Description |
+|---|---|---|
+| Counselor Preferences | `/counselor-preferences` | View and edit each counselor's activity preferences, used by the auto-scheduler to influence assignments |
+| Photo of the Day | `/photo-day` | Upload camper photos and associate them with camper records |
+| Photo Gallery | `/photo-gallery` | Browse uploaded photos; staff can vote |
+| Export Counselor Schedule | `/export-counselor-schedule` | Download current counselor assignments as CSV |
+| Export Staff Schedule | `/export-staff-schedule` | Download instructor/unit leader assignments as CSV |
+| Export Master Schedule | `/export-master-schedule` | Download the full class-by-period master schedule as CSV |
