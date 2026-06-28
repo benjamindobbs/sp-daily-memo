@@ -1946,6 +1946,73 @@
                 if (act.SideOfCamp === targetSide && !lockedOfferings.has(idx)) state[idx].counselors = [];
             });
             autoCalculateSlots();
+            // Snapshot enrollment-based demand counts
+            const calcSlots = {};
+            OFFERINGS.forEach((act, idx) => {
+                if (act.SideOfCamp === targetSide && !lockedOfferings.has(idx))
+                    calcSlots[idx] = state[idx].counselors.length;
+            });
+
+            // Supply-aware redistribution: for each period, count how many rebuild-pool counselors
+            // are actually available, and if that's less than total demand, redistribute slots
+            // proportionally (by enrollment) so the greedy loop can fill every opened slot.
+            for (let p = 1; p <= 6; p++) {
+                const items = [];
+                OFFERINGS.forEach((act, idx) => {
+                    if (act.PeriodNumber !== p || act.SideOfCamp !== targetSide || lockedOfferings.has(idx)) return;
+                    const demand = calcSlots[idx] ?? 0;
+                    if (demand === 0) return; // hard-limited (Hartt, LearningZone, etc.)
+                    items.push({ idx, demand, enrollment: act.PreliminaryEnrollment || 0 });
+                });
+                if (items.length === 0) continue;
+
+                const supply = rebuildPool.filter(c => {
+                    if (usedThisPeriod[p].has(c.CounselorID)) return false;
+                    const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                    const sched = sel ? sel.value : (c.ScheduleType || '');
+                    return isCounselorAvailableFor(sched, p, targetSide);
+                }).length;
+
+                const totalDemand = items.reduce((s, { demand }) => s + demand, 0);
+                if (supply >= totalDemand) continue; // enough — keep enrollment-based counts
+
+                // Not enough supply: distribute 'supply' slots across offerings.
+                // Phase 1: give each offering 1 slot (ordered by enrollment desc), down to 0 if out.
+                // Phase 2: distribute remaining proportionally by enrollment, up to each offering's demand.
+                const alloc = {};
+                items.forEach(({ idx }) => { alloc[idx] = 0; });
+                const byEnroll = [...items].sort((a, b) => b.enrollment - a.enrollment);
+                let rem = supply;
+
+                for (const { idx } of byEnroll) {
+                    if (rem <= 0) break;
+                    alloc[idx] = 1;
+                    rem--;
+                }
+                if (rem > 0) {
+                    const totalE = items.reduce((s, { enrollment }) => s + Math.max(enrollment, 1), 0);
+                    for (const { idx, demand, enrollment } of byEnroll) {
+                        if (rem <= 0) break;
+                        const share = Math.min(
+                            Math.round(supply * Math.max(enrollment, 1) / totalE) - alloc[idx],
+                            demand - alloc[idx],
+                            rem
+                        );
+                        if (share > 0) { alloc[idx] += share; rem -= share; }
+                    }
+                    // Flush any leftover to offerings still below demand
+                    for (const { idx, demand } of byEnroll) {
+                        if (rem <= 0) break;
+                        const add = Math.min(demand - alloc[idx], rem);
+                        if (add > 0) { alloc[idx] += add; rem -= add; }
+                    }
+                }
+
+                items.forEach(({ idx }) => {
+                    state[idx].counselors = Array(alloc[idx]).fill(null);
+                    calcSlots[idx] = alloc[idx]; // update cap for fill phases
+                });
+            }
 
             // Seed blockUsed from: other side AND locked target-side classes (all stay untouched)
             const blockUsed = {};
@@ -2144,7 +2211,8 @@
                     const cap = Math.min(
                         /swim/i.test(OFFERINGS[tgtIdx].ActivityName)    ? 2 : Infinity,
                         /archery/i.test(OFFERINGS[tgtIdx].ActivityName) ? 2 : Infinity,
-                        OFFERINGS[tgtIdx].SideOfCamp === 'Enrichment'   ? 3 : Infinity
+                        OFFERINGS[tgtIdx].SideOfCamp === 'Enrichment'   ? 3 : Infinity,
+                        calcSlots[tgtIdx] ?? Infinity
                     );
                     if ((mc == null || state[tgtIdx].counselors.length < mc) && state[tgtIdx].counselors.length < cap) {
                         state[tgtIdx].counselors.push(null);
@@ -2196,6 +2264,7 @@
                     const a = OFFERINGS[idx];
                     if (/swim/i.test(a.ActivityName)    && state[idx].counselors.length >= 2) return false;
                     if (/archery/i.test(a.ActivityName) && state[idx].counselors.length >= 2) return false;
+                    if (calcSlots[idx] != null && state[idx].counselors.length >= calcSlots[idx]) return false;
                     return true;
                 };
                 for (const c of unplaced) {
@@ -2229,8 +2298,6 @@
                 }
             });
 
-            // Restore blank slots for any offerings still at 0 after compact
-            autoCalculateSlots();
             renderAllFromState();
             updateAllCounters();
             updateGroupCounters();
