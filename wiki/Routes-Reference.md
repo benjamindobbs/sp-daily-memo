@@ -102,6 +102,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | GET | `/counselor-preferences` | ✓ | View all counselor preferences |
 | POST | `/counselor-preferences` | ✓ | Save preferences for one counselor |
 | GET | `/api/counselor-preferences/:id` | ✓ | Ajax: get preferences for one counselor |
+| GET | `/counselor-preferences-summary` | ✓ | Admin summary table: all main counselors with home group, schedule, and activity preferences; activity prefs split by Sports/Enrichment |
 
 ---
 

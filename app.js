@@ -270,7 +270,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/clear-counselor-week', '/counselor-week-assignments', '/clear-counselor-schedule', '/clear-counselor-homegroups',
     '/audit', '/merge-class', '/set-activity-side', '/delete-counselor',
     '/update-staff-info', '/update-staff-period', '/remove-staff-period',
-    '/homegroup-assignment',
+    '/homegroup-assignment', '/counselor-preferences-summary',
     '/attendance/dismissal-archive',
     '/dismissals',
     '/nurse',  '/nurse/archive',
@@ -4690,6 +4690,34 @@ app.get('/counselor-preferences', (req, res) => {
     const savedActivityPrefs = existingPrefs?.ActivityPreferences ? JSON.parse(existingPrefs.ActivityPreferences) : [];
     const selectedCounselorRole = counselors.find(c => c.CounselorID === selectedCounselorId)?.StaffRole || null;
     res.render('counselor-preferences', { counselors, activities, alertMessage, selectedCounselorId, selectedCounselorRole, existingPrefs, savedActivityPrefs });
+});
+
+app.get('/counselor-preferences-summary', (_req, res) => {
+    const activeWeek = getActiveWeek();
+    const counselors = db.prepare(`
+        SELECT c.CounselorID, c.FirstName, c.LastName, c.StaffRole,
+               p.HomeGroupPreference, p.SchedulePreference, p.ActivityPreferences, p.SubmittedAt
+        FROM Counselors c
+        LEFT JOIN CounselorPreferences p ON c.CounselorID = p.CounselorID
+        WHERE c.StaffRole IN ('Counselor', 'Swim Counselor')
+        ORDER BY c.LastName, c.FirstName
+    `).all();
+
+    const weekActivities = db.prepare(
+        "SELECT DISTINCT ActivityName AS Name, SideOfCamp FROM WeeklyOfferings WHERE WeekNumber = ? ORDER BY SideOfCamp, ActivityName"
+    ).all(activeWeek);
+    const activityMap = {};
+    weekActivities.forEach(a => { activityMap[a.Name] = a.SideOfCamp; });
+
+    const rows = counselors.map(c => {
+        const prefs = c.ActivityPreferences ? JSON.parse(c.ActivityPreferences) : [];
+        const sports = prefs.filter(n => activityMap[n] === 'Sports');
+        const enrichment = prefs.filter(n => activityMap[n] === 'Enrichment');
+        const unclassified = prefs.filter(n => !activityMap[n]);
+        return { ...c, sports, enrichment, unclassified, hasPrefs: !!c.HomeGroupPreference };
+    });
+
+    res.render('counselor-preferences-summary', { rows, activeWeek });
 });
 
 app.post('/counselor-preferences', (req, res) => {

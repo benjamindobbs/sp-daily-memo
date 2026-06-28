@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preference Summary | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .pref-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        .pref-table th { text-align: left; padding: 10px 14px; background: #f8fafc; border-bottom: 2px solid var(--border-color); font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); white-space: nowrap; }
+        .pref-table td { padding: 8px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+        .pref-table tr:last-child td { border-bottom: none; }
+        .pref-table tr:hover td { background: #f8fafc; }
+        .no-pref { color: var(--text-muted); font-style: italic; font-size: 0.82rem; }
+        .pref-chip { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 0.78rem; font-weight: 600; }
+        .pref-chip.hg { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+        .pref-chip.sched { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .activity-details { font-size: 0.84rem; }
+        .activity-details summary { cursor: pointer; color: #3b82f6; font-size: 0.82rem; user-select: none; list-style: none; display: flex; align-items: center; gap: 5px; }
+        .activity-details summary::-webkit-details-marker { display: none; }
+        .activity-details summary::before { content: '▶'; font-size: 0.6rem; transition: transform 0.15s; display: inline-block; }
+        .activity-details[open] summary::before { transform: rotate(90deg); }
+        .activity-details summary .count-badge { background: #e0e7ff; color: #4338ca; border-radius: 10px; padding: 1px 7px; font-size: 0.72rem; font-weight: 700; }
+        .activity-section { margin-top: 8px; padding-left: 12px; }
+        .activity-section-label { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+        .activity-section-label.sports { color: #1e40af; }
+        .activity-section-label.enrichment { color: #9d174d; }
+        .activity-section-label.other { color: var(--text-muted); }
+        .activity-list { list-style: none; padding: 0; margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+        .activity-tag { font-size: 0.78rem; padding: 2px 8px; border-radius: 10px; }
+        .activity-tag.sports { background: #dbeafe; color: #1e40af; }
+        .activity-tag.enrichment { background: #fce7f3; color: #9d174d; }
+        .activity-tag.other { background: #f1f5f9; color: var(--text-muted); }
+        .submitted-ts { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
+        .stats-bar { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+        .stat-pill { background: white; border: 1px solid var(--border-color); border-radius: 10px; padding: 8px 16px; font-size: 0.82rem; box-shadow: var(--shadow); }
+        .stat-pill strong { font-size: 1.1rem; display: block; }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/counselor-scheduling" class="nav-btn">&#128197; Scheduling</a>
+        <a href="/counselor-preferences-summary" class="nav-btn primary">&#128203; Pref Summary</a>
+        <a href="/counselor-preferences" class="nav-btn">Submit Preferences</a>
+    </nav>
+
+    <div class="container-xl">
+
+        <div class="page-header" style="margin-bottom: 16px;">
+            <h1 style="margin:0;">Counselor Preference Summary</h1>
+            <p style="color:var(--text-muted); margin: 4px 0 0; font-size:0.9rem;">Week <%= activeWeek %> — main counselors only</p>
+        </div>
+
+        <%
+        const submitted = rows.filter(r => r.hasPrefs).length;
+        const total = rows.length;
+        const noPrefs = rows.filter(r => !r.hasPrefs);
+        %>
+
+        <div class="stats-bar">
+            <div class="stat-pill"><strong><%= submitted %> / <%= total %></strong>Submitted preferences</div>
+            <div class="stat-pill"><strong><%= total - submitted %></strong>No submission yet</div>
+        </div>
+
+        <% if (noPrefs.length > 0) { %>
+        <div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:10px; padding:10px 16px; margin-bottom:18px; font-size:0.84rem; color:#92400e;">
+            <strong>Pending:</strong>
+            <%= noPrefs.map(r => r.FirstName + ' ' + r.LastName).join(', ') %>
+        </div>
+        <% } %>
+
+        <div class="card" style="padding:0; overflow:hidden;">
+            <table class="pref-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Home Group</th>
+                        <th>Schedule Type</th>
+                        <th>Activity Preferences</th>
+                        <th>Submitted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <% rows.forEach(r => { %>
+                    <tr>
+                        <td style="font-weight:600; white-space:nowrap;"><%= r.FirstName %> <%= r.LastName %></td>
+                        <td>
+                            <% if (r.HomeGroupPreference) { %>
+                                <span class="pref-chip hg"><%= r.HomeGroupPreference %></span>
+                            <% } else { %>
+                                <span class="no-pref">—</span>
+                            <% } %>
+                        </td>
+                        <td>
+                            <% if (r.SchedulePreference) { %>
+                                <span class="pref-chip sched"><%= r.SchedulePreference %></span>
+                            <% } else { %>
+                                <span class="no-pref">—</span>
+                            <% } %>
+                        </td>
+                        <td>
+                            <% const total = r.sports.length + r.enrichment.length + r.unclassified.length; %>
+                            <% if (total === 0) { %>
+                                <span class="no-pref">—</span>
+                            <% } else { %>
+                            <details class="activity-details">
+                                <summary>
+                                    <span><%= total %> activit<%= total === 1 ? 'y' : 'ies' %></span>
+                                </summary>
+                                <div class="activity-section">
+                                    <% if (r.sports.length > 0) { %>
+                                        <div class="activity-section-label sports">Sports</div>
+                                        <ul class="activity-list">
+                                            <% r.sports.forEach(a => { %>
+                                                <li class="activity-tag sports"><%= a %></li>
+                                            <% }) %>
+                                        </ul>
+                                    <% } %>
+                                    <% if (r.enrichment.length > 0) { %>
+                                        <div class="activity-section-label enrichment">Enrichment</div>
+                                        <ul class="activity-list">
+                                            <% r.enrichment.forEach(a => { %>
+                                                <li class="activity-tag enrichment"><%= a %></li>
+                                            <% }) %>
+                                        </ul>
+                                    <% } %>
+                                    <% if (r.unclassified.length > 0) { %>
+                                        <div class="activity-section-label other">Other</div>
+                                        <ul class="activity-list">
+                                            <% r.unclassified.forEach(a => { %>
+                                                <li class="activity-tag other"><%= a %></li>
+                                            <% }) %>
+                                        </ul>
+                                    <% } %>
+                                </div>
+                            </details>
+                            <% } %>
+                        </td>
+                        <td>
+                            <% if (r.SubmittedAt) { %>
+                                <span class="submitted-ts"><%= new Date(r.SubmittedAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) %></span>
+                            <% } else { %>
+                                <span class="no-pref">—</span>
+                            <% } %>
+                        </td>
+                    </tr>
+                <% }) %>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+</body>
+</html>
