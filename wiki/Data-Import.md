@@ -195,3 +195,4 @@ Notable migrations in order:
 | `SplitFieldTrip` created | SPLIT field trip flag table. |
 | `CounselorScheduleBackups` created | Snapshot backup table. |
 | `PdfDocuments` created | PDF files stored as BLOBs in the database instead of the filesystem, so they survive server restarts. Any PDFs already in `uploads/` are migrated in automatically on first boot. |
+| `DirectorNotes.category` added | **[migrated]** — Adds tab-based categorization. Values: `director`, `camper`, `staff`, `timesheet`. Existing notes default to `director`. |

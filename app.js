@@ -957,6 +957,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS PdfDocuments (
     }
 })();
 
+// Migration: add category column to DirectorNotes
+try {
+    db.prepare("SELECT category FROM DirectorNotes LIMIT 1").get();
+} catch {
+    db.exec("ALTER TABLE DirectorNotes ADD COLUMN category TEXT NOT NULL DEFAULT 'director'");
+}
+
 // --- WEEK HELPERS ---
 function getActiveWeek() {
     return db.prepare("SELECT weekNumber FROM Sessions WHERE isActive=1 LIMIT 1").get()?.weekNumber ?? 1;
@@ -1169,7 +1176,9 @@ app.post('/director-notes', (req, res) => {
     const body = (req.body.body || '').trim();
     if (!body) return res.redirect('/admin');
     const author = req.cookies.adminName || 'Admin';
-    db.prepare("INSERT INTO DirectorNotes (body, author) VALUES (?, ?)").run(body, author);
+    const VALID_CATS = new Set(['director', 'camper', 'staff', 'timesheet']);
+    const category = VALID_CATS.has(req.body.category) ? req.body.category : 'director';
+    db.prepare("INSERT INTO DirectorNotes (body, author, category) VALUES (?, ?, ?)").run(body, author, category);
     res.redirect('/admin');
 });
 
@@ -1229,7 +1238,7 @@ app.get('/admin', (req, res) => {
     }
 
     const announcement  = db.prepare("SELECT content FROM HubContent WHERE id='announcement'").get()?.content || '';
-    const directorNotes = db.prepare("SELECT id, body, author, createdAt FROM DirectorNotes ORDER BY createdAt DESC LIMIT 200").all();
+    const directorNotes = db.prepare("SELECT id, body, author, category, createdAt FROM DirectorNotes ORDER BY createdAt DESC LIMIT 200").all();
     const sessions = db.prepare('SELECT * FROM Sessions ORDER BY weekNumber').all();
 
     const adminName  = req.cookies.adminName || null;

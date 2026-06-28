@@ -282,13 +282,22 @@
 
         <%/* ── Director Notes ── */%>
         <div class="card" style="margin-bottom:20px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <h3 style="margin:0;">Director Notes <span style="font-size:0.75rem; font-weight:400; color:var(--text-muted);">(admin only)</span></h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                <h3 style="margin:0;">Notes <span style="font-size:0.75rem; font-weight:400; color:var(--text-muted);">(admin only)</span></h3>
                 <button onclick="toggleAddNote()" class="btn btn-primary btn-small">+ Add Note</button>
+            </div>
+
+            <%/* Category tabs */%>
+            <div style="display:flex; gap:0; border-bottom:2px solid var(--border-color); margin-bottom:14px;">
+                <button class="notes-cat-tab active" data-cat="director" onclick="setCatTab('director',this)">Director Notes</button>
+                <button class="notes-cat-tab" data-cat="camper" onclick="setCatTab('camper',this)">Camper/Parent</button>
+                <button class="notes-cat-tab" data-cat="staff" onclick="setCatTab('staff',this)">Staff</button>
+                <button class="notes-cat-tab" data-cat="timesheet" onclick="setCatTab('timesheet',this)">Timesheet</button>
             </div>
 
             <div id="addNoteForm" style="display:none; margin-bottom:16px;">
                 <form action="/director-notes" method="POST">
+                    <input type="hidden" name="category" id="noteCategory" value="director">
                     <textarea name="body" rows="3" placeholder="Write a note..."
                         style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #e2e8f0;
                                border-radius:6px; font-size:0.9rem; resize:vertical;"
@@ -315,6 +324,7 @@
             <div id="notesFeed" style="max-height:380px; overflow-y:auto;">
                 <% directorNotes.forEach(function(note) { %>
                 <div class="note-item"
+                     data-category="<%= note.category || 'director' %>"
                      data-author="<%= note.author.toLowerCase() %>"
                      data-date="<%= note.createdAt %>"
                      data-body="<%= (note.body || '').replace(/</g,'').replace(/>/g,'').toLowerCase() %>">
@@ -333,6 +343,7 @@
                     <div class="note-body"><%- note.body %></div>
                 </div>
                 <% }) %>
+                <p id="notesEmpty" style="display:none; color:var(--text-muted); text-align:center; padding:24px 0; font-size:0.9rem;">No notes yet.</p>
                 <% if (!directorNotes.length) { %>
                 <p style="color:var(--text-muted); text-align:center; padding:24px 0; font-size:0.9rem;">No notes yet.</p>
                 <% } %>
@@ -488,7 +499,18 @@
             f.style.display = f.style.display === 'none' ? '' : 'none';
         }
 
+        let _notesCat = 'director';
         let _notesFilter = 'all';
+
+        function setCatTab(cat, btn) {
+            _notesCat = cat;
+            document.querySelectorAll('.notes-cat-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const catInput = document.getElementById('noteCategory');
+            if (catInput) catInput.value = cat;
+            applyNotesFilter();
+        }
+
         function setNotesFilter(filter, btn) {
             _notesFilter = filter;
             document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
@@ -502,7 +524,10 @@
             const weekStart = new Date(now);
             weekStart.setDate(now.getDate() - now.getDay());
             weekStart.setHours(0, 0, 0, 0);
+            let visibleCount = 0;
             document.querySelectorAll('.note-item').forEach(item => {
+                const cat = item.dataset.category || 'director';
+                if (cat !== _notesCat) { item.style.display = 'none'; return; }
                 const dateStr = item.dataset.date ? item.dataset.date.slice(0, 10) : '';
                 const itemDate = new Date(item.dataset.date);
                 let dateMatch = true;
@@ -512,8 +537,12 @@
                     (item.dataset.body || '').includes(query) ||
                     (item.dataset.author || '').includes(query) ||
                     dateStr.includes(query);
-                item.style.display = (dateMatch && textMatch) ? '' : 'none';
+                const show = dateMatch && textMatch;
+                item.style.display = show ? '' : 'none';
+                if (show) visibleCount++;
             });
+            const emptyMsg = document.getElementById('notesEmpty');
+            if (emptyMsg) emptyMsg.style.display = visibleCount === 0 ? '' : 'none';
         }
 
         // Auto-refresh stats every 60 seconds when not actively editing

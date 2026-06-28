@@ -416,6 +416,7 @@ Timestamped director note entries shown on the admin hub.
 | `id` | INTEGER PK | |
 | `body` | TEXT | |
 | `author` | TEXT | DEFAULT `'Admin'` |
+| `category` | TEXT | **[migrated]** — `director` (default), `camper`, `staff`, `timesheet` |
 | `createdAt` | DATETIME | |
 
 ---
