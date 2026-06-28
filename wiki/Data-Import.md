@@ -12,12 +12,12 @@ Imports have dependencies. Always follow this sequence for a fresh setup:
 1. Activities (optional CSV bulk, or add individually)
 2. All Staff Roster
 3. Camper Roster (ACR-005)
-4. Master Schedule
+4. Master Camper Schedule (ACR-255)
 5. Instructor Schedules (can be done any time after staff)
 ```
 
 - **Camper Roster** depends on staff already existing (it may link counselors).
-- **Master Schedule** depends on campers existing (it enriches existing camper rows with grade, bus, extended hours, and schedule data).
+- **Master Camper Schedule (ACR-255)** depends on campers existing (it enriches existing camper rows with grade, bus, extended hours, and schedule data).
 - Importing in the wrong order will result in missing relationships or failed lookups.
 
 ---
@@ -49,19 +49,23 @@ Imports have dependencies. Always follow this sequence for a fresh setup:
 ## Camper Roster (ACR-005)
 
 **Route:** `POST /upload-campers`
-**Source:** ACR-005 export from camp management system
+**Report:** ACR-005: Attendance Roster by Cabin
+
+**How to run in CB:** Select All Seasons → add Session filter → select relevant weeks for all specialty camps (Robotics & Coding, KP, LP, LIT) and main camp (SP Week 1–6) → Run report as CSV.
 
 **What it does:**
 - Creates or updates camper records in `Campers`.
 - Sets: `FirstName`, `LastName`, `HomeGroupColor`, `CampLunch`, `ShirtSize`, `Age`.
-- Does **not** set schedule data — that comes from the Master Schedule import.
+- Does **not** set schedule data — that comes from the Master Camper Schedule (ACR-255) import.
 
 ---
 
-## Master Schedule
+## Master Schedule (ACR-255)
 
 **Route:** `POST /upload-campers-schedule`
-**Source:** Master Schedule export from camp management system
+**Report:** ACR-255: Master Camper Schedule
+
+**How to run in CB:** Select All Seasons → add Session filter → select all SP W[X] - Period sessions (Periods 1–5 for the target week) → Run report as CSV.
 
 **What it does:**
 - Looks up each camper by name in `Campers` (must already exist from ACR-005 import).

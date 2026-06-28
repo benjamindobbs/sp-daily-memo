@@ -27,9 +27,9 @@
 
 All imports happen on the **Settings** page (`/settings`).
 
-> **Import order is required.** Camper data depends on staff existing first, and the Master Schedule import depends on the Camper Roster existing first. Always follow this sequence:
+> **Import order is required.** Camper data depends on staff existing first, and the Master Camper Schedule import depends on the Camper Roster existing first. Always follow this sequence:
 >
-> **All Staff → Camper Roster → Master Schedule**
+> **All Staff → Camper Roster → Master Camper Schedule (ACR-255)**
 >
 > Instructor Schedules can be uploaded any time after staff are imported.
 
@@ -38,7 +38,7 @@ All imports happen on the **Settings** page (`/settings`).
 1. Import Activities (CSV bulk upload or add individually in the Activity Manager)
 2. **Import All Staff Roster**
 3. **Import Camper Roster** (ACR-005 report)
-4. **Import Master Schedule** (enriches campers with grade, bus, extended hours, activity schedule)
+4. **Import Master Camper Schedule (ACR-255)** (enriches campers with grade, bus, extended hours, activity schedule)
 5. Set the target week as **Active**
 6. **Sync** offerings from the imported schedule (or upload a Weekly Offerings CSV)
 7. Build the counselor schedule
@@ -50,8 +50,8 @@ All imports happen on the **Settings** page (`/settings`).
 |---|---|---|
 | Activities | `Name`, `SideOfCamp`, `MaxCapacity`, `AllowedGroups` | `AllowedGroups`: `Red`, `Carolina`, `Red-Carolina`, `Green-Navy`, or blank for all |
 | All Staff | `Name` (Last, First), `Positions`, `Camp` | Handles all roles. Home group color is set in the Schedule Builder, not here. |
-| Camper Roster (ACR-005) | ACR-005 export from camp management | Creates/updates: name, color group, lunch, shirt size. Must run **after** staff import. |
-| Master Schedule | Master Schedule export from camp management | Enriches existing campers with: grade, bus route, extended hours, activity schedule. Must run **after** camper roster import. |
+| Camper Roster (ACR-005) | ACR-005 export from camp management | Creates/updates: name, color group, lunch, shirt size. Must run **after** staff import. **In CB:** Select All Seasons → add Session filter → select relevant weeks for all specialty camps and main camp → Run report as CSV. |
+| Master Camper Schedule (ACR-255) | ACR-255 export from camp management | Enriches existing campers with: grade, bus route, extended hours, activity schedule. Must run **after** camper roster import. **In CB:** Select All Seasons → add Session filter → select all SP W[X] - Period sessions (Periods 1–5) → Run report as CSV. |
 | Instructor Schedules | `FirstName`, `LastName`, `P1`–`P6`, `L1`–`L6` | Locations (`L1`–`L6`) are optional. Unknown names are auto-created as Instructors. Uploads to the **active week**. |
 
 ---
