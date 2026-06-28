@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Counselor Schedule Backups | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .backup-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .backup-table th { text-align: left; padding: 10px 12px; background: #f8fafc; border-bottom: 2px solid #e2e8f0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; }
+        .backup-table td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+        .backup-table tr:last-child td { border-bottom: none; }
+        .backup-table tr:hover td { background: #f8fafc; }
+        .ts { font-size: 0.8rem; color: #94a3b8; white-space: nowrap; }
+        .week-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.78rem; font-weight: 600; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .action-row { display: flex; gap: 6px; align-items: center; }
+        .empty-state { text-align: center; padding: 60px 20px; color: #94a3b8; }
+        .empty-state span { font-size: 2.5rem; display: block; margin-bottom: 10px; }
+        .restore-btn { padding: 4px 12px; font-size: 0.8rem; border-radius: 6px; border: 1px solid #bbf7d0; background: #f0fdf4; color: #15803d; cursor: pointer; font-family: inherit; }
+        .restore-btn:hover { background: #dcfce7; }
+        .delete-btn { padding: 4px 12px; font-size: 0.8rem; border-radius: 6px; border: 1px solid #fca5a5; background: #fee2e2; color: #991b1b; cursor: pointer; font-family: inherit; }
+        .delete-btn:hover { background: #fecaca; }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
+        <a href="/counselor-scheduling" class="nav-btn">&#128197; Counselor Scheduling</a>
+        <a href="/counselor-schedule-backups" class="nav-btn primary">&#128190; Backups</a>
+    </nav>
+
+    <div class="container">
+        <header style="margin-bottom: 24px;">
+            <h1>&#128190; Counselor Schedule Backups</h1>
+            <p style="color: var(--text-muted); margin: 4px 0 0 0;">
+                Snapshots of saved counselor assignments. Restoring will overwrite the live schedule for that week.
+            </p>
+        </header>
+
+        <% if (alertMessage) { %>
+            <div class="alert"><%= alertMessage %></div>
+        <% } %>
+
+        <%
+        const sessionMap = {};
+        sessions.forEach(s => { sessionMap[s.weekNumber] = s.label; });
+        %>
+
+        <% if (backups.length > 0) { %>
+        <div style="border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;">
+            <table class="backup-table">
+                <thead>
+                    <tr>
+                        <th>Label</th>
+                        <th>Week</th>
+                        <th>Created</th>
+                        <th style="width: 180px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% backups.forEach(b => { %>
+                    <tr>
+                        <td><strong><%= b.Label %></strong></td>
+                        <td>
+                            <span class="week-badge">
+                                <%= sessionMap[b.WeekNumber] || `Week ${b.WeekNumber}` %>
+                            </span>
+                        </td>
+                        <td class="ts"><%= fmtTime(b.CreatedAt) %></td>
+                        <td>
+                            <div class="action-row">
+                                <form action="/restore-counselor-backup/<%= b.BackupID %>" method="POST" style="margin:0;"
+                                      onsubmit="return confirm('Restore &quot;<%= b.Label.replace(/'/g, '\\\'') %>&quot;? This will overwrite the live <%= sessionMap[b.WeekNumber] || `Week ${b.WeekNumber}` %> schedule.')">
+                                    <button type="submit" class="restore-btn">&#9654; Restore</button>
+                                </form>
+                                <form action="/delete-counselor-backup/<%= b.BackupID %>" method="POST" style="margin:0;"
+                                      onsubmit="return confirm('Delete this backup permanently?')">
+                                    <button type="submit" class="delete-btn">&#128465; Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    <% }) %>
+                </tbody>
+            </table>
+        </div>
+        <% } else { %>
+        <div class="empty-state">
+            <span>&#128190;</span>
+            <p>No backups yet. Use the <strong>Backup</strong> button on the scheduling page to create one.</p>
+            <a href="/counselor-scheduling" class="btn btn-primary" style="text-decoration:none; margin-top:12px; display:inline-block;">Go to Scheduling</a>
+        </div>
+        <% } %>
+    </div>
+
+</body>
+</html>

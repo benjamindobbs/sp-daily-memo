@@ -262,7 +262,8 @@ const ADMIN_ONLY_PREFIXES = [
     '/delete-activity', '/update-activity', '/add-activity-period-group',
     '/delete-activity-period-group',
     '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings', '/sync-offerings-from-schedule', '/api/sync-offerings',
-    '/save-counselor-assignments', '/export-counselor-schedule', '/export-staff-schedule',
+    '/save-counselor-assignments', '/backup-counselor-assignments', '/counselor-schedule-backups', '/restore-counselor-backup', '/delete-counselor-backup',
+    '/export-counselor-schedule', '/export-staff-schedule',
     '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups',
     '/hub-content', '/director-notes', '/photo-gallery', '/photo-vote',
     '/set-active-week', '/set-released-week', '/update-session-label',
@@ -934,6 +935,15 @@ try {
 db.exec(`CREATE TABLE IF NOT EXISTS SplitFieldTrip (
     Date     TEXT PRIMARY KEY,
     MarkedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
+
+// Counselor schedule backup snapshots
+db.exec(`CREATE TABLE IF NOT EXISTS CounselorScheduleBackups (
+    BackupID        INTEGER PRIMARY KEY AUTOINCREMENT,
+    WeekNumber      INTEGER NOT NULL,
+    Label           TEXT    NOT NULL DEFAULT '',
+    CreatedAt       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    AssignmentsJSON TEXT    NOT NULL
 )`);
 
 // --- WEEK HELPERS ---
@@ -4257,6 +4267,60 @@ app.post('/save-counselor-assignments', (req, res) => {
         console.error('[save-counselor-assignments]', err.message);
         res.status(500).json({ error: err.message });
     }
+});
+
+// --- COUNSELOR SCHEDULE BACKUPS ---
+app.post('/backup-counselor-assignments', (req, res) => {
+    const { weekNumber, label } = req.body;
+    const w   = parseInt(weekNumber) || getActiveWeek();
+    const lbl = (label || '').trim() || 'Backup';
+
+    const counselorSchedules = db.prepare(
+        'SELECT CounselorID, WeekNumber, PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE WeekNumber=?'
+    ).all(w);
+    const staffAssignments = db.prepare(
+        'SELECT WeekNumber, PeriodNumber, ActivityName, PersonID, PersonType FROM CounselorScheduleAssignments WHERE WeekNumber=?'
+    ).all(w);
+
+    const snapshot = JSON.stringify({ weekNumber: w, counselorSchedules, staffAssignments });
+    db.prepare('INSERT INTO CounselorScheduleBackups (WeekNumber, Label, AssignmentsJSON) VALUES (?, ?, ?)').run(w, lbl, snapshot);
+    res.json({ ok: true });
+});
+
+app.get('/counselor-schedule-backups', (req, res) => {
+    const backups  = db.prepare('SELECT BackupID, WeekNumber, Label, CreatedAt FROM CounselorScheduleBackups ORDER BY CreatedAt DESC').all();
+    const sessions = db.prepare('SELECT * FROM Sessions ORDER BY weekNumber').all();
+    const alertMessage = req.query.message || null;
+    res.render('counselor-schedule-backups', { backups, sessions, alertMessage });
+});
+
+app.post('/restore-counselor-backup/:id', (req, res) => {
+    const backup = db.prepare('SELECT * FROM CounselorScheduleBackups WHERE BackupID=?').get(req.params.id);
+    if (!backup) return res.redirect('/counselor-schedule-backups?message=Backup+not+found.');
+
+    let parsed;
+    try { parsed = JSON.parse(backup.AssignmentsJSON); }
+    catch { return res.redirect('/counselor-schedule-backups?message=Backup+data+is+corrupt.'); }
+
+    const { weekNumber, counselorSchedules = [], staffAssignments = [] } = parsed;
+
+    db.transaction(() => {
+        db.prepare('DELETE FROM CounselorWeekSchedules WHERE WeekNumber=?').run(weekNumber);
+        db.prepare("DELETE FROM CounselorScheduleAssignments WHERE WeekNumber=?").run(weekNumber);
+
+        const insCws = db.prepare('INSERT OR REPLACE INTO CounselorWeekSchedules (CounselorID, WeekNumber, PeriodNumber, ActivityName) VALUES (?, ?, ?, ?)');
+        for (const r of counselorSchedules) insCws.run(r.CounselorID, r.WeekNumber, r.PeriodNumber, r.ActivityName);
+
+        const insStaff = db.prepare('INSERT OR IGNORE INTO CounselorScheduleAssignments (WeekNumber, PeriodNumber, ActivityName, PersonID, PersonType) VALUES (?, ?, ?, ?, ?)');
+        for (const r of staffAssignments) insStaff.run(r.WeekNumber, r.PeriodNumber, r.ActivityName, r.PersonID, r.PersonType);
+    })();
+
+    res.redirect(`/counselor-schedule-backups?message=Restored+%22${encodeURIComponent(backup.Label)}%22+to+Week+${weekNumber}.`);
+});
+
+app.post('/delete-counselor-backup/:id', (req, res) => {
+    db.prepare('DELETE FROM CounselorScheduleBackups WHERE BackupID=?').run(req.params.id);
+    res.redirect('/counselor-schedule-backups?message=Backup+deleted.');
 });
 
 app.get('/export-counselor-schedule', (_req, res) => {

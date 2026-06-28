@@ -131,6 +131,8 @@
             <button id="saveBtn" class="btn btn-primary" onclick="saveAssignments()">Save Assignments</button>
             <a href="/export-counselor-schedule" class="btn btn-primary" style="background:var(--success,#16a34a);">&#11015;&#65039; Counselor CSV</a>
             <a href="/export-staff-schedule" class="btn btn-primary" style="background:var(--success,#16a34a);">&#11015;&#65039; Staff CSV</a>
+            <button class="btn btn-small" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;" onclick="createBackup()">&#128190; Backup</button>
+            <a href="/counselor-schedule-backups" class="btn btn-small" style="background:#f5f3ff; color:#6d28d9; border-color:#ddd6fe; text-decoration:none;">&#128204; Backups</a>
             <span style="width:1px; height:28px; background:var(--border-color); display:inline-block; align-self:center;"></span>
             <form action="/clear-counselor-schedule" method="POST" style="margin:0;"
                   onsubmit="return confirm('Clear all counselor AND staff/unit leader assignments for Week <%= planWeek %>?')">
@@ -359,6 +361,8 @@
             <button class="btn btn-primary" onclick="saveAssignments()">Save Assignments</button>
             <a href="/export-counselor-schedule" class="btn btn-primary" style="background:var(--success,#16a34a);">&#11015;&#65039; Counselor CSV</a>
             <a href="/export-staff-schedule" class="btn btn-primary" style="background:var(--success,#16a34a);">&#11015;&#65039; Staff CSV</a>
+            <button class="btn btn-small" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;" onclick="createBackup()">&#128190; Backup</button>
+            <a href="/counselor-schedule-backups" class="btn btn-small" style="background:#f5f3ff; color:#6d28d9; border-color:#ddd6fe; text-decoration:none;">&#128204; Backups</a>
             <span style="width:1px; height:28px; background:var(--border-color); display:inline-block; align-self:center;"></span>
             <form action="/clear-counselor-schedule" method="POST" style="margin:0;"
                   onsubmit="return confirm('Clear all counselor AND staff/unit leader assignments for Week <%= planWeek %>?')">
@@ -947,6 +951,29 @@
                 }
             } catch {
                 if (btn) { btn.textContent = 'Error — try again'; btn.disabled = false; }
+            }
+        }
+
+        // ── Backup current saved assignments ─────────────────────────────────────
+        async function createBackup() {
+            const label = prompt('Name this backup (leave blank for default):');
+            if (label === null) return; // user cancelled
+            const btns = document.querySelectorAll('[onclick="createBackup()"]');
+            btns.forEach(b => { b.disabled = true; b.textContent = 'Saving…'; });
+            try {
+                const resp = await fetch('/backup-counselor-assignments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ weekNumber: PLAN_WEEK, label: label.trim() || 'Backup' })
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    btns.forEach(b => { b.textContent = '✓ Backed up!'; b.disabled = false; setTimeout(() => { b.innerHTML = '&#128190; Backup'; }, 2500); });
+                } else {
+                    btns.forEach(b => { b.textContent = 'Error'; b.disabled = false; setTimeout(() => { b.innerHTML = '&#128190; Backup'; }, 2500); });
+                }
+            } catch {
+                btns.forEach(b => { b.textContent = 'Error'; b.disabled = false; setTimeout(() => { b.innerHTML = '&#128190; Backup'; }, 2500); });
             }
         }
 
