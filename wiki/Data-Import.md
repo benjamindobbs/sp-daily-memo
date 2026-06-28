@@ -183,7 +183,7 @@ Notable migrations in order:
 | `Counselors.Phone` / `Email` / `IncludeInStaffDropdown` added | Contact info and dropdown gating. |
 | `NurseLog` created | Health visit tracking. |
 | `CaseLog` created | Incident case tracking. |
-| `Staff → Counselors` migration | All `Staff` rows copied into `Counselors`; `Schedules` PersonType retypes. |
+| `Staff → Counselors` migration | ~~All `Staff` rows copied into `Counselors`; `Schedules` PersonType retypes.~~ **Removed.** This migration was causing deleted counselors to reappear on restart. All data was already in `Counselors`; startup now runs `DELETE FROM Staff` to keep the table permanently empty. |
 | Sessions seeded | Rows 1–6 inserted if not present; week 1 defaults to active. |
 | `CounselorWeekAttributes` seeded from `Counselors` | One-time backfill for existing data into week-scoped table. |
 | Counselor home group color inference | Auto-fills `CounselorWeekAttributes.HomeGroupColor` from `CamperHomeGroups` data when no colors are set for a week. |

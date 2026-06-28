@@ -847,27 +847,8 @@ try {
     )`);
 } catch(e) { console.error('[migration] CaseLog:', e.message); }
 
-// Migrate Staff rows into Counselors (one-time; skips if already present by name)
-try {
-    const staffRows = db.prepare("SELECT * FROM Staff").all();
-    const findCounsByName = db.prepare("SELECT CounselorID FROM Counselors WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
-    const insMigratedStaff = db.prepare("INSERT INTO Counselors (FirstName, LastName, HomeGroupColor, StaffRole) VALUES (?, ?, ?, ?)");
-    for (const s of staffRows) {
-        const role = s.StaffType === 'Instructor' ? 'Instructor' : 'Unit Leader';
-        const existing = findCounsByName.get(`${s.FirstName} ${s.LastName}`);
-        if (!existing) insMigratedStaff.run(s.FirstName, s.LastName, s.HomeGroupColor || null, role);
-    }
-    // Retype existing Schedules PersonType='Staff' → 'Instructor', PersonID → CounselorID
-    const staffSchedules = db.prepare("SELECT DISTINCT PersonID FROM Schedules WHERE PersonType='Staff'").all();
-    for (const row of staffSchedules) {
-        const staffRecord = db.prepare("SELECT FirstName, LastName FROM Staff WHERE StaffID=?").get(row.PersonID);
-        if (!staffRecord) continue;
-        const counselorRow = findCounsByName.get(`${staffRecord.FirstName} ${staffRecord.LastName}`);
-        if (!counselorRow) continue;
-        db.prepare("UPDATE Schedules SET PersonID=?, PersonType='Instructor' WHERE PersonID=? AND PersonType='Staff'")
-          .run(counselorRow.CounselorID, row.PersonID);
-    }
-} catch(e) { console.error('[migration] Staff → Counselors migration:', e.message); }
+// Staff → Counselors migration removed; Staff table is legacy and no longer written to.
+db.exec(`DELETE FROM Staff`);
 
 // Seed Sessions 1-6 and migrate existing counselor data into week 1
 for (let w = 1; w <= 6; w++) {

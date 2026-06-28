@@ -48,7 +48,7 @@
                              onclick="loadOptions('<%= camper.CamperID %>', '<%= p.PeriodNumber %>', this)">
                             <div>
                                 <small style="text-transform: uppercase; color: var(--text-muted); font-weight: bold;">Period <%= p.PeriodNumber %></small>
-                                <div style="font-weight: 600;"><%= p.ActivityName %></div>
+                                <div style="font-weight: 600;" data-activity="<%= p.ActivityName %>"><%= p.ActivityName %></div>
                             </div>
                             <span style="color: var(--primary);">&#8594;</span>
                         </div>
@@ -139,7 +139,9 @@
 
         let currentOptions = [];
         let activeCamperId = '<%= camper ? camper.CamperID : "" %>';
+        let activeCamperName = '<%= camper ? camper.FirstName + " " + camper.LastName : "" %>';
         let activePeriod = null;
+        let activeFromActivity = null;
 
         async function loadOptions(camperId, period, element) {
             // UI Updates
@@ -147,7 +149,8 @@
             element.classList.add('active');
             document.getElementById('controls-container').style.display = 'block';
             document.getElementById('placeholder-msg').style.display = 'none';
-            
+
+            activeFromActivity = element.querySelector('[data-activity]')?.dataset.activity || element.querySelector('div > div:last-child')?.textContent.trim() || '';
             activePeriod = period;
 
             // Fetch
@@ -160,20 +163,26 @@
             renderList();
         }
 
+        function confirmSwap(newActivity, isFull) {
+            let msg = `Confirm swap for ${activeCamperName} (Period ${activePeriod}):\n\n  From: ${activeFromActivity}\n  To:   ${newActivity}`;
+            if (isFull) msg += '\n\nThis class is FULL — camper will be added to the waitlist.';
+            return confirm(msg);
+        }
+
         function renderList() {
             const term = document.getElementById('activitySearch').value.toLowerCase();
             const container = document.getElementById('options-container');
-            
+
             const filtered = currentOptions.filter(opt => opt.Name.toLowerCase().includes(term));
-            
+
             container.innerHTML = filtered.map(opt => {
                 const isFull = opt.CurrentEnrollment >= opt.MaxCapacity;
                 const statusClass = isFull ? 'option-full' : 'option-open';
-                const warning = isFull ? "onclick=\"return confirm('This class is FULL. Promoting will move camper to WAITLIST. Proceed?')\"" : "";
 
                 return `
                     <a href="/process-swap?camperId=${activeCamperId}&period=${activePeriod}&newActivity=${encodeURIComponent(opt.Name)}"
-                       class="option-link ${statusClass}" ${warning}>
+                       class="option-link ${statusClass}"
+                       onclick="return confirmSwap('${opt.Name.replace(/'/g, "\\'")}', ${isFull})">
                         <div class="option-inner">
                             <div>
                                 <strong>${opt.Name}</strong>

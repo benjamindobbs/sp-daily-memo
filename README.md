@@ -239,6 +239,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | Staff Directory | `/counselor-directory` | All staff listed by role. Admin mode links to individual profile pages. |
 | Staff Profile | `/counselor-profile/:id` | Individual staff detail: schedule, home group roster, contact info. Admin can edit all profile fields. |
 | Full Summer (Instructors) | `/faculty-summer` | Week-by-week instructor schedule view. Upload or clear assignments per week. |
+| Document Hub | `/docs` | All uploaded PDFs in one place. Available to all staff. Cards link directly to each PDF; unavailable documents are dimmed. Admin view includes a link to Settings to upload replacements. |
 
 ---
 
@@ -302,7 +303,7 @@ All at `/settings`.
 | **Session Management** | Set active/released weeks; edit labels and start dates; clear week data; sync offerings from imported schedule |
 | **Activity Manager** | Add, edit, and delete activities; configure side of camp, max capacity, and allowed groups; set period-specific group overrides; bulk CSV import |
 | **CSV Data Imports** | Import all staff, instructor schedules, camper roster (ACR-005), and camper master schedule |
-| **Documents** | Upload Camper Notes PDF and ICP Notes PDF — accessible to all users from relevant pages |
+| **Documents** | Upload up to 7 PDF documents in a 3×3 grid. Current documents: 📄 Camper Notes, 📄 ICP Notes, 🗺️ AM Enrichment Meeting Locations, 🗺️ Snack Break Meeting Locations, 🗺️ Lunch Enrichment Meeting Locations, 🗺️ Popsicle Break Meeting Locations, 🗺️ Enrichment Locations Map. Each card shows upload status and a form to replace the file. All uploaded documents are viewable by all staff from the **Document Hub** (`/docs`). |
 | **Print Reports** | Printable attendance rosters and camper name cards |
 | **Add Staff Member** | Create an individual staff record with all profile fields (name, role, group color, schedule type, bus, extended hours, phone, email) |
 | **Add Camper** | Create an individual camper record and immediately assign classes through the class assignment tool |

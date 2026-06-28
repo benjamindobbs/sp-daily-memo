@@ -56,9 +56,9 @@ The scheduler treats roles as two buckets: **main counselors** (`Counselor`, `Sw
 
 ---
 
-## Staff *(legacy — do not write)*
+## Staff *(legacy — empty)*
 
-Retained for historical data. All rows were migrated into `Counselors` on first startup. No routes write to this table anymore.
+The table still exists in the schema but is cleared on every server startup (`DELETE FROM Staff`). No routes read from or write to it. All data was migrated into `Counselors`; the startup migration that performed that copy has been removed.
 
 | Column | Type | Notes |
 |---|---|---|
