@@ -4634,13 +4634,13 @@ app.get('/export-master-schedule', (_req, res) => {
             (SELECT COUNT(*) FROM Schedules sc
              WHERE sc.PersonType = 'Camper' AND sc.PeriodNumber = s.PeriodNumber AND sc.ActivityName = s.ActivityName
             ) AS Enrollment,
-            (SELECT GROUP_CONCAT(st.FirstName || ' ' || st.LastName, '; ')
-             FROM Counselors st JOIN Schedules ss ON st.CounselorID = ss.PersonID AND ss.PersonType = 'Instructor'
-             WHERE ss.PeriodNumber = s.PeriodNumber AND ss.ActivityName = s.ActivityName
+            (SELECT GROUP_CONCAT(c.FirstName || ' ' || c.LastName, '; ')
+             FROM Counselors c JOIN StaffWeekSchedules sws ON c.CounselorID = sws.StaffID
+             WHERE sws.WeekNumber = ${aw} AND sws.PeriodNumber = s.PeriodNumber AND sws.ActivityName = s.ActivityName
             ) AS Staff,
-            (SELECT ss.Location FROM Schedules ss
-             WHERE ss.PersonType = 'Instructor' AND ss.PeriodNumber = s.PeriodNumber AND ss.ActivityName = s.ActivityName
-             AND ss.Location IS NOT NULL AND ss.Location != '' LIMIT 1
+            (SELECT sws.Location FROM StaffWeekSchedules sws
+             WHERE sws.WeekNumber = ${aw} AND sws.PeriodNumber = s.PeriodNumber AND sws.ActivityName = s.ActivityName
+             AND sws.Location IS NOT NULL AND sws.Location != '' LIMIT 1
             ) AS Location,
             (SELECT GROUP_CONCAT(c.FirstName || ' ' || c.LastName, '; ')
              FROM Counselors c JOIN CounselorWeekSchedules cws ON c.CounselorID = cws.CounselorID

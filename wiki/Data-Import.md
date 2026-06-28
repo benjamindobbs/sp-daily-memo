@@ -95,8 +95,7 @@ Imports have dependencies. Always follow this sequence for a fresh setup:
 **What it does:**
 - Looks up each person by name in `Counselors`.
 - If not found, creates a new `Counselors` row with `StaffRole='Instructor'`.
-- Writes to `Schedules` (`PersonType='Instructor'`) for the active week.
-- Also writes to `CounselorScheduleAssignments` for the active week.
+- Writes to `StaffWeekSchedules` for the active week (same destination as Faculty Full Summer).
 
 ---
 
