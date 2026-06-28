@@ -2685,14 +2685,35 @@ app.post('/clear-staff-week/:weekNumber', (req, res) => {
 // STAFF PROFILE EDITING
 app.post('/update-staff-info/:id', (req, res) => {
     const id = parseInt(req.params.id);
-    const firstName = (req.body.firstName || '').trim();
-    const lastName  = (req.body.lastName  || '').trim();
-    const staffRole = (req.body.staffRole || '').trim();
+    const firstName      = (req.body.firstName      || '').trim();
+    const lastName       = (req.body.lastName       || '').trim();
+    const staffRole      = (req.body.staffRole      || '').trim();
     const validRoles = ['Instructor','Unit Leader','Sports Leader','Counselor','Swim Counselor',
                         'Director','Office Staff','Nurse','Equipment Manager','CPR Instructor','Internship'];
     if (!firstName || !lastName) return res.redirect(`/counselor-profile/${id}?message=Name+required`);
     if (!validRoles.includes(staffRole)) return res.redirect(`/counselor-profile/${id}?message=Invalid+role`);
-    db.prepare("UPDATE Counselors SET FirstName = ?, LastName = ?, StaffRole = ? WHERE CounselorID = ?").run(firstName, lastName, staffRole, id);
+    const homeGroupColor = (req.body.homeGroupColor || '').trim() || null;
+    const scheduleType   = (req.body.scheduleType   || '').trim() || null;
+    const busRoute       = (req.body.busRoute       || '').trim() || null;
+    const extendedHours  = (req.body.extendedHours  || '').trim() || null;
+    const phone          = (req.body.phone          || '').trim() || null;
+    const email          = (req.body.email          || '').trim() || null;
+    db.prepare(`
+        UPDATE Counselors
+        SET FirstName = ?, LastName = ?, StaffRole = ?, HomeGroupColor = ?,
+            ScheduleType = ?, BusRoute = ?, ExtendedHours = ?, Phone = ?, Email = ?
+        WHERE CounselorID = ?
+    `).run(firstName, lastName, staffRole, homeGroupColor, scheduleType, busRoute, extendedHours, phone, email, id);
+    const aw = getActiveWeek();
+    db.prepare(`
+        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET
+            HomeGroupColor = excluded.HomeGroupColor,
+            ScheduleType   = excluded.ScheduleType,
+            BusRoute       = excluded.BusRoute,
+            ExtendedHours  = excluded.ExtendedHours
+    `).run(id, aw, homeGroupColor, scheduleType, busRoute, extendedHours);
     res.redirect(`/counselor-profile/${id}?message=Profile+updated`);
 });
 

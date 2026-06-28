@@ -203,7 +203,8 @@
 
             document.querySelectorAll('.class-row').forEach(row => {
                 const sideMatch = side === 'all' || row.dataset.side === side;
-                row.style.display = (sideMatch && groupMatches(row, group)) ? '' : 'none';
+                const visible = sideMatch && groupMatches(row, group);
+                row.classList.toggle('filter-hidden', !visible);
             });
         }
     </script>

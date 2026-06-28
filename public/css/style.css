@@ -885,6 +885,9 @@ select.filter-dropdown { padding: 7px 12px; border-radius: 6px; border: 1px soli
 /* Field labels inside mobile cards — hidden on desktop */
 .mc-label { display: none; }
 
+/* Used by JS filters to hide rows; !important beats mobile card display overrides */
+.filter-hidden { display: none !important; }
+
 /* ── Mobile card table transformation ──────────────────────────────────────
    Tables with class "mc" reflow into counselor-directory-style cards on mobile.
    .mc-card  = the row/tbody that becomes one card

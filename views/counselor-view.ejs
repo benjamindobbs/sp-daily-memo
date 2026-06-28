@@ -105,34 +105,77 @@
             </section>
             <% } %>
 
-            <%# Instructor Editing — Admin only %>
-            <% if (isInstructor && viewMode === 'admin') { %>
+            <%# Edit Profile — Admin only (all roles) %>
+            <% if (viewMode === 'admin') { %>
             <section style="grid-column: 1 / -1;">
                 <h3 style="margin-bottom: 16px;">Edit Profile</h3>
 
                 <form action="/update-staff-info/<%= counselor.CounselorID %>" method="POST"
                       style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:28px; padding:14px; background:#f8fafc; border-radius:10px; border:1px solid var(--border-color);">
                     <div style="display:flex; flex-direction:column; gap:4px;">
-                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">First Name</label>
+                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">First Name *</label>
                         <input name="firstName" value="<%= counselor.FirstName %>" required
                                class="form-input" style="width:130px; font-size:0.85rem; padding:6px 10px;">
                     </div>
                     <div style="display:flex; flex-direction:column; gap:4px;">
-                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Last Name</label>
+                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Last Name *</label>
                         <input name="lastName" value="<%= counselor.LastName %>" required
                                class="form-input" style="width:130px; font-size:0.85rem; padding:6px 10px;">
                     </div>
                     <div style="display:flex; flex-direction:column; gap:4px;">
-                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Staff Role</label>
+                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Role</label>
                         <select name="staffRole" class="form-input" style="font-size:0.85rem; padding:6px 10px;">
-                            <% ['Instructor','Unit Leader','Sports Leader','Counselor','Swim Counselor','Director','Office Staff','Nurse','Equipment Manager','CPR Instructor','Internship'].forEach(r => { %>
+                            <% ['Counselor','Swim Counselor','Unit Leader','Sports Leader','Instructor','Director','Office Staff','Nurse','Equipment Manager','CPR Instructor','Internship'].forEach(r => { %>
                                 <option value="<%= r %>" <%= counselor.StaffRole === r ? 'selected' : '' %>><%= r %></option>
                             <% }) %>
                         </select>
                     </div>
-                    <button type="submit" class="btn btn-small" style="padding:7px 16px;">Save Info</button>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Home Group Color</label>
+                        <select name="homeGroupColor" class="form-input" style="font-size:0.85rem; padding:6px 10px;">
+                            <option value="">— None —</option>
+                            <% ['Red','Carolina','Green','Navy','LilPlace','KinderPlace','SPLIT','SPRC','Swim'].forEach(c => { %>
+                                <option value="<%= c %>" <%= counselor.HomeGroupColor === c ? 'selected' : '' %>><%= c %></option>
+                            <% }) %>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Schedule Type</label>
+                        <select name="scheduleType" class="form-input" style="font-size:0.85rem; padding:6px 10px;">
+                            <option value="">— Auto —</option>
+                            <% ['All Sports','All Enrichment','AM Sports / PM Enrichment','AM Enrichment / PM Sports'].forEach(s => { %>
+                                <option value="<%= s %>" <%= counselor.ScheduleType === s ? 'selected' : '' %>><%= s %></option>
+                            <% }) %>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Bus Route</label>
+                        <input name="busRoute" value="<%= counselor.BusRoute || '' %>"
+                               class="form-input" placeholder="Optional" style="width:100px; font-size:0.85rem; padding:6px 10px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Extended Hours</label>
+                        <select name="extendedHours" class="form-input" style="font-size:0.85rem; padding:6px 10px;">
+                            <option value="">— None —</option>
+                            <% ['AM','PM','Both'].forEach(e => { %>
+                                <option value="<%= e %>" <%= counselor.ExtendedHours === e ? 'selected' : '' %>><%= e %></option>
+                            <% }) %>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Phone</label>
+                        <input name="phone" value="<%= counselor.Phone || '' %>"
+                               class="form-input" placeholder="Optional" style="width:130px; font-size:0.85rem; padding:6px 10px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Email</label>
+                        <input name="email" value="<%= counselor.Email || '' %>"
+                               class="form-input" placeholder="Optional" style="width:160px; font-size:0.85rem; padding:6px 10px;">
+                    </div>
+                    <button type="submit" class="btn btn-small" style="padding:7px 16px;">Save</button>
                 </form>
 
+                <% if (isInstructor) { %>
                 <h4 style="margin-bottom:12px; font-size:0.95rem;">Weekly Schedule</h4>
                 <%
                     const schedByWeek = {};
@@ -254,6 +297,7 @@
                     }
                 }
                 </script>
+                <% } %>
             </section>
             <% } %>
 
