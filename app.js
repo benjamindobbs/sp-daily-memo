@@ -4634,17 +4634,30 @@ app.get('/export-master-schedule', (_req, res) => {
             (SELECT COUNT(*) FROM Schedules sc
              WHERE sc.PersonType = 'Camper' AND sc.PeriodNumber = s.PeriodNumber AND sc.ActivityName = s.ActivityName
             ) AS Enrollment,
-            (SELECT GROUP_CONCAT(c.FirstName || ' ' || c.LastName, '; ')
-             FROM Counselors c JOIN StaffWeekSchedules sws ON c.CounselorID = sws.StaffID
-             WHERE sws.WeekNumber = ${aw} AND sws.PeriodNumber = s.PeriodNumber AND sws.ActivityName = s.ActivityName
-            ) AS Staff,
-            (SELECT sws.Location FROM StaffWeekSchedules sws
-             WHERE sws.WeekNumber = ${aw} AND sws.PeriodNumber = s.PeriodNumber AND sws.ActivityName = s.ActivityName
-             AND sws.Location IS NOT NULL AND sws.Location != '' LIMIT 1
+            (SELECT GROUP_CONCAT(name, '; ') FROM (
+               SELECT c.FirstName || ' ' || c.LastName AS name
+               FROM Counselors c JOIN StaffWeekSchedules sws ON c.CounselorID = sws.StaffID
+               WHERE sws.WeekNumber = ${aw} AND sws.PeriodNumber = s.PeriodNumber AND sws.ActivityName = s.ActivityName
+               UNION
+               SELECT c.FirstName || ' ' || c.LastName AS name
+               FROM Counselors c JOIN CounselorWeekSchedules cws ON c.CounselorID = cws.CounselorID
+               WHERE cws.WeekNumber = ${aw} AND cws.PeriodNumber = s.PeriodNumber AND cws.ActivityName = s.ActivityName
+                 AND c.StaffRole IN ('Unit Leader', 'Sports Leader')
+             )) AS Staff,
+            COALESCE(
+              (SELECT sws.Location FROM StaffWeekSchedules sws
+               WHERE sws.WeekNumber = ${aw} AND sws.PeriodNumber = s.PeriodNumber AND sws.ActivityName = s.ActivityName
+               AND sws.Location IS NOT NULL AND sws.Location != '' LIMIT 1),
+              (SELECT wo.Location FROM WeeklyOfferings wo
+               WHERE wo.WeekNumber = ${aw} AND wo.PeriodNumber = s.PeriodNumber AND wo.ActivityName = s.ActivityName
+               AND wo.Location IS NOT NULL AND wo.Location != '' LIMIT 1),
+              (SELECT a2.Location FROM Activities a2
+               WHERE a2.Name = s.ActivityName AND a2.Location IS NOT NULL AND a2.Location != '')
             ) AS Location,
             (SELECT GROUP_CONCAT(c.FirstName || ' ' || c.LastName, '; ')
              FROM Counselors c JOIN CounselorWeekSchedules cws ON c.CounselorID = cws.CounselorID
              WHERE cws.WeekNumber = ${aw} AND cws.PeriodNumber = s.PeriodNumber AND cws.ActivityName = s.ActivityName
+               AND c.StaffRole IN ('Counselor', 'Swim Counselor')
             ) AS Counselors
         FROM (SELECT DISTINCT PeriodNumber, ActivityName FROM Schedules WHERE PersonType='Camper') s
         LEFT JOIN Activities a ON s.ActivityName = a.Name
