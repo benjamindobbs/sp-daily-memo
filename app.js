@@ -113,14 +113,21 @@ function computeClassAttStats(clockBlock, side, today) {
         WHERE s.PersonType = 'Camper' AND s.PeriodNumber = ? AND a.SideOfCamp = ?
     `).all(clockBlock, side);
     if (classes.length === 0) return { total: 0, submitted: 0 };
-    const checkTotal   = db.prepare("SELECT COUNT(*) as n FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?");
+    const checkTotal   = db.prepare(`
+        SELECT COUNT(*) as n FROM Schedules s
+        JOIN Campers c ON c.CamperID = s.PersonID
+        WHERE s.PersonType='Camper' AND s.PeriodNumber=? AND s.ActivityName=?
+          AND c.HomeGroupColor != 'SPLIT'
+    `);
     const checkHandled = db.prepare(`
         SELECT COUNT(*) as n FROM (
             SELECT CamperID FROM Attendance
             WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?
+              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
             UNION
             SELECT CamperID FROM EarlyDismissals WHERE Date=?
               AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?)
+              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
         )
     `);
     let submitted = 0;
@@ -2529,6 +2536,9 @@ app.post('/upload-campers-schedule', upload.single('file'), (req, res) => {
                 }
             })(results);
 
+            // Normalize float bus routes written by this import (e.g. "1.0" → "1")
+            db.exec(`UPDATE Campers SET BusRoute = CAST(CAST(BusRoute AS INTEGER) AS TEXT) WHERE BusRoute GLOB '[0-9]*.[0-9]*'`);
+
             // Auto-sync offerings for all sessions from newly imported schedule
             const allSessions = db.prepare("SELECT weekNumber FROM Sessions").all();
             for (const { weekNumber } of allSessions) {
@@ -3212,16 +3222,21 @@ app.get('/attendance', (req, res) => {
         ORDER BY s.PeriodNumber, s.ActivityName
     `).all();
 
-    const checkClassTotal = db.prepare(
-        "SELECT COUNT(*) as n FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?"
-    );
+    const checkClassTotal = db.prepare(`
+        SELECT COUNT(*) as n FROM Schedules s
+        JOIN Campers c ON c.CamperID = s.PersonID
+        WHERE s.PersonType='Camper' AND s.PeriodNumber=? AND s.ActivityName=?
+          AND c.HomeGroupColor != 'SPLIT'
+    `);
     const checkClassHandled = db.prepare(`
         SELECT COUNT(*) as n FROM (
             SELECT CamperID FROM Attendance
             WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?
+              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
             UNION
             SELECT CamperID FROM EarlyDismissals WHERE Date=?
               AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?)
+              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
         )
     `);
 
@@ -3256,8 +3271,9 @@ app.get('/attendance', (req, res) => {
         for (const session of ['am', 'pm']) {
             const sessionType = `bus_${session}`;
             const handled = checkBusHandled.get(date, sessionType, route, date, route)?.n || 0;
+            const displayRoute = String(parseFloat(route) % 1 === 0 ? Math.trunc(parseFloat(route)) : route);
             busSessions.push({
-                label: `Bus ${route} — ${session.toUpperCase()}`,
+                label: `Bus ${displayRoute} — ${session.toUpperCase()}`,
                 route,
                 session: session,
                 link: `/attendance/bus/${encodeURIComponent(route)}/${session}?date=${date}`,
@@ -3679,7 +3695,7 @@ app.get('/attendance/bus/:route/:session', (req, res) => {
     }));
 
     res.render('attendance-form', {
-        title: `Bus ${route} — ${session.toUpperCase()}`,
+        title: `Bus ${String(parseFloat(route) % 1 === 0 ? Math.trunc(parseFloat(route)) : route)} — ${session.toUpperCase()}`,
         sessionType, date,
         periodNumber: 0, activityName: '',
         backLink: `/attendance?date=${date}`,

@@ -348,6 +348,20 @@
     <script>
         const SPLIT_CAMPERS = <%- JSON.stringify(splitCampers) %>;
 
+        // Rebuild every dropdown in a period so assigned campers don't appear in other slots
+        function refreshPeriodDropdowns(period) {
+            const selects = [...document.querySelectorAll(`.split-slot[data-period="${period}"]`)];
+            const selectedIds = new Set(selects.map(s => parseInt(s.value)).filter(v => v));
+            selects.forEach(sel => {
+                const currentVal = parseInt(sel.value) || 0;
+                sel.innerHTML = '<option value="">— Unassigned —</option>' +
+                    SPLIT_CAMPERS
+                        .filter(sc => sc.CamperID === currentVal || !selectedIds.has(sc.CamperID))
+                        .map(sc => `<option value="${sc.CamperID}"${sc.CamperID === currentVal ? ' selected' : ''}>${sc.LastName}, ${sc.FirstName}</option>`)
+                        .join('');
+            });
+        }
+
         function handleSlotCount(input) {
             const card = input.closest('.offering-card');
             const container = card.querySelector('.slot-dropdowns');
@@ -362,14 +376,13 @@
                     sel.className = 'person-select split-slot';
                     sel.dataset.period = period;
                     sel.dataset.activity = activity;
-                    sel.innerHTML = '<option value="">— Unassigned —</option>' +
-                        SPLIT_CAMPERS.map(sc => `<option value="${sc.CamperID}">${sc.LastName}, ${sc.FirstName}</option>`).join('');
                     container.appendChild(sel);
                 }
             } else {
                 const slots = container.querySelectorAll('.split-slot');
                 for (let i = slots.length - 1; i >= target; i--) slots[i].remove();
             }
+            refreshPeriodDropdowns(period);
         }
 
         function getUnassignedForPeriod(period) {
@@ -442,17 +455,21 @@
             step = setTimeout(tick, interval);
         }
 
-        // Keep remaining counts fresh whenever any slot changes
+        // Keep dropdowns and remaining counts fresh whenever any slot changes
         document.addEventListener('change', e => {
             if (e.target.classList.contains('split-slot')) {
                 const period = parseInt(e.target.dataset.period);
+                refreshPeriodDropdowns(period);
                 updateRemaining(period);
             }
         });
 
-        // Initialize remaining counts on load
+        // Initialize dropdowns and remaining counts on load
         [1, 2, 4, 5, 6].forEach(p => {
-            if (document.getElementById(`draw-remaining-${p}`)) updateRemaining(p);
+            if (document.getElementById(`draw-remaining-${p}`)) {
+                refreshPeriodDropdowns(p);
+                updateRemaining(p);
+            }
         });
 
         // ── Sport Wheel ──────────────────────────────────────────────

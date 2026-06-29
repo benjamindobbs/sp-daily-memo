@@ -164,6 +164,22 @@
         </script>
         <% } %>
 
+        <% if (announcement || viewMode === 'admin') { %>
+        <div class="card" style="margin-top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;">Announcements</h3>
+                <% if (viewMode === 'admin') { %>
+                <button onclick="saveHub()" class="btn btn-primary btn-small">Save</button>
+                <% } %>
+            </div>
+            <% if (viewMode === 'admin') { %>
+                <div id="announceEditor" style="min-height:120px;"></div>
+            <% } else { %>
+                <div class="hub-rich-content"><%- announcement %></div>
+            <% } %>
+        </div>
+        <% } %>
+
         <%/* ── Today's Activity Feed ── */%>
         <% const hasActivity = todayPickups.length > 0 || todayLateArrivals.length > 0 || todayEarlyDismissals.length > 0 || todayScheduleChanges.length > 0; %>
         <% if (hasActivity) { %>
@@ -227,22 +243,6 @@
                 </div>
                 <% }); %>
             </div>
-            <% } %>
-        </div>
-        <% } %>
-
-        <% if (announcement || viewMode === 'admin') { %>
-        <div class="card" style="margin-top:20px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <h3 style="margin:0;">Announcements</h3>
-                <% if (viewMode === 'admin') { %>
-                <button onclick="saveHub()" class="btn btn-primary btn-small">Save</button>
-                <% } %>
-            </div>
-            <% if (viewMode === 'admin') { %>
-                <div id="announceEditor" style="min-height:120px;"></div>
-            <% } else { %>
-                <div class="hub-rich-content"><%- announcement %></div>
             <% } %>
         </div>
         <% } %>
