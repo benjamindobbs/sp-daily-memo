@@ -1,4 +1,3 @@
 
 Add function to notify counselors to submit attendance. This should run automatically 15 minutes into each block by clock time. The notification should be shown as a red banner on the top of the staff view. Any counselor listed on a class without a submitted attendance should be notified. 
 
-Is there a way to force refresh user data on an interval, if so, I wouldl like to push that update every 15 minutes or so
