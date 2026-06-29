@@ -1,0 +1,3 @@
+Attendance sheets that are partially filled out are counting as fully submitted on the admin hub. Attendance should only count as complete if all campers have been marked off of pending.
+
+Busses in attendance view are shown as 1.0 etc. Should just be whole number ie. 1

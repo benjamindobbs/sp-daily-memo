@@ -209,7 +209,7 @@
         <div class="page-header" style="margin-bottom: 16px;">
             <div>
                 <h1 style="margin:0;">SPLIT Scheduling</h1>
-                <p class="text-muted" style="margin:4px 0 0;">Assign SPLIT campers to Red / Carolina classes for the active week. Periods 1, 2, 5, and 6 only.</p>
+                <p class="text-muted" style="margin:4px 0 0;">Assign SPLIT campers to Red / Carolina classes for the active week. Periods 1, 2, 4, 5, and 6.</p>
             </div>
         </div>
 
@@ -258,14 +258,20 @@
         </div>
 
         <%
-        const PERIODS = [1, 2, 5, 6];
-        const PERIOD_LABELS = { 1: 'Period 1 — Enrichment AM', 2: 'Period 2 — Enrichment AM', 5: 'Period 5 — Sports PM', 6: 'Period 6 — Sports PM' };
-        const PERIOD_SIDES  = { 1: 'Enrichment', 2: 'Enrichment', 5: 'Sports', 6: 'Sports' };
+        const PERIODS = [1, 2, 4, 5, 6];
+        const PERIOD_LABELS = {
+            1: 'Period 1 — Enrichment AM',
+            2: 'Period 2 — Enrichment AM',
+            4: 'Period 4 — Afternoon',
+            5: 'Period 5 — Sports PM',
+            6: 'Period 6 — Sports PM'
+        };
         %>
 
         <% PERIODS.forEach(function(p) {
             const pOffs = offerings.filter(o => o.PeriodNumber === p);
             if (pOffs.length === 0) return;
+            const sides = ['Enrichment', 'Sports'].filter(side => pOffs.some(o => o.SideOfCamp === side));
         %>
         <details class="period-details" open>
             <summary class="period-summary">
@@ -278,9 +284,12 @@
                     <span class="draw-remaining" id="draw-remaining-<%= p %>"></span>
                     <span class="draw-ticket" id="draw-ticket-<%= p %>"></span>
                 </div>
-                <p class="side-heading"><%- PERIOD_SIDES[p] === 'Enrichment' ? '&#127912; Enrichment' : '&#9917; Sports' %></p>
+                <% sides.forEach(function(side) {
+                    const sideOffs = pOffs.filter(o => o.SideOfCamp === side);
+                %>
+                <p class="side-heading"><%- side === 'Enrichment' ? '&#127912; Enrichment' : '&#9917; Sports' %></p>
                 <div class="offering-grid">
-                <% pOffs.forEach(function(act) {
+                <% sideOffs.forEach(function(act) {
                     const key = p + '|' + act.ActivityName;
                     const enrollment = enrollmentMap[key] || 0;
                     const defaultSlots = Math.max(1, Math.ceil(enrollment / 8));
@@ -328,6 +337,7 @@
                     </div>
                 <% }); %>
                 </div>
+                <% }); %>
             </div>
         </details>
         <% }); %>
@@ -441,7 +451,7 @@
         });
 
         // Initialize remaining counts on load
-        [1, 2, 5, 6].forEach(p => {
+        [1, 2, 4, 5, 6].forEach(p => {
             if (document.getElementById(`draw-remaining-${p}`)) updateRemaining(p);
         });
 

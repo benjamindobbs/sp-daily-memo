@@ -5192,14 +5192,15 @@ app.get('/split-scheduling', (req, res) => {
     const aw = getActiveWeek();
     const alertMessage = req.query.message || null;
 
-    // RC-relevant offerings: Enrichment in blocks 1,2 and Sports in blocks 5,6
+    // RC-relevant offerings: Enrichment in blocks 1,2 and Sports in blocks 5,6; period 4 includes both sides
     const offerings = db.prepare(`
         SELECT ActivityName, PeriodNumber, SideOfCamp, PreliminaryEnrollment, Location
         FROM WeeklyOfferings
         WHERE WeekNumber = ?
           AND ((PeriodNumber IN (1,2) AND SideOfCamp = 'Enrichment')
-            OR (PeriodNumber IN (5,6) AND SideOfCamp = 'Sports'))
-        ORDER BY PeriodNumber, ActivityName
+            OR (PeriodNumber IN (5,6) AND SideOfCamp = 'Sports')
+            OR PeriodNumber = 4)
+        ORDER BY PeriodNumber, SideOfCamp, ActivityName
     `).all(aw);
 
     const splitCampers = db.prepare(
