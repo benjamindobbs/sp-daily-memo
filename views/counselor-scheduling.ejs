@@ -478,11 +478,16 @@
                         <% }); %>
                     </tbody>
                 </table>
-                <div style="margin-top: 10px;">
+                <div style="margin-top: 10px; display:flex; gap:8px; flex-wrap:wrap;">
                     <form action="/auto-assign-homegroups" method="POST" style="display:inline; margin:0;"
                           onsubmit="return confirm('This will reshuffle homegroup assignments for counselors already marked Red/Carolina/Green/Navy for Week <%= planWeek %>. Continue?')">
                         <input type="hidden" name="weekNumber" value="<%= planWeek %>">
                         <button type="submit" class="btn btn-secondary">&#9889; Auto Assign Homegroups</button>
+                    </form>
+                    <form action="/sync-homegroup-colors" method="POST" style="display:inline; margin:0;"
+                          onsubmit="return confirm('This will update scheduler homegroup colors to match the campers currently assigned to each counselor\'s roster for Week <%= planWeek %>. Counselors without any assigned campers are not affected. Continue?')">
+                        <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                        <button type="submit" class="btn btn-secondary">&#8635; Sync Colors from Roster</button>
                     </form>
                 </div>
                 <% } %>

@@ -70,7 +70,8 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | GET | `/counselor-schedule-backups` | ✓ | View and manage backups |
 | POST | `/restore-counselor-backup/:id` | ✓ | Restore a backup to the live tables |
 | POST | `/delete-counselor-backup/:id` | ✓ | Delete a backup |
-| POST | `/auto-assign-homegroups` | ✓ | Auto-assign campers to counselor home groups |
+| POST | `/auto-assign-homegroups` | ✓ | Proportionally assign homegroup colors to all counselors (preserves counselors with existing roster assignments) |
+| POST | `/sync-homegroup-colors` | ✓ | Sync scheduler homegroup colors from `CamperHomeGroups` roster — only updates counselors who already have campers assigned; others untouched |
 | POST | `/save-counselor-group-assignments` | ✓ | Save home group color assignments for counselors |
 | GET | `/homegroup-assignment` | ✓ | Home group assignment manager |
 | POST | `/homegroup-assignment/save` | ✓ | Save camper → counselor home group assignments |

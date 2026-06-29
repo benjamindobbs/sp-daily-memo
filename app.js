@@ -264,7 +264,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings', '/sync-offerings-from-schedule', '/api/sync-offerings',
     '/save-counselor-assignments', '/backup-counselor-assignments', '/counselor-schedule-backups', '/restore-counselor-backup', '/delete-counselor-backup',
     '/export-counselor-schedule', '/export-staff-schedule',
-    '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups',
+    '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups', '/sync-homegroup-colors',
     '/hub-content', '/director-notes', '/photo-gallery', '/photo-vote',
     '/set-active-week', '/set-released-week', '/update-session-label',
     '/clear-counselor-week', '/counselor-week-assignments', '/clear-counselor-schedule', '/clear-counselor-homegroups',
@@ -4276,7 +4276,21 @@ app.post('/auto-assign-homegroups', (req, res) => {
     const camperCounts = Object.fromEntries(camperRows.map(r => [r.HomeGroupColor, r.n]));
     const totalCampers = Object.values(camperCounts).reduce((a, b) => a + b, 0);
 
-    // Include all main-camp counselors (role='Counselor'), not just pre-assigned ones
+    // Determine which counselors already have campers assigned in CamperHomeGroups for this week.
+    // A counselor's color is pinned to the dominant color of their assigned campers so that
+    // the scheduler badge stays in sync with the actual attendance roster.
+    const pinnedRows = db.prepare(`
+        SELECT chg.CounselorID, c.HomeGroupColor
+        FROM CamperHomeGroups chg
+        JOIN Campers c ON chg.CamperID = c.CamperID
+        WHERE chg.WeekNumber = ?
+          AND c.HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')
+        GROUP BY chg.CounselorID
+    `).all(week);
+    const pinnedMap = {};
+    for (const r of pinnedRows) pinnedMap[r.CounselorID] = r.HomeGroupColor;
+
+    // Include all main-camp counselors (role='Counselor')
     const counselors = db.prepare(`
         SELECT c.CounselorID,
                COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS CurrentColor
@@ -4305,8 +4319,28 @@ app.post('/auto-assign-homegroups', (req, res) => {
         .slice(0, remainder)
         .forEach(({ c }) => targets[c]++);
 
-    // Shuffle counselors for random distribution, then slice into color buckets
-    const shuffled = [...counselors].sort(() => Math.random() - 0.5);
+    // Split counselors into pinned (have existing homegroup roster) and free (to be randomly assigned)
+    const pinned   = counselors.filter(c =>  pinnedMap[c.CounselorID]);
+    const free     = counselors.filter(c => !pinnedMap[c.CounselorID]);
+
+    // Remaining slots after accounting for pinned counselors
+    const remaining = Object.fromEntries(colors.map(col => {
+        const pinnedCount = pinned.filter(c => pinnedMap[c.CounselorID] === col).length;
+        return [col, Math.max(0, targets[col] - pinnedCount)];
+    }));
+
+    // If pinned counselors over-subscribed a color, redistribute those extra slots
+    // to whichever free color has the most remaining capacity
+    const totalRemaining = Object.values(remaining).reduce((a, b) => a + b, 0);
+    let overflow = free.length - totalRemaining;
+    if (overflow > 0) {
+        while (overflow-- > 0) {
+            const col = colors.reduce((a, b) => remaining[a] >= remaining[b] ? a : b);
+            remaining[col]++;
+        }
+    }
+
+    const shuffled = [...free].sort(() => Math.random() - 0.5);
     const scheduleFor = color => (['Red','Carolina'].includes(color) ? 'AM Enrichment / PM Sports' : 'AM Sports / PM Enrichment');
 
     const upsert = db.prepare(`
@@ -4318,15 +4352,58 @@ app.post('/auto-assign-homegroups', (req, res) => {
     `);
 
     db.transaction(() => {
+        // Write pinned counselors with the color derived from their actual homegroup roster
+        for (const c of pinned) {
+            const col = pinnedMap[c.CounselorID];
+            upsert.run(c.CounselorID, week, col, scheduleFor(col));
+        }
+        // Randomly assign free counselors into the remaining slots
         let offset = 0;
         for (const color of colors) {
-            const slice = shuffled.slice(offset, offset + targets[color]);
-            offset += targets[color];
+            const slice = shuffled.slice(offset, offset + remaining[color]);
+            offset += remaining[color];
             for (const c of slice) upsert.run(c.CounselorID, week, color, scheduleFor(color));
         }
     })();
 
     res.redirect(`/counselor-scheduling?week=${week}&message=Homegroups+auto-assigned`);
+});
+
+app.post('/sync-homegroup-colors', (req, res) => {
+    const week = parseInt(req.body.weekNumber) || getActiveWeek();
+
+    // For each counselor who has campers assigned in CamperHomeGroups, derive their color
+    // from the dominant color of those campers and write it to CounselorWeekAttributes.
+    // Counselors with no assigned campers are left untouched.
+    const pinnedRows = db.prepare(`
+        SELECT chg.CounselorID, c.HomeGroupColor
+        FROM CamperHomeGroups chg
+        JOIN Campers c ON chg.CamperID = c.CamperID
+        WHERE chg.WeekNumber = ?
+          AND c.HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')
+        GROUP BY chg.CounselorID
+    `).all(week);
+
+    if (pinnedRows.length === 0) {
+        return res.redirect(`/counselor-scheduling?week=${week}&message=No+homegroup+roster+data+found+for+this+week`);
+    }
+
+    const scheduleFor = color => (['Red','Carolina'].includes(color) ? 'AM Enrichment / PM Sports' : 'AM Sports / PM Enrichment');
+    const upsert = db.prepare(`
+        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
+        VALUES (?, ?, ?, ?, NULL, NULL)
+        ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET
+            HomeGroupColor = excluded.HomeGroupColor,
+            ScheduleType   = excluded.ScheduleType
+    `);
+
+    db.transaction(() => {
+        for (const r of pinnedRows) {
+            upsert.run(r.CounselorID, week, r.HomeGroupColor, scheduleFor(r.HomeGroupColor));
+        }
+    })();
+
+    res.redirect(`/counselor-scheduling?week=${week}&message=Synced+${pinnedRows.length}+counselor+colors+from+roster`);
 });
 
 app.post('/save-counselor-group-assignments', (req, res) => {
