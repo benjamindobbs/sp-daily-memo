@@ -272,7 +272,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/save-counselor-assignments', '/backup-counselor-assignments', '/counselor-schedule-backups', '/restore-counselor-backup', '/delete-counselor-backup',
     '/export-counselor-schedule', '/export-staff-schedule',
     '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups', '/sync-homegroup-colors',
-    '/hub-content', '/director-notes', '/photo-gallery', '/photo-vote',
+    '/hub-content', '/director-notes',
     '/set-active-week', '/set-released-week', '/update-session-label',
     '/clear-counselor-week', '/counselor-week-assignments', '/clear-counselor-schedule', '/clear-counselor-homegroups',
     '/audit', '/merge-class', '/set-activity-side', '/delete-counselor',
@@ -4947,7 +4947,7 @@ app.post('/counselor-preferences', (req, res) => {
     const counselorExists = db.prepare("SELECT 1 FROM Counselors WHERE CounselorID = ?").get(parsedId);
     if (!counselorExists) return res.redirect('/counselor-preferences?message=Counselor+not+found.+Please+re-select+your+name.');
 
-    res.cookie('selectedCounselor', parsedId, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+    res.cookie('selectedCounselor', parsedId, { httpOnly: true, maxAge: 365 * 24 * 60 * 60 * 1000 });
 
     if (!homeGroupPreference) {
         return res.redirect('/counselor-preferences?message=Name+saved!');
