@@ -134,7 +134,7 @@ function computeClassAttStats(clockBlock, side, today) {
     for (const c of classes) {
         const total   = checkTotal.get(clockBlock, c.ActivityName)?.n || 0;
         const handled = checkHandled.get(today, clockBlock, c.ActivityName, today, clockBlock, c.ActivityName)?.n || 0;
-        if (total > 0 && handled >= total) submitted++;
+        if (total === 0 || handled >= total) submitted++;
     }
     return { total: classes.length, submitted };
 }
@@ -3249,7 +3249,7 @@ app.get('/attendance', (req, res) => {
             periodNumber: r.PeriodNumber, periodKey: String(r.PeriodNumber), periodLabel: String(r.PeriodNumber),
             activityName: r.ActivityName, filterPeriod: r.PeriodNumber,
             link: `/attendance/class/${r.PeriodNumber}/${encodeURIComponent(r.ActivityName)}?date=${date}`,
-            submitted: total > 0 && handled >= total
+            submitted: total === 0 || handled >= total
         });
     }
 
