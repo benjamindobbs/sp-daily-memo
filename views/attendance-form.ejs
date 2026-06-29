@@ -142,6 +142,13 @@
                     <div class="camper-row" data-camperid="<%= c.CamperID %>" data-name="<%= (c.FirstName+' '+c.LastName).toLowerCase() %>" data-status="<%= c.currentStatus || '' %>">
                         <span class="tag <%= c.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px; flex-shrink:0;"><%= c.HomeGroupColor %></span>
                         <span class="camper-name"><%= c.FirstName %> <%= c.LastName %></span>
+                        <% if (c.BusRoute) { %>
+                        <% const busDisplay = String(parseFloat(c.BusRoute) % 1 === 0 ? Math.trunc(parseFloat(c.BusRoute)) : c.BusRoute); %>
+                        <span style="font-size:0.7rem; font-weight:600; background:#dbeafe; color:#1e40af; border-radius:4px; padding:1px 7px; white-space:nowrap;">&#128652; Bus <%= busDisplay %></span>
+                        <% } %>
+                        <% if (c.ExtendedHours && ((sessionType === 'homegroup_am' && (c.ExtendedHours === 'AM' || c.ExtendedHours === 'Both')) || (sessionType === 'homegroup_pm' && (c.ExtendedHours === 'PM' || c.ExtendedHours === 'Both')))) { %>
+                        <span style="font-size:0.7rem; font-weight:600; background:#fef3c7; color:#92400e; border-radius:4px; padding:1px 7px; white-space:nowrap;">&#9200; Extended</span>
+                        <% } %>
                         <div class="camper-badges">
                             <% if (c.nurseAM) { %><span class="badge-absent-am" style="background:#fee2e2;color:#991b1b;">&#128137; In Nurse</span><% } else if (c.absentAM) { %><span class="badge-absent-am">&#9888; Absent AM</span><% } %>
                             <% if (c.caseLog) { %><span class="badge-absent-am" style="background:#ede9fe;color:#5b21b6;">&#128330;&#65039; With No&#235;l</span><% } %>
