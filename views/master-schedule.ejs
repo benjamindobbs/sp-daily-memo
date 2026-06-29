@@ -141,17 +141,10 @@
                             <span class="mc-label">Staff</span>
                             <% if (cls.staff.length > 0) { %>
                                 <% cls.staff.forEach(function(s) { %>
-                                    <% if (viewMode === 'admin') { %>
                                     <a href="/counselor-profile/<%= s.CounselorID %>" class="staff-link">
                                         <div class="staff-name-sched"><%= s.FirstName %> <%= s.LastName %></div>
                                         <div class="staff-type-label"><%= s.StaffType %></div>
                                     </a>
-                                    <% } else { %>
-                                    <div class="staff-link" style="cursor:default;">
-                                        <div class="staff-name-sched"><%= s.FirstName %> <%= s.LastName %></div>
-                                        <div class="staff-type-label"><%= s.StaffType %></div>
-                                    </div>
-                                    <% } %>
                                 <% }); %>
                             <% } else { %>
                                 <span style="color: var(--text-muted); font-size: 0.8rem;">—</span>
