@@ -13,6 +13,8 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
+const webPush = require('web-push');
+
 const app = express();
 const db = new Database(process.env.DB_PATH || 'camp_manager.db');
 const upload = multer({ dest: 'uploads/', limits: { fileSize: 10 * 1024 * 1024 } });
@@ -970,6 +972,34 @@ try {
 } catch {
     db.exec("ALTER TABLE DirectorNotes ADD COLUMN category TEXT NOT NULL DEFAULT 'director'");
 }
+
+// Persistent app config (VAPID keys, etc.)
+db.exec(`CREATE TABLE IF NOT EXISTS AppConfig (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+)`);
+
+// Push notification subscriptions
+db.exec(`CREATE TABLE IF NOT EXISTS PushSubscriptions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    CounselorID INTEGER NOT NULL,
+    endpoint    TEXT    NOT NULL UNIQUE,
+    subscription TEXT   NOT NULL,
+    CreatedAt   DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
+
+// Load or generate VAPID keys (stored in DB so they survive redeploys)
+let vapidPublicKey  = db.prepare("SELECT value FROM AppConfig WHERE key='vapidPublicKey'").get()?.value;
+let vapidPrivateKey = db.prepare("SELECT value FROM AppConfig WHERE key='vapidPrivateKey'").get()?.value;
+if (!vapidPublicKey || !vapidPrivateKey) {
+    const keys = webPush.generateVAPIDKeys();
+    vapidPublicKey  = keys.publicKey;
+    vapidPrivateKey = keys.privateKey;
+    db.prepare("INSERT OR REPLACE INTO AppConfig (key,value) VALUES ('vapidPublicKey',?)").run(vapidPublicKey);
+    db.prepare("INSERT OR REPLACE INTO AppConfig (key,value) VALUES ('vapidPrivateKey',?)").run(vapidPrivateKey);
+    console.log('[vapid] Generated new VAPID keys');
+}
+webPush.setVapidDetails('mailto:benjamin.dobbs@gmail.com', vapidPublicKey, vapidPrivateKey);
 
 // --- WEEK HELPERS ---
 function getActiveWeek() {
@@ -4859,6 +4889,86 @@ app.get('/api/counselor-preferences/:id', (req, res) => {
     });
 });
 
+app.get('/api/attendance-nudge', (req, res) => {
+    const counselorId = parseInt(req.cookies.selectedCounselor);
+    if (!counselorId) return res.json({ notify: false });
+
+    const estMins = getESTMins();
+    const today   = getTodayEST();
+
+    // Returns the clockBlock if we're 15+ min into a period (but before the next one starts).
+    function notifiableBlock(schedule) {
+        for (let i = 0; i < schedule.length; i++) {
+            const start = schedule[i].startH * 60 + schedule[i].startM;
+            const next  = i + 1 < schedule.length
+                ? schedule[i + 1].startH * 60 + schedule[i + 1].startM
+                : CAMP_DAY_END_MINS;
+            if (estMins >= start + 15 && estMins < next) return schedule[i].clockBlock;
+        }
+        return null;
+    }
+
+    const sportsBlock     = notifiableBlock(SPORTS_PERIODS);
+    const enrichmentBlock = notifiableBlock(ENRICHMENT_PERIODS);
+    const activeBlocks    = [...new Set([sportsBlock, enrichmentBlock].filter(Boolean))];
+    if (activeBlocks.length === 0) return res.json({ notify: false });
+
+    const weekNum = getActiveWeek();
+
+    const checkTotal = db.prepare(`
+        SELECT COUNT(*) as n FROM Schedules s
+        JOIN Campers c ON c.CamperID = s.PersonID
+        WHERE s.PersonType='Camper' AND s.PeriodNumber=? AND s.ActivityName=?
+          AND c.HomeGroupColor != 'SPLIT'
+    `);
+    const checkHandled = db.prepare(`
+        SELECT COUNT(*) as n FROM (
+            SELECT CamperID FROM Attendance
+            WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?
+              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
+            UNION
+            SELECT CamperID FROM EarlyDismissals WHERE Date=?
+              AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?)
+              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
+        )
+    `);
+
+    const unsubmitted = [];
+    for (const block of activeBlocks) {
+        const assignments = db.prepare(`
+            SELECT ActivityName FROM CounselorScheduleAssignments
+            WHERE PersonID = ? AND PeriodNumber = ? AND WeekNumber = ?
+        `).all(counselorId, block, weekNum);
+
+        for (const a of assignments) {
+            const total   = checkTotal.get(block, a.ActivityName)?.n || 0;
+            const handled = checkHandled.get(today, block, a.ActivityName, today, block, a.ActivityName)?.n || 0;
+            if (total === 0 || handled >= total) continue; // submitted or no non-SPLIT campers
+            unsubmitted.push(a.ActivityName);
+        }
+    }
+
+    if (unsubmitted.length === 0) return res.json({ notify: false });
+    res.json({ notify: true, classes: unsubmitted });
+});
+
+app.get('/api/vapid-public-key', (req, res) => {
+    res.json({ publicKey: vapidPublicKey });
+});
+
+app.post('/api/push-subscribe', (req, res) => {
+    const counselorId = parseInt(req.cookies.selectedCounselor);
+    if (!counselorId) return res.status(401).json({ error: 'No counselor selected' });
+    const sub = req.body.subscription;
+    if (!sub || !sub.endpoint) return res.status(400).json({ error: 'Invalid subscription' });
+    db.prepare(`
+        INSERT INTO PushSubscriptions (CounselorID, endpoint, subscription)
+        VALUES (?, ?, ?)
+        ON CONFLICT(endpoint) DO UPDATE SET CounselorID=excluded.CounselorID, subscription=excluded.subscription
+    `).run(counselorId, sub.endpoint, JSON.stringify(sub));
+    res.json({ ok: true });
+});
+
 app.get('/counselor-preferences', (req, res) => {
     const counselors = db.prepare("SELECT CounselorID, FirstName, LastName, HomeGroupColor, StaffRole FROM Counselors ORDER BY LastName, FirstName").all();
     const activeWeek = getActiveWeek();
@@ -5613,6 +5723,103 @@ app.get('/pdf/:type', (req, res) => {
     res.setHeader('Content-Disposition', 'inline');
     res.send(doc.data);
 });
+
+// ── Push notification dispatcher ─────────────────────────────────────────────
+// Runs every 60 s. Sends a push to each subscribed counselor who has an
+// unsubmitted class 15+ minutes into the current period. One push per
+// counselor per class per day (tracked in memory; resets at midnight).
+const _pushNudgedToday = new Map(); // date → Set<"counselorId:activityName">
+
+const _pushCheckTotal = db.prepare(`
+    SELECT COUNT(*) as n FROM Schedules s
+    JOIN Campers c ON c.CamperID = s.PersonID
+    WHERE s.PersonType='Camper' AND s.PeriodNumber=? AND s.ActivityName=?
+      AND c.HomeGroupColor != 'SPLIT'
+`);
+const _pushCheckHandled = db.prepare(`
+    SELECT COUNT(*) as n FROM (
+        SELECT CamperID FROM Attendance
+        WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?
+          AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
+        UNION
+        SELECT CamperID FROM EarlyDismissals WHERE Date=?
+          AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?)
+          AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
+    )
+`);
+
+function _pushNotifiableBlock(schedule, estMins) {
+    for (let i = 0; i < schedule.length; i++) {
+        const start = schedule[i].startH * 60 + schedule[i].startM;
+        const next  = i + 1 < schedule.length
+            ? schedule[i + 1].startH * 60 + schedule[i + 1].startM
+            : CAMP_DAY_END_MINS;
+        if (estMins >= start + 15 && estMins < next) return schedule[i].clockBlock;
+    }
+    return null;
+}
+
+setInterval(() => {
+    const estMins = getESTMins();
+    const today   = getTodayEST();
+
+    // Prune stale date keys
+    for (const [date] of _pushNudgedToday) {
+        if (date !== today) _pushNudgedToday.delete(date);
+    }
+    if (!_pushNudgedToday.has(today)) _pushNudgedToday.set(today, new Set());
+    const nudged = _pushNudgedToday.get(today);
+
+    const sportsBlock     = _pushNotifiableBlock(SPORTS_PERIODS, estMins);
+    const enrichmentBlock = _pushNotifiableBlock(ENRICHMENT_PERIODS, estMins);
+    const activeBlocks    = [...new Set([sportsBlock, enrichmentBlock].filter(Boolean))];
+    if (activeBlocks.length === 0) return;
+
+    const weekNum       = getActiveWeek();
+    const subscriptions = db.prepare("SELECT * FROM PushSubscriptions").all();
+    if (subscriptions.length === 0) return;
+
+    const getAssignments = db.prepare(`
+        SELECT ActivityName FROM CounselorScheduleAssignments
+        WHERE PersonID = ? AND PeriodNumber = ? AND WeekNumber = ?
+    `);
+
+    for (const row of subscriptions) {
+        const counselorId = row.CounselorID;
+        const toSend = [];
+
+        for (const block of activeBlocks) {
+            const assignments = getAssignments.all(counselorId, block, weekNum);
+            for (const a of assignments) {
+                const key     = `${counselorId}:${a.ActivityName}`;
+                if (nudged.has(key)) continue; // already notified today for this class
+                const total   = _pushCheckTotal.get(block, a.ActivityName)?.n || 0;
+                const handled = _pushCheckHandled.get(today, block, a.ActivityName, today, block, a.ActivityName)?.n || 0;
+                if (total === 0 || handled >= total) continue; // submitted
+                toSend.push(a.ActivityName);
+                nudged.add(key);
+            }
+        }
+
+        if (toSend.length === 0) continue;
+
+        const payload = JSON.stringify({
+            title: 'Attendance Reminder',
+            body:  'Please submit attendance for: ' + toSend.join(', '),
+            url:   '/staff'
+        });
+
+        try {
+            const subscription = JSON.parse(row.subscription);
+            webPush.sendNotification(subscription, payload).catch(err => {
+                if (err.statusCode === 410 || err.statusCode === 404) {
+                    db.prepare("DELETE FROM PushSubscriptions WHERE endpoint=?").run(row.endpoint);
+                }
+            });
+        } catch (_) {}
+    }
+}, 60 * 1000);
+// ─────────────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log(`Camp Manager running on port ${PORT}`));
