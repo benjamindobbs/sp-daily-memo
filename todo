@@ -1,6 +1,3 @@
 
 Add function to notify counselors to submit attendance. This should run automatically 15 minutes into each block by clock time. The notification should be shown as a red banner on the top of the staff view. Any counselor listed on a class without a submitted attendance should be notified. 
 
-Add force override to promotions view
-
-SPLIT absensces not showing on attendance overview

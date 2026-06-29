@@ -264,7 +264,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/schedule-history', '/archive-schedule-changes', '/staff-lookup',
     '/faculty-summer', '/upload-staff-week', '/clear-staff-week',
     '/counselor-directory', '/counselor-view', '/promotions',
-    '/promote-waitlist', '/promote-all', '/remove-waitlist', '/upload-campers', '/upload-campers-schedule', '/upload-counselors',
+    '/promote-waitlist', '/force-promote-waitlist', '/promote-all', '/remove-waitlist', '/upload-campers', '/upload-campers-schedule', '/upload-counselors',
     '/upload-staff', '/upload-instructors', '/upload-activity-rules', '/add-activity',
     '/delete-activity', '/update-activity', '/add-activity-period-group',
     '/delete-activity-period-group',
@@ -2232,6 +2232,16 @@ app.post('/promote-waitlist', (req, res) => {
     res.redirect('/promotions?message=Camper+Promoted');
 });
 
+app.post('/force-promote-waitlist', (req, res) => {
+    const entry = db.prepare('SELECT * FROM Waitlists WHERE WaitlistID = ?').get(req.body.WaitlistID);
+    if (entry) {
+        db.prepare(`UPDATE Schedules SET ActivityName = ? WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper'`)
+            .run(entry.RequestedActivity, entry.CamperID, entry.PeriodNumber);
+        db.prepare('DELETE FROM Waitlists WHERE WaitlistID = ?').run(entry.WaitlistID);
+    }
+    res.redirect('/promotions?message=Camper+force-promoted+(over+capacity)');
+});
+
 // Promote ALL eligible waitlisted campers at once
 app.post('/promote-all', (req, res) => {
     const eligible = db.prepare(`
@@ -3339,7 +3349,7 @@ app.get('/attendance', (req, res) => {
 
     // Late arrivals count
     const lateCount = db.prepare(
-        "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status IN ('absent','nurse')"
+        "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType IN ('homegroup_am','specialty_am') AND Status IN ('absent','nurse')"
     ).get(date)?.n || 0;
 
     let filteredHomegroupSessions = homegroupSessions;
@@ -3785,10 +3795,10 @@ app.post('/attendance/mark', (req, res) => {
 app.get('/attendance/late-arrivals', (req, res) => {
     const date = req.query.date || todayStr();
     const campers = db.prepare(`
-        SELECT c.*, a.Status AS AttendanceStatus
+        SELECT c.*, a.Status AS AttendanceStatus, a.SessionType AS AttSessionType
         FROM Campers c
         JOIN Attendance a ON c.CamperID = a.CamperID
-        WHERE a.Date = ? AND a.SessionType = 'homegroup_am' AND a.Status = 'absent'
+        WHERE a.Date = ? AND a.SessionType IN ('homegroup_am','specialty_am') AND a.Status = 'absent'
         ORDER BY c.HomeGroupColor, c.LastName, c.FirstName
     `).all(date);
 
@@ -3813,10 +3823,12 @@ app.get('/attendance/late-arrivals', (req, res) => {
 app.post('/attendance/check-in', (req, res) => {
     const { date, camperId } = req.body;
     const markedBy = getViewerName(req);
+    const camper = db.prepare("SELECT HomeGroupColor FROM Campers WHERE CamperID=?").get(parseInt(camperId));
+    const sessionType = camper && SPECIALTY_CAMP_COLORS.includes(camper.HomeGroupColor) ? 'specialty_am' : 'homegroup_am';
     db.prepare(`
         UPDATE Attendance SET Status = 'late', MarkedAt = CURRENT_TIMESTAMP, MarkedBy = ?
-        WHERE Date = ? AND CamperID = ? AND SessionType = 'homegroup_am'
-    `).run(markedBy, date, camperId);
+        WHERE Date = ? AND CamperID = ? AND SessionType = ?
+    `).run(markedBy, date, camperId, sessionType);
     res.redirect(`/attendance/late-arrivals?date=${date}`);
 });
 
