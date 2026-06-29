@@ -1929,6 +1929,29 @@ app.post('/create-camper', (req, res) => {
     }
 });
 
+// --- CREATE BLANK CLASS ---
+app.post('/create-blank-class', (req, res) => {
+    const activityName = (req.body.activityName || '').trim();
+    const periodNumber = parseInt(req.body.periodNumber);
+    const sideOfCamp   = (req.body.sideOfCamp || '').trim();
+
+    if (!activityName || !periodNumber || !sideOfCamp) {
+        return res.redirect('/settings?message=Class+name,+period,+and+side+are+required');
+    }
+
+    const aw = getActiveWeek();
+    try {
+        db.prepare(`INSERT OR IGNORE INTO Activities (Name, SideOfCamp, MaxCapacity) VALUES (?, ?, 20)`)
+            .run(activityName, sideOfCamp);
+        db.prepare(`INSERT OR IGNORE INTO WeeklyOfferings (ActivityName, PeriodNumber, SideOfCamp, WeekNumber, PreliminaryEnrollment) VALUES (?, ?, ?, ?, 0)`)
+            .run(activityName, periodNumber, sideOfCamp, aw);
+        res.redirect('/settings?message=Blank+class+created');
+    } catch (err) {
+        console.error(err);
+        res.redirect('/settings?message=Error+creating+class');
+    }
+});
+
 // --- ASSIGN CAMPER SCHEDULE (view) ---
 app.get('/assign-camper-schedule/:id', (req, res) => {
     const id = req.params.id;

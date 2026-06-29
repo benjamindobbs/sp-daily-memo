@@ -468,7 +468,7 @@
         </div>
 
         <div class="card" style="margin-top:24px;">
-            <h2 style="margin:0 0 16px;">&#127978; Add Camper</h2>
+            <h2 style="margin:0 0 4px;">&#127978; Add Camper</h2>
             <form action="/create-camper" method="POST">
                 <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
                     <div style="display:flex; flex-direction:column; gap:4px;">
@@ -522,6 +522,37 @@
                         <input type="text" name="shirtSize" placeholder="Optional" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; min-width:80px;">
                     </div>
                     <button type="submit" class="btn btn-primary" style="padding:7px 18px; white-space:nowrap;">Add Camper &amp; Assign Classes</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="card" style="margin-top:24px;">
+            <h2 style="margin:0 0 4px;">&#128197; Create Blank Class</h2>
+            <p style="margin:0 0 16px; font-size:0.82rem; color:var(--text-muted);">Adds a class to the active week's offerings. No campers are added to the roster.</p>
+            <form action="/create-blank-class" method="POST">
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Class Name *</label>
+                        <input type="text" name="activityName" required placeholder="e.g. Free Swim" style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; min-width:180px;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Period *</label>
+                        <select name="periodNumber" required style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem;">
+                            <option value="">— Select —</option>
+                            <% [1,2,3,4,5,6].forEach(p => { %>
+                                <option value="<%= p %>">Period <%= p %></option>
+                            <% }) %>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.78rem; font-weight:600; color:var(--text-muted);">Side of Camp *</label>
+                        <select name="sideOfCamp" required style="padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem;">
+                            <option value="">— Select —</option>
+                            <option value="Enrichment">Enrichment</option>
+                            <option value="Sports">Sports</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="padding:7px 18px; white-space:nowrap;">Create Class</button>
                 </div>
             </form>
         </div>
