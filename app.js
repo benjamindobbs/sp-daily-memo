@@ -5198,8 +5198,7 @@ app.get('/split-scheduling', (req, res) => {
         FROM WeeklyOfferings
         WHERE WeekNumber = ?
           AND ((PeriodNumber IN (1,2) AND SideOfCamp = 'Enrichment')
-            OR (PeriodNumber IN (5,6) AND SideOfCamp = 'Sports')
-            OR PeriodNumber = 4)
+            OR (PeriodNumber IN (4,5,6) AND SideOfCamp = 'Sports'))
         ORDER BY PeriodNumber, SideOfCamp, ActivityName
     `).all(aw);
 
