@@ -3441,6 +3441,7 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
         title: `${counselor.FirstName} ${counselor.LastName}'s Group — ${session.toUpperCase()}`,
         sessionType, date,
         periodNumber: 0, activityName: '',
+        selfLink: `/attendance/homegroup/counselor/${counselorId}/${session}`,
         backLink: `/attendance?date=${date}`,
         roster
     });
@@ -3492,6 +3493,7 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
         title: `${color} Group — ${session.toUpperCase()}`,
         sessionType, date,
         periodNumber: 0, activityName: '',
+        selfLink: `/attendance/homegroup/${color}/${session}`,
         backLink: `/attendance?date=${date}`,
         roster
     });
@@ -3550,6 +3552,7 @@ app.get('/attendance/specialty/:color/:session', (req, res) => {
         title: `${HOME_GROUP_LABELS[color] || color} — ${session.toUpperCase()}`,
         sessionType, date,
         periodNumber: 0, activityName: '',
+        selfLink: `/attendance/specialty/${color}/${session}`,
         backLink: `/attendance?date=${date}`,
         roster,
         isSplitAM, fieldTripActive,
@@ -3644,6 +3647,7 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
         title: `Block ${period} — ${activityName}`,
         sessionType, date,
         periodNumber: period, activityName,
+        selfLink: `/attendance/class/${period}/${encodeURIComponent(activityName)}`,
         location: locationRow ? locationRow.Location : null,
         staffRows, counselorRows,
         backLink: `/attendance?date=${date}`,
@@ -3698,6 +3702,7 @@ app.get('/attendance/bus/:route/:session', (req, res) => {
         title: `Bus ${String(parseFloat(route) % 1 === 0 ? Math.trunc(parseFloat(route)) : route)} — ${session.toUpperCase()}`,
         sessionType, date,
         periodNumber: 0, activityName: '',
+        selfLink: `/attendance/bus/${encodeURIComponent(route)}/${session}`,
         backLink: `/attendance?date=${date}`,
         roster
     });
@@ -3750,6 +3755,7 @@ app.get('/attendance/extended/:session', (req, res) => {
         title: `Extended ${session.toUpperCase()}`,
         sessionType, date,
         periodNumber: 0, activityName: '',
+        selfLink: `/attendance/extended/${session}`,
         backLink: `/attendance?date=${date}`,
         roster
     });

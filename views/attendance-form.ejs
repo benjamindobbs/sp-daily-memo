@@ -198,7 +198,7 @@
             <form action="/attendance/early-dismissal" method="POST">
                 <input type="hidden" name="date" value="<%= date %>">
                 <input type="hidden" name="camperId" id="dismissCamperId">
-                <input type="hidden" name="returnTo" value="/attendance/<%= sessionType === 'class' ? 'class/' + periodNumber + '/' + encodeURIComponent(activityName) : sessionType.replace('_','/') %>?date=<%= date %><%= (typeof half !== 'undefined' && half) ? '&half=' + half : '' %>">
+                <input type="hidden" name="returnTo" value="<%= selfLink %>?date=<%= date %><%= (typeof half !== 'undefined' && half) ? '&half=' + half : '' %>">
                 <div class="dismiss-field">
                     <label>Dismissal Time</label>
                     <input type="time" name="dismissalTime">
