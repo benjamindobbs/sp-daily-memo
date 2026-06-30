@@ -317,7 +317,7 @@
                                 <option value="">— Unassigned —</option>
                                 <% splitCampers.forEach(function(sc) { %>
                                 <option value="<%= sc.CamperID %>" <%= (parseInt(assignedId) === sc.CamperID) ? 'selected' : '' %>>
-                                    <%= sc.LastName %>, <%= sc.FirstName %>
+                                    <%= sc.LastName %>, <%= sc.PreferredName || sc.FirstName %>
                                 </option>
                                 <% }); %>
                             </select>
@@ -357,7 +357,7 @@
                 sel.innerHTML = '<option value="">— Unassigned —</option>' +
                     SPLIT_CAMPERS
                         .filter(sc => sc.CamperID === currentVal || !selectedIds.has(sc.CamperID))
-                        .map(sc => `<option value="${sc.CamperID}"${sc.CamperID === currentVal ? ' selected' : ''}>${sc.LastName}, ${sc.FirstName}</option>`)
+                        .map(sc => `<option value="${sc.CamperID}"${sc.CamperID === currentVal ? ' selected' : ''}>${sc.LastName}, ${sc.PreferredName || sc.FirstName}</option>`)
                         .join('');
             });
         }
@@ -414,7 +414,7 @@
             }
 
             const winner = pool[Math.floor(Math.random() * pool.length)];
-            const winnerName = `${winner.FirstName} ${winner.LastName}`;
+            const winnerName = `${winner.PreferredName || winner.FirstName} ${winner.LastName}`;
 
             btn.disabled = true;
             ticket.className = 'draw-ticket spinning';
@@ -433,7 +433,7 @@
             function tick() {
                 // Pick a random name from the pool to flash (not always the winner)
                 const flash = pool[Math.floor(Math.random() * pool.length)];
-                ticket.textContent = `${flash.FirstName} ${flash.LastName}`;
+                ticket.textContent = `${flash.PreferredName || flash.FirstName} ${flash.LastName}`;
 
                 elapsed += interval;
                 // Ease interval outward (slow down)

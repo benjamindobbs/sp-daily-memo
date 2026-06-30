@@ -447,7 +447,7 @@
             for (const cam of campers) {
                 const opt = document.createElement('option');
                 opt.value = cam.CamperID;
-                opt.textContent = `${cam.LastName}, ${cam.FirstName}`;
+                opt.textContent = `${cam.LastName}, ${cam.PreferredName || cam.FirstName}`;
                 sel.appendChild(opt);
             }
             if (selectedCamperId != null) sel.value = String(selectedCamperId);

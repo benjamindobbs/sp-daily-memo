@@ -5632,7 +5632,7 @@ app.get('/homegroup-assignment', (req, res) => {
     `).all(week);
 
     const campers = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.HomeGroupColor,
                chg.CounselorID AS AssignedCounselorID
         FROM Campers c
         LEFT JOIN CamperHomeGroups chg ON chg.CamperID = c.CamperID AND chg.WeekNumber = ?
@@ -5719,7 +5719,7 @@ app.get('/split-scheduling', (req, res) => {
     `).all(aw);
 
     const splitCampers = db.prepare(
-        "SELECT CamperID, FirstName, LastName FROM Campers WHERE HomeGroupColor='SPLIT' ORDER BY LastName, FirstName"
+        "SELECT CamperID, FirstName, LastName, PreferredName FROM Campers WHERE HomeGroupColor='SPLIT' ORDER BY LastName, FirstName"
     ).all();
     const splitIds = splitCampers.map(c => c.CamperID);
 
