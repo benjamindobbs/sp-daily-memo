@@ -3429,9 +3429,12 @@ app.get('/attendance', (req, res) => {
         allowedClasses = new Set();
         if (cRow) {
             // Find all CounselorIDs with the same name — dual-enrolled staff appear as multiple rows.
-            // Only Instructors use StaffWeekSchedules (populated by the instructor upload).
-            // Unit Leaders, Sports Leaders, and Counselors all use CounselorWeekSchedules
-            // (populated by the counselor assignment tool).
+            // Schedule storage by role:
+            //   Instructor        → StaffWeekSchedules
+            //   Unit Leader / Sports Leader (sports slots) → CounselorScheduleAssignments (PersonType='Instructor')
+            //   Unit Leader / Sports Leader (enrichment slots, placed as counselor) → CounselorWeekSchedules
+            //   Counselor         → CounselorWeekSchedules
+            const UL_SL_ROLES = new Set(['Unit Leader', 'Sports Leader']);
             const sameNameIds = db.prepare(
                 'SELECT CounselorID, StaffRole FROM Counselors WHERE FirstName = ? AND LastName = ?'
             ).all(cRow.FirstName, cRow.LastName);
@@ -3441,6 +3444,17 @@ app.get('/attendance', (req, res) => {
                         'SELECT PeriodNumber, ActivityName FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ?'
                     ).all(peer.CounselorID, getActiveWeek());
                     for (const a of rows) allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName.toLowerCase()}`);
+                } else if (UL_SL_ROLES.has(peer.StaffRole)) {
+                    // Sports-side assignments saved via assignment tool as PersonType='Instructor'
+                    const sportRows = db.prepare(
+                        'SELECT PeriodNumber, ActivityName FROM CounselorScheduleAssignments WHERE PersonID = ? AND WeekNumber = ?'
+                    ).all(peer.CounselorID, getActiveWeek());
+                    for (const a of sportRows) allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName.toLowerCase()}`);
+                    // Enrichment-side assignments saved as counselor slots
+                    const enrichRows = db.prepare(
+                        'SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ?'
+                    ).all(peer.CounselorID, getActiveWeek());
+                    for (const a of enrichRows) allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName.toLowerCase()}`);
                 } else {
                     const rows = db.prepare(
                         'SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ?'
