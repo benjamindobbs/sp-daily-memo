@@ -194,7 +194,7 @@ function getAbsentByGroup(today, camperIdSet) {
     const attRows = db.prepare(`
         SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor, a.Status
         FROM Attendance a JOIN Campers c ON c.CamperID = a.CamperID
-        WHERE a.Date = ? AND a.SessionType = 'homegroup_am' AND a.Status IN ('absent', 'late', 'nurse')
+        WHERE a.Date = ? AND a.SessionType IN ('homegroup_am', 'specialty_am') AND a.Status IN ('absent', 'late', 'nurse')
     `).all(today);
     const dismissalRows = db.prepare(`
         SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor, 'dismissed' AS Status
@@ -220,7 +220,7 @@ function getAbsentByGroup(today, camperIdSet) {
 
 function getNurseAMSet(date) {
     return new Set(
-        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='nurse'")
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType IN ('homegroup_am','specialty_am') AND Status='nurse'")
             .all(date).map(r => r.CamperID)
     );
 }
@@ -1399,7 +1399,7 @@ app.get('/admin', (req, res) => {
     const absentByGroup = getAbsentByGroup(today);
 
     const nurseCount = db.prepare(
-        "SELECT COUNT(*) AS count FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status='nurse'"
+        "SELECT COUNT(*) AS count FROM Attendance WHERE Date=? AND SessionType IN ('homegroup_am','specialty_am') AND Status='nurse'"
     ).get(today).count;
 
     res.render('index', {
@@ -3837,7 +3837,7 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
     `).all(period, activityName);
 
     const absentAMSet = new Set(
-        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status IN ('absent','nurse')")
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType IN ('homegroup_am','specialty_am') AND Status IN ('absent','nurse')")
             .all(date).map(r => r.CamperID)
     );
     const dismissedSet = new Set(
@@ -3929,7 +3929,7 @@ app.get('/attendance/bus/:route/:session', (req, res) => {
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
-        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status IN ('absent','nurse')")
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType IN ('homegroup_am','specialty_am') AND Status IN ('absent','nurse')")
             .all(date).forEach(r => absentAMSet.add(r.CamperID));
     }
     const dismissedSet = new Set(
@@ -3982,7 +3982,7 @@ app.get('/attendance/extended/:session', (req, res) => {
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
-        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='homegroup_am' AND Status IN ('absent','nurse')")
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType IN ('homegroup_am','specialty_am') AND Status IN ('absent','nurse')")
             .all(date).forEach(r => absentAMSet.add(r.CamperID));
     }
     const dismissedSet = new Set(
