@@ -378,6 +378,7 @@
                                 <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">
                                     Export the <strong>Master Camper Schedule (ACR-255)</strong> report from camp management.
                                     Enriches existing campers with grade, bus route, extended hours, and activity schedule.
+                                    <% if (prepTargetWeek) { %><strong style="color:#92400e;">Prep target: W<%= prepTargetWeek %></strong><% } %>
                                 </p>
                                 <form action="/upload-campers-schedule" method="POST" enctype="multipart/form-data">
                                     <input type="file" name="file" accept=".csv" required>
@@ -394,10 +395,23 @@
                                 <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">
                                     Export <strong>ACR-132 (AM Bus Attendance)</strong>. Sets each camper's bus route and
                                     AM ride flag directly from the report's bus sections. Run after the roster import.
+                                    <% if (prepTargetWeek) { %><strong style="color:#92400e;">Prep target: W<%= prepTargetWeek %></strong><% } %>
                                 </p>
-                                <form action="/upload-bus-am" method="POST" enctype="multipart/form-data">
-                                    <input type="file" name="file" accept=".csv" required>
-                                    <button type="submit" class="btn primary btn-small">Import AM Bus</button>
+                                <form action="/upload-bus-am" method="POST" enctype="multipart/form-data" style="display:flex; flex-direction:column; gap:8px;">
+                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                        <label style="font-size:0.8rem; font-weight:600;">Target Week:</label>
+                                        <select name="weekNumber" style="font-size:0.82rem; padding:3px 6px; border:1px solid var(--border-color); border-radius:4px;">
+                                            <% sessions.forEach(s => { %>
+                                            <option value="<%= s.weekNumber %>" <%= (prepTargetWeek ? s.weekNumber === prepTargetWeek : s.isActive) ? 'selected' : '' %>>
+                                                W<%= s.weekNumber %><%= s.label ? ' — ' + s.label : '' %><%= s.isActive ? ' (Active)' : '' %><%= s.isPrepTarget ? ' (Prep)' : '' %>
+                                            </option>
+                                            <% }) %>
+                                        </select>
+                                    </div>
+                                    <div style="display:flex; gap:8px; align-items:center;">
+                                        <input type="file" name="file" accept=".csv" required style="font-size:0.82rem;">
+                                        <button type="submit" class="btn primary btn-small">Import AM Bus</button>
+                                    </div>
                                 </form>
                             </div>
 
@@ -406,10 +420,23 @@
                                 <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">
                                     Export <strong>ACR-133 (PM Bus Attendance)</strong>. Sets each camper's bus route and
                                     PM ride flag directly from the report's bus sections. Run after the roster import.
+                                    <% if (prepTargetWeek) { %><strong style="color:#92400e;">Prep target: W<%= prepTargetWeek %></strong><% } %>
                                 </p>
-                                <form action="/upload-bus-pm" method="POST" enctype="multipart/form-data">
-                                    <input type="file" name="file" accept=".csv" required>
-                                    <button type="submit" class="btn primary btn-small">Import PM Bus</button>
+                                <form action="/upload-bus-pm" method="POST" enctype="multipart/form-data" style="display:flex; flex-direction:column; gap:8px;">
+                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                        <label style="font-size:0.8rem; font-weight:600;">Target Week:</label>
+                                        <select name="weekNumber" style="font-size:0.82rem; padding:3px 6px; border:1px solid var(--border-color); border-radius:4px;">
+                                            <% sessions.forEach(s => { %>
+                                            <option value="<%= s.weekNumber %>" <%= (prepTargetWeek ? s.weekNumber === prepTargetWeek : s.isActive) ? 'selected' : '' %>>
+                                                W<%= s.weekNumber %><%= s.label ? ' — ' + s.label : '' %><%= s.isActive ? ' (Active)' : '' %><%= s.isPrepTarget ? ' (Prep)' : '' %>
+                                            </option>
+                                            <% }) %>
+                                        </select>
+                                    </div>
+                                    <div style="display:flex; gap:8px; align-items:center;">
+                                        <input type="file" name="file" accept=".csv" required style="font-size:0.82rem;">
+                                        <button type="submit" class="btn primary btn-small">Import PM Bus</button>
+                                    </div>
                                 </form>
                             </div>
                         </section>

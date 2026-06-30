@@ -108,100 +108,108 @@ function getPhotoPhase() {
 }
 
 function computeClassAttStats(clockBlock, side, today) {
+    const aw = getActiveWeek();
     const classes = db.prepare(`
         SELECT DISTINCT s.ActivityName
         FROM Schedules s
         JOIN Activities a ON a.Name = s.ActivityName
         WHERE s.PersonType = 'Camper' AND s.PeriodNumber = ? AND a.SideOfCamp = ?
           AND s.ActivityName != 'PM Only - Hartt Chamber Program'
-    `).all(clockBlock, side);
+          AND s.WeekNumber = ?
+    `).all(clockBlock, side, aw);
     if (classes.length === 0) return { total: 0, submitted: 0 };
     const checkTotal   = db.prepare(`
         SELECT COUNT(*) as n FROM Schedules s
-        JOIN Campers c ON c.CamperID = s.PersonID
-        WHERE s.PersonType='Camper' AND s.PeriodNumber=? AND s.ActivityName=?
-          AND c.HomeGroupColor != 'SPLIT'
+        WHERE s.PersonType='Camper' AND s.PeriodNumber=? AND s.ActivityName=? AND s.WeekNumber=?
+          AND s.PersonID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor != 'SPLIT')
     `);
     const checkHandled = db.prepare(`
         SELECT COUNT(*) as n FROM (
             SELECT CamperID FROM Attendance
             WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor != 'SPLIT')
             UNION
             SELECT CamperID FROM EarlyDismissals WHERE Date=?
-              AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?)
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
+              AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=? AND WeekNumber=?)
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor != 'SPLIT')
         )
     `);
     let submitted = 0;
     for (const c of classes) {
-        const total   = checkTotal.get(clockBlock, c.ActivityName)?.n || 0;
-        const handled = checkHandled.get(today, clockBlock, c.ActivityName, today, clockBlock, c.ActivityName)?.n || 0;
+        const total   = checkTotal.get(clockBlock, c.ActivityName, aw, aw)?.n || 0;
+        const handled = checkHandled.get(today, clockBlock, c.ActivityName, aw, today, clockBlock, c.ActivityName, aw, aw)?.n || 0;
         if (total === 0 || handled >= total) submitted++;
     }
     return { total: classes.length, submitted };
 }
 
 function computeExtAttStats(session, today) {
+    const aw = getActiveWeek();
     const col = session === 'am' ? "('AM','Both')" : "('PM','Both')";
-    const extTotal = db.prepare(`SELECT COUNT(*) as n FROM Campers WHERE ExtendedHours IN ${col}`).get()?.n || 0;
+    const extTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col}`).get(aw)?.n || 0;
     if (extTotal === 0) return { total: 1, submitted: 1 };
     const handled = db.prepare(`
         SELECT COUNT(*) as n FROM (
             SELECT CamperID FROM Attendance
             WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE ExtendedHours IN ${col})
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col})
             UNION
             SELECT CamperID FROM EarlyDismissals WHERE Date=?
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE ExtendedHours IN ${col})
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col})
         )
-    `).get(today, `extended_${session}`, today)?.n || 0;
+    `).get(today, `extended_${session}`, aw, today, aw)?.n || 0;
     return { total: 1, submitted: handled >= extTotal ? 1 : 0 };
 }
 
 function computeBusAttStats(session, today) {
+    const aw = getActiveWeek();
     const ridesCol = session === 'pm' ? 'BusRidesPM' : 'BusRidesAM';
     const sessionType = `bus_${session}`;
     const routes = db.prepare(`
-        SELECT DISTINCT BusRoute FROM Campers
-        WHERE BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null' AND ${ridesCol} = 1
-    `).all().map(r => r.BusRoute);
+        SELECT DISTINCT BusRoute FROM CamperWeekData
+        WHERE WeekNumber=? AND BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null' AND ${ridesCol} = 1
+    `).all(aw).map(r => r.BusRoute);
 
     const total = routes.length;
     if (total === 0) return { total: 0, submitted: 0 };
 
-    const checkTotal   = db.prepare(`SELECT COUNT(*) as n FROM Campers WHERE BusRoute=? AND ${ridesCol}=1`);
+    const checkTotal   = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1`);
     const checkHandled = db.prepare(`
         SELECT COUNT(*) as n FROM (
             SELECT CamperID FROM Attendance
             WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=? AND ${ridesCol}=1)
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1)
             UNION
             SELECT CamperID FROM EarlyDismissals WHERE Date=?
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=? AND ${ridesCol}=1)
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1)
         )
     `);
 
     let submitted = 0;
     for (const route of routes) {
-        const busTotal = checkTotal.get(route)?.n || 0;
-        const handled  = checkHandled.get(today, sessionType, route, today, route)?.n || 0;
+        const busTotal = checkTotal.get(aw, route)?.n || 0;
+        const handled  = checkHandled.get(today, sessionType, aw, route, today, aw, route)?.n || 0;
         if (busTotal === 0 || handled >= busTotal) submitted++;
     }
     return { total, submitted };
 }
 
 function getAbsentByGroup(today, camperIdSet) {
+    const aw = getActiveWeek();
     const attRows = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor, a.Status
-        FROM Attendance a JOIN Campers c ON c.CamperID = a.CamperID
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, a.Status
+        FROM Attendance a
+        JOIN Campers c ON c.CamperID = a.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         WHERE a.Date = ? AND a.SessionType IN ('homegroup_am', 'specialty_am') AND a.Status IN ('absent', 'late', 'nurse')
-    `).all(today);
+    `).all(aw, today);
     const dismissalRows = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor, 'dismissed' AS Status
-        FROM EarlyDismissals ed JOIN Campers c ON c.CamperID = ed.CamperID
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, 'dismissed' AS Status
+        FROM EarlyDismissals ed
+        JOIN Campers c ON c.CamperID = ed.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         WHERE ed.Date = ?
-    `).all(today);
+    `).all(aw, today);
     const byId = new Map();
     for (const r of attRows) byId.set(r.CamperID, r);
     for (const r of dismissalRows) byId.set(r.CamperID, r); // dismissed overwrites absent/late
@@ -713,6 +721,20 @@ db.exec(`
         FOREIGN KEY (CamperID)    REFERENCES Campers(CamperID),
         FOREIGN KEY (CounselorID) REFERENCES Counselors(CounselorID)
     );
+    CREATE TABLE IF NOT EXISTS CamperWeekData (
+        CamperID      INTEGER NOT NULL,
+        WeekNumber    INTEGER NOT NULL CHECK(WeekNumber BETWEEN 1 AND 6),
+        HomeGroupColor TEXT,
+        CampLunch      TEXT    DEFAULT 'No',
+        ExtendedHours  TEXT,
+        BusRoute       TEXT,
+        BusRidesAM     INTEGER DEFAULT 1,
+        BusRidesPM     INTEGER DEFAULT 1,
+        BusStopAM      TEXT,
+        BusStopPM      TEXT,
+        PRIMARY KEY (CamperID, WeekNumber),
+        FOREIGN KEY (CamperID) REFERENCES Campers(CamperID) ON DELETE CASCADE
+    );
 `);
 
 // Migration: add WeekNumber, MaxCapacity, Location to WeeklyOfferings
@@ -956,6 +978,29 @@ try {
         db.exec("ALTER TABLE Sessions ADD COLUMN isPrepTarget INTEGER DEFAULT 0");
     }
 } catch(e) { console.error('[migration] isPrepTarget:', e.message); }
+
+// Migration: add WeekNumber to Schedules (used for camper rows to scope per-week)
+try {
+    db.prepare("SELECT WeekNumber FROM Schedules LIMIT 1").get();
+} catch {
+    db.exec("ALTER TABLE Schedules ADD COLUMN WeekNumber INTEGER");
+}
+
+// Backfill: populate CamperWeekData from Campers for the active week (one-time migration)
+// INSERT OR IGNORE so re-runs on restart don't clobber rows written by week-specific uploads.
+try {
+    const _aw = db.prepare("SELECT weekNumber FROM Sessions WHERE isActive=1 LIMIT 1").get()?.weekNumber ?? 1;
+    db.prepare(`
+        INSERT OR IGNORE INTO CamperWeekData
+            (CamperID, WeekNumber, HomeGroupColor, CampLunch, ExtendedHours,
+             BusRoute, BusRidesAM, BusRidesPM, BusStopAM, BusStopPM)
+        SELECT CamperID, ?, HomeGroupColor, CampLunch, ExtendedHours,
+               BusRoute, COALESCE(BusRidesAM,1), COALESCE(BusRidesPM,1), BusStopAM, BusStopPM
+        FROM Campers
+    `).run(_aw);
+    db.prepare("UPDATE Schedules SET WeekNumber = ? WHERE PersonType = 'Camper' AND WeekNumber IS NULL").run(_aw);
+} catch(e) { console.error('[migration] CamperWeekData backfill:', e.message); }
+
 db.exec(`INSERT OR IGNORE INTO CounselorWeekSchedules (CounselorID, WeekNumber, PeriodNumber, ActivityName)
     SELECT PersonID, 1, PeriodNumber, ActivityName FROM Schedules WHERE PersonType = 'Counselor'`);
 db.exec(`INSERT OR IGNORE INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
@@ -993,11 +1038,11 @@ try {
 
         // Find each counselor's most common camper color for this week
         const rows = db.prepare(`
-            SELECT chg.CounselorID, c.HomeGroupColor, COUNT(*) as cnt
+            SELECT chg.CounselorID, cwd.HomeGroupColor, COUNT(*) as cnt
             FROM CamperHomeGroups chg
-            JOIN Campers c ON c.CamperID = chg.CamperID
-            WHERE chg.WeekNumber = ? AND c.HomeGroupColor IN ('Red','Carolina','Green','Navy')
-            GROUP BY chg.CounselorID, c.HomeGroupColor
+            JOIN CamperWeekData cwd ON cwd.CamperID = chg.CamperID AND cwd.WeekNumber = chg.WeekNumber
+            WHERE chg.WeekNumber = ? AND cwd.HomeGroupColor IN ('Red','Carolina','Green','Navy')
+            GROUP BY chg.CounselorID, cwd.HomeGroupColor
         `).all(weekNumber);
 
         const best = {};
@@ -1285,21 +1330,21 @@ app.get('/staff', (req, res) => {
         `).get(aw, cid);
 
         const busIds = ca?.BusRoute
-            ? db.prepare('SELECT CamperID FROM Campers WHERE BusRoute = ?').all(ca.BusRoute).map(r => r.CamperID)
+            ? db.prepare('SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute = ?').all(aw, ca.BusRoute).map(r => r.CamperID)
             : [];
 
         let extIds = [];
-        if (ca?.ExtendedHours === 'AM')   extIds = db.prepare("SELECT CamperID FROM Campers WHERE ExtendedHours IN ('AM','Both')").all().map(r => r.CamperID);
-        else if (ca?.ExtendedHours === 'PM')   extIds = db.prepare("SELECT CamperID FROM Campers WHERE ExtendedHours IN ('PM','Both')").all().map(r => r.CamperID);
-        else if (ca?.ExtendedHours === 'Both') extIds = db.prepare("SELECT CamperID FROM Campers WHERE ExtendedHours IS NOT NULL").all().map(r => r.CamperID);
+        if (ca?.ExtendedHours === 'AM')   extIds = db.prepare("SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ('AM','Both')").all(aw).map(r => r.CamperID);
+        else if (ca?.ExtendedHours === 'PM')   extIds = db.prepare("SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ('PM','Both')").all(aw).map(r => r.CamperID);
+        else if (ca?.ExtendedHours === 'Both') extIds = db.prepare("SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IS NOT NULL").all(aw).map(r => r.CamperID);
 
         const counselorActivities = db.prepare(
             'SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ?'
         ).all(cid, aw);
         let classIds = [];
         for (const act of counselorActivities) {
-            db.prepare("SELECT PersonID AS CamperID FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?")
-                .all(act.PeriodNumber, act.ActivityName).forEach(r => classIds.push(r.CamperID));
+            db.prepare("SELECT PersonID AS CamperID FROM Schedules WHERE PersonType='Camper' AND WeekNumber=? AND PeriodNumber=? AND ActivityName=?")
+                .all(aw, act.PeriodNumber, act.ActivityName).forEach(r => classIds.push(r.CamperID));
         }
 
         rosterCamperIds = new Set([...homeGroupIds, ...busIds, ...extIds, ...classIds]);
@@ -1307,28 +1352,32 @@ app.get('/staff', (req, res) => {
 
     const filterByRoster = (rows) => rosterCamperIds ? rows.filter(r => rosterCamperIds.has(r.CamperID)) : rows;
 
+    const _aw = getActiveWeek();
     const allPickups = db.prepare(`
-        SELECT sp.PickupTime, sp.PeriodNumber, sp.Notes, c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
+        SELECT sp.PickupTime, sp.PeriodNumber, sp.Notes, c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor,
                s.ActivityName
         FROM ScheduledPickups sp JOIN Campers c ON c.CamperID = sp.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         LEFT JOIN Schedules s ON s.PersonType='Camper' AND s.PersonID=sp.CamperID
-            AND s.PeriodNumber=sp.PeriodNumber
+            AND s.PeriodNumber=sp.PeriodNumber AND s.WeekNumber=?
         WHERE sp.Date = ? ORDER BY sp.PickupTime
-    `).all(today);
+    `).all(_aw, _aw, today);
 
     const allLateArrivals = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor, a.MarkedAt
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, a.MarkedAt
         FROM Attendance a JOIN Campers c ON c.CamperID = a.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         WHERE a.Date = ? AND a.SessionType = 'homegroup_am' AND a.Status = 'late'
         ORDER BY a.MarkedAt
-    `).all(today);
+    `).all(_aw, today);
 
     const allEarlyDismissals = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor,
                ed.DismissalTime, ed.Notes
         FROM EarlyDismissals ed JOIN Campers c ON c.CamperID = ed.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         WHERE ed.Date = ? ORDER BY ed.DismissalTime
-    `).all(today);
+    `).all(_aw, today);
 
     const allScheduleChanges = db.prepare(`
         SELECT ChangeID, CamperID, CamperName, ColorGroup, PeriodNumber, OldActivity, NewActivity, ChangedAt
@@ -1390,14 +1439,15 @@ app.post('/hub-content/:id', (req, res) => {
 
 // --- DASHBOARD ---
 app.get('/admin', (req, res) => {
+    const aw = getActiveWeek();
     const camperTotal = db.prepare("SELECT COUNT(*) AS count FROM Campers").get().count;
     const activityCount = db.prepare(
         "SELECT COUNT(DISTINCT ActivityName) AS count FROM WeeklyOfferings WHERE WeekNumber=?"
-    ).get(getActiveWeek()).count;
+    ).get(aw).count;
 
     const groupRows = db.prepare(
-        "SELECT HomeGroupColor AS color, COUNT(*) AS cnt FROM Campers WHERE HomeGroupColor IS NOT NULL AND HomeGroupColor != '' GROUP BY HomeGroupColor"
-    ).all();
+        `SELECT HomeGroupColor AS color, COUNT(*) AS cnt FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor IS NOT NULL AND HomeGroupColor != '' GROUP BY HomeGroupColor`
+    ).all(aw);
     const groupCounts = {};
     for (const r of groupRows) groupCounts[r.color] = r.cnt;
 
@@ -1406,8 +1456,11 @@ app.get('/admin', (req, res) => {
     const waitlistCount = db.prepare(`
         SELECT COUNT(*) as count FROM Waitlists w
         JOIN Activities a ON w.RequestedActivity = a.Name
-        WHERE (SELECT COUNT(*) FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT'
-               WHERE s.ActivityName = a.Name AND s.PeriodNumber = w.PeriodNumber) < a.MaxCapacity
+        WHERE (SELECT COUNT(*) FROM Schedules s
+               WHERE s.ActivityName = a.Name AND s.PeriodNumber = w.PeriodNumber
+                 AND s.PersonType = 'Camper' AND s.WeekNumber = ${aw}
+                 AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ${aw} AND HomeGroupColor = 'SPLIT')
+              ) < a.MaxCapacity
     `).get().count;
 
     const estMins = getESTMins();
@@ -1461,26 +1514,28 @@ app.get('/audit', (req, res) => {
     const alertMessage = req.query.message || null;
 
     const noCounselor = db.prepare(`
-        SELECT CamperID, FirstName, LastName, HomeGroupColor
-        FROM Campers
-        WHERE HomeGroupCounselorID IS NULL
-          AND CamperID NOT IN (SELECT CamperID FROM CamperHomeGroups WHERE WeekNumber = ?)
-          AND HomeGroupColor NOT IN ('LilPlace', 'KinderPlace', 'SPLIT', 'SPRC')
-          AND HomeGroupColor IS NOT NULL AND HomeGroupColor != ''
-        ORDER BY HomeGroupColor, LastName
-    `).all(activeWeek);
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor
+        FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE c.HomeGroupCounselorID IS NULL
+          AND c.CamperID NOT IN (SELECT CamperID FROM CamperHomeGroups WHERE WeekNumber = ?)
+          AND COALESCE(cwd.HomeGroupColor,'') NOT IN ('LilPlace', 'KinderPlace', 'SPLIT', 'SPRC')
+          AND cwd.HomeGroupColor IS NOT NULL AND cwd.HomeGroupColor != ''
+        ORDER BY cwd.HomeGroupColor, c.LastName
+    `).all(activeWeek, activeWeek);
 
     const missingSchedule = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor,
                COUNT(s.PeriodNumber) AS classCount
         FROM Campers c
-        LEFT JOIN Schedules s ON s.PersonID = c.CamperID AND s.PersonType = 'Camper'
-        WHERE c.HomeGroupColor NOT IN ('LilPlace', 'KinderPlace', 'SPLIT', 'SPRC')
-          AND c.HomeGroupColor IS NOT NULL AND c.HomeGroupColor != ''
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        LEFT JOIN Schedules s ON s.PersonID = c.CamperID AND s.PersonType = 'Camper' AND s.WeekNumber = ?
+        WHERE COALESCE(cwd.HomeGroupColor,'') NOT IN ('LilPlace', 'KinderPlace', 'SPLIT', 'SPRC')
+          AND cwd.HomeGroupColor IS NOT NULL AND cwd.HomeGroupColor != ''
         GROUP BY c.CamperID
         HAVING classCount < 5
-        ORDER BY c.HomeGroupColor, c.LastName
-    `).all();
+        ORDER BY cwd.HomeGroupColor, c.LastName
+    `).all(activeWeek, activeWeek);
 
     const EXPECTED = { 'All Sports': 6, 'All Enrichment': 4, 'AM Sports / PM Enrichment': 5, 'AM Enrichment / PM Sports': 5 };
 
@@ -1504,15 +1559,15 @@ app.get('/audit', (req, res) => {
         SELECT ActivityName, COUNT(*) AS totalCampers,
                GROUP_CONCAT(DISTINCT PeriodNumber ORDER BY PeriodNumber) AS periods
         FROM Schedules
-        WHERE PersonType = 'Camper'
+        WHERE PersonType = 'Camper' AND WeekNumber = ?
         GROUP BY ActivityName
         HAVING totalCampers <= 3
         ORDER BY totalCampers, ActivityName
-    `).all();
+    `).all(activeWeek);
 
     const allClassNames = db.prepare(
-        "SELECT DISTINCT ActivityName FROM Schedules WHERE PersonType='Camper' ORDER BY ActivityName"
-    ).all().map(r => r.ActivityName);
+        "SELECT DISTINCT ActivityName FROM Schedules WHERE PersonType='Camper' AND WeekNumber=? ORDER BY ActivityName"
+    ).all(activeWeek).map(r => r.ActivityName);
 
     function suggestTargets(suspectName, names) {
         const tok = s => s.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim().split(/\s+/)[0];
@@ -1538,11 +1593,11 @@ app.get('/audit', (req, res) => {
         SELECT a.Name, a.SideOfCamp,
                COUNT(s.PersonID) AS enrollment
         FROM Activities a
-        LEFT JOIN Schedules s ON s.ActivityName = a.Name AND s.PersonType = 'Camper'
+        LEFT JOIN Schedules s ON s.ActivityName = a.Name AND s.PersonType = 'Camper' AND s.WeekNumber = ?
         WHERE a.SideOfCamp IS NULL OR a.SideOfCamp NOT IN ('Sports', 'Enrichment')
         GROUP BY a.Name, a.SideOfCamp
         ORDER BY a.Name
-    `).all();
+    `).all(activeWeek);
 
     res.render('audit', { activeSession, alertMessage, noCounselor, missingSchedule, counselorMismatch, EXPECTED, suspects, allClassNames, unclassifiedActivities });
 });
@@ -1606,6 +1661,7 @@ app.post('/merge-class', (req, res) => {
 // --- MASTER SCHEDULE ---
 app.get('/master-schedule', (req, res) => {
     try {
+        const aw = getActiveWeek();
         const classes = db.prepare(`
             SELECT DISTINCT
                 s.PeriodNumber  AS periodNumber,
@@ -1616,9 +1672,10 @@ app.get('/master-schedule', (req, res) => {
             FROM Schedules s
             LEFT JOIN Activities a ON s.ActivityName = a.Name
             WHERE s.PersonType = 'Camper'
+              AND s.WeekNumber = ?
               AND s.ActivityName NOT LIKE '#REF%'
             ORDER BY s.PeriodNumber, s.ActivityName
-        `).all();
+        `).all(aw);
 
         const getLocation = db.prepare(`
             SELECT Location FROM Schedules
@@ -1631,13 +1688,15 @@ app.get('/master-schedule', (req, res) => {
             LIMIT 1
         `);
         const getColorGroups = db.prepare(`
-            SELECT DISTINCT c.HomeGroupColor
-            FROM Campers c JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper'
-            WHERE s.PeriodNumber = ? AND s.ActivityName = ? ORDER BY c.HomeGroupColor
+            SELECT DISTINCT cwd.HomeGroupColor
+            FROM CamperWeekData cwd JOIN Schedules s ON cwd.CamperID = s.PersonID AND s.PersonType = 'Camper' AND s.WeekNumber = cwd.WeekNumber
+            WHERE cwd.WeekNumber = ? AND s.PeriodNumber = ? AND s.ActivityName = ? ORDER BY cwd.HomeGroupColor
         `);
-        const getEnrollment = db.prepare(
-            "SELECT COUNT(*) as n FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT' WHERE s.PersonType = 'Camper' AND s.PeriodNumber = ? AND s.ActivityName = ?"
-        );
+        const getEnrollment = db.prepare(`
+            SELECT COUNT(*) as n FROM Schedules s
+            WHERE s.PersonType = 'Camper' AND s.WeekNumber = ? AND s.PeriodNumber = ? AND s.ActivityName = ?
+              AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ? AND HomeGroupColor = 'SPLIT')
+        `);
         const getStaff = db.prepare(`
             SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
             FROM Counselors st JOIN Schedules s ON st.CounselorID = s.PersonID AND s.PersonType = 'Instructor'
@@ -1652,7 +1711,6 @@ app.get('/master-schedule', (req, res) => {
             WHERE csa.WeekNumber = ? AND csa.PeriodNumber = ? AND csa.ActivityName = ? COLLATE NOCASE
               AND csa.PersonType IN ('Instructor', 'Staff')
         `);
-        const aw = getActiveWeek();
         const getCounselors = db.prepare(`
             SELECT c.CounselorID, c.FirstName, c.LastName,
                    COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
@@ -1663,12 +1721,12 @@ app.get('/master-schedule', (req, res) => {
             ORDER BY HomeGroupColor, c.LastName
         `);
         const getBusPresence = db.prepare(`
-            SELECT 1 FROM Campers c JOIN Schedules s ON c.CamperID=s.PersonID AND s.PersonType='Camper'
-            WHERE s.PeriodNumber=? AND s.ActivityName=? AND c.BusRoute IS NOT NULL AND c.BusRoute!='' LIMIT 1
+            SELECT 1 FROM CamperWeekData cwd JOIN Schedules s ON cwd.CamperID=s.PersonID AND s.PersonType='Camper' AND s.WeekNumber=cwd.WeekNumber
+            WHERE cwd.WeekNumber=? AND s.PeriodNumber=? AND s.ActivityName=? AND cwd.BusRoute IS NOT NULL AND cwd.BusRoute!='' LIMIT 1
         `);
         const getExtGroups = db.prepare(`
-            SELECT DISTINCT c.ExtendedHours FROM Campers c JOIN Schedules s ON c.CamperID=s.PersonID AND s.PersonType='Camper'
-            WHERE s.PeriodNumber=? AND s.ActivityName=? AND c.ExtendedHours IS NOT NULL AND c.ExtendedHours!=''
+            SELECT DISTINCT cwd.ExtendedHours FROM CamperWeekData cwd JOIN Schedules s ON cwd.CamperID=s.PersonID AND s.PersonType='Camper' AND s.WeekNumber=cwd.WeekNumber
+            WHERE cwd.WeekNumber=? AND s.PeriodNumber=? AND s.ActivityName=? AND cwd.ExtendedHours IS NOT NULL AND cwd.ExtendedHours!=''
         `);
 
         // Each row in Schedules now uses clock blocks (1-6) — no P3 AM/PM split needed.
@@ -1677,12 +1735,12 @@ app.get('/master-schedule', (req, res) => {
             return {
                 ...cls,
                 location:    locRow ? locRow.Location : (cls.location || null),
-                enrolled:    getEnrollment.get(cls.periodNumber, cls.activityName).n,
-                colorGroups: getColorGroups.all(cls.periodNumber, cls.activityName).map(r => r.HomeGroupColor),
+                enrolled:    getEnrollment.get(aw, cls.periodNumber, cls.activityName, aw).n,
+                colorGroups: getColorGroups.all(aw, cls.periodNumber, cls.activityName).map(r => r.HomeGroupColor),
                 staff:       getStaff.all(cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName),
                 counselors:  getCounselors.all(aw, cls.periodNumber, cls.activityName, aw),
-                busPresent:  !!getBusPresence.get(cls.periodNumber, cls.activityName),
-                extGroups:   getExtGroups.all(cls.periodNumber, cls.activityName).map(r => r.ExtendedHours)
+                busPresent:  !!getBusPresence.get(aw, cls.periodNumber, cls.activityName),
+                extGroups:   getExtGroups.all(aw, cls.periodNumber, cls.activityName).map(r => r.ExtendedHours)
             };
         });
 
@@ -1714,16 +1772,17 @@ app.get('/class-roster/:period/:activity', (req, res) => {
 
         const activeWeek = getActiveWeek();
         const campers = db.prepare(`
-            SELECT c.CamperID, c.FirstName, c.LastName, c.Grade, c.HomeGroupColor,
-                   c.BusRoute, c.ExtendedHours,
+            SELECT c.CamperID, c.FirstName, c.LastName, c.Grade,
+                   cwd.HomeGroupColor, cwd.BusRoute, cwd.ExtendedHours,
                    n.CounselorID, n.FirstName AS CounselorFirstName, n.LastName AS CounselorLastName
             FROM Campers c
-            JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper'
+            JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper' AND s.WeekNumber = ?
+            LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
             LEFT JOIN CamperHomeGroups chg ON chg.CamperID = c.CamperID AND chg.WeekNumber = ?
             LEFT JOIN Counselors n ON n.CounselorID = COALESCE(chg.CounselorID, c.HomeGroupCounselorID)
             WHERE s.PeriodNumber = ? AND s.ActivityName = ?
-            ORDER BY c.HomeGroupColor, c.LastName
-        `).all(activeWeek, period, activityName);
+            ORDER BY cwd.HomeGroupColor, c.LastName
+        `).all(activeWeek, activeWeek, activeWeek, period, activityName);
 
         const colorGroups = [...new Set(campers.map(c => c.HomeGroupColor).filter(Boolean))];
 
@@ -1810,15 +1869,15 @@ app.get('/search', (req, res) => {
             FROM Campers c
             LEFT JOIN CamperHomeGroups chg ON chg.CamperID = c.CamperID AND chg.WeekNumber = ?
             LEFT JOIN Counselors n ON COALESCE(chg.CounselorID, c.HomeGroupCounselorID) = n.CounselorID
-            LEFT JOIN Schedules s1 ON c.CamperID = s1.PersonID AND s1.PeriodNumber = 1 AND s1.PersonType = 'Camper'
-            LEFT JOIN Schedules s2 ON c.CamperID = s2.PersonID AND s2.PeriodNumber = 2 AND s2.PersonType = 'Camper'
-            LEFT JOIN Schedules s3 ON c.CamperID = s3.PersonID AND s3.PeriodNumber = 3 AND s3.PersonType = 'Camper'
-            LEFT JOIN Schedules s4 ON c.CamperID = s4.PersonID AND s4.PeriodNumber = 4 AND s4.PersonType = 'Camper'
-            LEFT JOIN Schedules s5 ON c.CamperID = s5.PersonID AND s5.PeriodNumber = 5 AND s5.PersonType = 'Camper'
-            LEFT JOIN Schedules s6 ON c.CamperID = s6.PersonID AND s6.PeriodNumber = 6 AND s6.PersonType = 'Camper'
+            LEFT JOIN Schedules s1 ON c.CamperID = s1.PersonID AND s1.PeriodNumber = 1 AND s1.PersonType = 'Camper' AND s1.WeekNumber = ?
+            LEFT JOIN Schedules s2 ON c.CamperID = s2.PersonID AND s2.PeriodNumber = 2 AND s2.PersonType = 'Camper' AND s2.WeekNumber = ?
+            LEFT JOIN Schedules s3 ON c.CamperID = s3.PersonID AND s3.PeriodNumber = 3 AND s3.PersonType = 'Camper' AND s3.WeekNumber = ?
+            LEFT JOIN Schedules s4 ON c.CamperID = s4.PersonID AND s4.PeriodNumber = 4 AND s4.PersonType = 'Camper' AND s4.WeekNumber = ?
+            LEFT JOIN Schedules s5 ON c.CamperID = s5.PersonID AND s5.PeriodNumber = 5 AND s5.PersonType = 'Camper' AND s5.WeekNumber = ?
+            LEFT JOIN Schedules s6 ON c.CamperID = s6.PersonID AND s6.PeriodNumber = 6 AND s6.PersonType = 'Camper' AND s6.WeekNumber = ?
             WHERE (c.FirstName || ' ' || c.LastName LIKE ?) OR (? = '')
             ORDER BY c.LastName ASC
-        `).all(aw, `%${query}%`, query);
+        `).all(aw, aw, aw, aw, aw, aw, aw, `%${query}%`, query);
 
         res.render('search', { 
             camper: camperList, 
@@ -1952,7 +2011,10 @@ app.get('/camper/:id', (req, res) => {
     try {
         const aw = getActiveWeek();
         const camper = db.prepare(`
-            SELECT c.*,
+            SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Age, c.Grade, c.ShirtSize,
+                   c.HomeGroupCounselorID,
+                   cwd.HomeGroupColor, cwd.CampLunch, cwd.ExtendedHours,
+                   cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM, cwd.BusStopAM, cwd.BusStopPM,
                    COALESCE(
                        (SELECT co2.FirstName || ' ' || co2.LastName
                         FROM CamperHomeGroups chg
@@ -1967,8 +2029,9 @@ app.get('/camper/:id', (req, res) => {
                        c.HomeGroupCounselorID
                    ) AS ResolvedCounselorID
             FROM Campers c
+            LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
             WHERE c.CamperID = ?
-        `).get(aw, aw, req.params.id);
+        `).get(aw, aw, aw, req.params.id);
 
         if (!camper) return res.status(404).send('Camper not found');
 
@@ -1976,9 +2039,9 @@ app.get('/camper/:id', (req, res) => {
             SELECT s.PeriodNumber, s.ActivityName, s.Location, a.SideOfCamp
             FROM Schedules s
             LEFT JOIN Activities a ON s.ActivityName = a.Name
-            WHERE s.PersonID = ? AND s.PersonType = 'Camper'
+            WHERE s.PersonID = ? AND s.PersonType = 'Camper' AND s.WeekNumber = ?
             ORDER BY s.PeriodNumber ASC
-        `).all(req.params.id);
+        `).all(req.params.id, aw);
 
         // SPLIT campers have periods 1,2,5,6 — inject a display-only period 3 row
         if (camper.HomeGroupColor === 'SPLIT' && !schedule.some(s => s.PeriodNumber === 3)) {
@@ -2009,25 +2072,25 @@ app.post('/camper/:id/update', (req, res) => {
         const { homeGroupCounselorID, busRoute, busRidesAM, busRidesPM, extendedHours, campLunch, preferredName } = req.body;
         const cleanRoute = busRoute ? busRoute.trim() : null;
         const cleanPreferred = (preferredName || '').trim() || null;
+        const aw = getActiveWeek();
+        db.prepare("UPDATE Campers SET HomeGroupCounselorID=?, PreferredName=? WHERE CamperID=?")
+            .run(homeGroupCounselorID ? parseInt(homeGroupCounselorID) : null, cleanPreferred, req.params.id);
         db.prepare(`
-            UPDATE Campers
-            SET HomeGroupCounselorID = ?,
-                BusRoute             = ?,
-                BusRidesAM           = ?,
-                BusRidesPM           = ?,
-                ExtendedHours        = ?,
-                CampLunch            = ?,
-                PreferredName        = ?
-            WHERE CamperID = ?
+            INSERT INTO CamperWeekData (CamperID, WeekNumber, BusRoute, BusRidesAM, BusRidesPM, ExtendedHours, CampLunch)
+            VALUES (?,?,?,?,?,?,?)
+            ON CONFLICT(CamperID, WeekNumber) DO UPDATE SET
+                BusRoute      = excluded.BusRoute,
+                BusRidesAM    = excluded.BusRidesAM,
+                BusRidesPM    = excluded.BusRidesPM,
+                ExtendedHours = excluded.ExtendedHours,
+                CampLunch     = excluded.CampLunch
         `).run(
-            homeGroupCounselorID ? parseInt(homeGroupCounselorID) : null,
+            req.params.id, aw,
             cleanRoute,
             cleanRoute ? (busRidesAM === '1' ? 1 : 0) : 0,
             cleanRoute ? (busRidesPM === '1' ? 1 : 0) : 0,
             extendedHours || null,
-            campLunch || 'No',
-            cleanPreferred,
-            req.params.id
+            campLunch || 'No'
         );
         res.redirect(`/camper/${req.params.id}?message=Saved`);
     } catch (err) {
@@ -2119,12 +2182,18 @@ app.post('/create-camper', (req, res) => {
     const shirtSize     = (req.body.shirtSize     || '').trim() || null;
 
     try {
+        const aw = getActiveWeek();
         const result = db.prepare(`
-            INSERT INTO Campers (FirstName, LastName, Grade, Age, HomeGroupColor, BusRoute, ExtendedHours, CampLunch, ShirtSize)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(firstName, lastName, grade, grade, homeGroupColor, busRoute, extendedHours, campLunch, shirtSize);
+            INSERT INTO Campers (FirstName, LastName, Grade, Age, ShirtSize)
+            VALUES (?, ?, ?, ?, ?)
+        `).run(firstName, lastName, grade, grade, shirtSize);
 
         const newId = result.lastInsertRowid;
+        db.prepare(`
+            INSERT OR REPLACE INTO CamperWeekData (CamperID, WeekNumber, HomeGroupColor, BusRoute, ExtendedHours, CampLunch)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `).run(newId, aw, homeGroupColor, busRoute, extendedHours, campLunch);
+
         res.redirect(`/assign-camper-schedule/${newId}`);
     } catch (err) {
         console.error(err);
@@ -2158,14 +2227,22 @@ app.post('/create-blank-class', (req, res) => {
 // --- ASSIGN CAMPER SCHEDULE (view) ---
 app.get('/assign-camper-schedule/:id', (req, res) => {
     const id = req.params.id;
-    const camper = db.prepare('SELECT * FROM Campers WHERE CamperID = ?').get(id);
+    const tw = getPrepTargetWeek() || getActiveWeek();
+    const camper = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize,
+               cwd.HomeGroupColor, cwd.CampLunch, cwd.ExtendedHours,
+               cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM
+        FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE c.CamperID = ?
+    `).get(tw, id);
     if (!camper) return res.redirect('/settings?message=Camper+not+found');
 
     const scheduleRows = db.prepare(`
         SELECT PeriodNumber, ActivityName FROM Schedules
-        WHERE PersonID = ? AND PersonType = 'Camper'
+        WHERE PersonID = ? AND PersonType = 'Camper' AND WeekNumber = ?
         ORDER BY PeriodNumber ASC
-    `).all(id);
+    `).all(id, tw);
 
     const schedMap = {};
     scheduleRows.forEach(r => { schedMap[r.PeriodNumber] = r.ActivityName; });
@@ -2198,9 +2275,13 @@ app.get('/assign-camper-schedule/:id', (req, res) => {
 // --- GET OPTIONS FOR NEW CAMPER (AJAX) ---
 app.get('/get-new-camper-options/:camperId/:period', (req, res) => {
     const { camperId, period } = req.params;
-    const week = getActiveWeek();
+    const week = getPrepTargetWeek() || getActiveWeek();
 
-    const camper = db.prepare('SELECT HomeGroupColor FROM Campers WHERE CamperID = ?').get(camperId);
+    const camper = db.prepare(`
+        SELECT cwd.HomeGroupColor FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE c.CamperID = ?
+    `).get(week, camperId);
     const color = camper ? camper.HomeGroupColor : null;
 
     // Derive side of camp from color + period
@@ -2218,8 +2299,10 @@ app.get('/get-new-camper-options/:camperId/:period', (req, res) => {
                    COALESCE(wo.MaxCapacity, a.MaxCapacity) AS MaxCapacity,
                    COALESCE(apg.AllowedGroups, a.AllowedGroups) AS EffectiveGroups,
                    (SELECT COUNT(*) FROM Schedules s
-                    JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT'
-                    WHERE s.ActivityName = wo.ActivityName AND s.PeriodNumber = @period AND s.PersonType = 'Camper') AS CurrentEnrollment
+                    WHERE s.ActivityName = wo.ActivityName AND s.PeriodNumber = @period
+                      AND s.PersonType = 'Camper' AND s.WeekNumber = @week
+                      AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=@week AND HomeGroupColor='SPLIT')
+                   ) AS CurrentEnrollment
             FROM WeeklyOfferings wo
             JOIN Activities a ON a.Name = wo.ActivityName
             LEFT JOIN ActivityPeriodGroups apg
@@ -2250,21 +2333,23 @@ app.get('/assign-camper-class', (req, res) => {
     const act = db.prepare('SELECT * FROM Activities WHERE Name = ?').get(activity);
     if (!act) return res.redirect(`/assign-camper-schedule/${camperId}?message=Activity+not+found`);
 
+    const tw = getPrepTargetWeek() || getActiveWeek();
+
     // Check capacity (use WeeklyOfferings capacity override if present)
     const offering = db.prepare(`
         SELECT COALESCE(wo.MaxCapacity, a.MaxCapacity) AS MaxCapacity
         FROM WeeklyOfferings wo
         JOIN Activities a ON a.Name = wo.ActivityName
         WHERE wo.ActivityName = ? AND wo.PeriodNumber = ? AND wo.WeekNumber = ?
-    `).get(activity, period, getActiveWeek());
+    `).get(activity, period, tw);
 
     const maxCap = offering ? offering.MaxCapacity : act.MaxCapacity;
 
     const enrollment = db.prepare(`
         SELECT COUNT(*) as count FROM Schedules s
-        JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT'
-        WHERE s.ActivityName = ? AND s.PeriodNumber = ? AND s.PersonType = 'Camper'
-    `).get(activity, period).count;
+        WHERE s.ActivityName = ? AND s.PeriodNumber = ? AND s.PersonType = 'Camper' AND s.WeekNumber = ?
+          AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor='SPLIT')
+    `).get(activity, period, tw, tw).count;
 
     if (enrollment >= maxCap) {
         db.prepare(`
@@ -2277,12 +2362,12 @@ app.get('/assign-camper-class', (req, res) => {
     // DELETE + INSERT in a transaction
     db.transaction(() => {
         db.prepare(`
-            DELETE FROM Schedules WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper'
-        `).run(camperId, period);
+            DELETE FROM Schedules WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper' AND WeekNumber = ?
+        `).run(camperId, period, tw);
         db.prepare(`
-            INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName)
-            VALUES (?, 'Camper', ?, ?)
-        `).run(camperId, period, activity);
+            INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName, WeekNumber)
+            VALUES (?, 'Camper', ?, ?, ?)
+        `).run(camperId, period, activity, tw);
     })();
 
     res.redirect(`/assign-camper-schedule/${camperId}?message=Class+assigned`);
@@ -2389,20 +2474,27 @@ app.post('/delete-activity-period-group', (req, res) => {
 
 // --- WAITLIST & PROMOTIONS ---
 app.get('/promotions', (req, res) => {
+    const aw = getActiveWeek();
+    const enrollmentSubq = `(SELECT COUNT(*) FROM Schedules s
+        WHERE s.ActivityName = w.RequestedActivity AND s.PeriodNumber = w.PeriodNumber
+          AND s.PersonType = 'Camper' AND s.WeekNumber = ${aw}
+          AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ${aw} AND HomeGroupColor = 'SPLIT'))`;
     const potentialPromotions = db.prepare(`
-        SELECT w.*, c.FirstName, c.LastName, c.HomeGroupColor, a.MaxCapacity,
-        (SELECT COUNT(*) FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT' WHERE s.ActivityName = w.RequestedActivity AND s.PeriodNumber = w.PeriodNumber AND s.PersonType = 'Camper') as CurrentEnrollment
+        SELECT w.*, c.FirstName, c.LastName, cwd.HomeGroupColor, a.MaxCapacity,
+        ${enrollmentSubq} as CurrentEnrollment
         FROM Waitlists w
         JOIN Campers c ON w.CamperID = c.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ${aw}
         JOIN Activities a ON w.RequestedActivity = a.Name
         WHERE CurrentEnrollment < a.MaxCapacity
         ORDER BY w.Timestamp ASC
     `).all();
     const waitlistQueue = db.prepare(`
-        SELECT w.*, c.FirstName, c.LastName, c.HomeGroupColor, a.MaxCapacity,
-        (SELECT COUNT(*) FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT' WHERE s.ActivityName = w.RequestedActivity AND s.PeriodNumber = w.PeriodNumber AND s.PersonType = 'Camper') as CurrentEnrollment
+        SELECT w.*, c.FirstName, c.LastName, cwd.HomeGroupColor, a.MaxCapacity,
+        ${enrollmentSubq} as CurrentEnrollment
         FROM Waitlists w
         JOIN Campers c ON w.CamperID = c.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ${aw}
         JOIN Activities a ON w.RequestedActivity = a.Name
         WHERE CurrentEnrollment >= a.MaxCapacity
         ORDER BY w.Timestamp ASC
@@ -2411,30 +2503,34 @@ app.get('/promotions', (req, res) => {
 });
 
 app.post('/promote-waitlist', (req, res) => {
+    const aw = getActiveWeek();
     const entry = db.prepare('SELECT * FROM Waitlists WHERE WaitlistID = ?').get(req.body.WaitlistID);
     if (entry) {
         // Re-check capacity to guard against race conditions
         const activity = db.prepare('SELECT MaxCapacity FROM Activities WHERE Name = ?').get(entry.RequestedActivity);
         const currentCount = db.prepare(
-            `SELECT COUNT(*) as count FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT' WHERE s.ActivityName = ? AND s.PeriodNumber = ? AND s.PersonType = 'Camper'`
-        ).get(entry.RequestedActivity, entry.PeriodNumber);
+            `SELECT COUNT(*) as count FROM Schedules s
+             WHERE s.ActivityName = ? AND s.PeriodNumber = ? AND s.PersonType = 'Camper' AND s.WeekNumber = ?
+               AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ? AND HomeGroupColor = 'SPLIT')`
+        ).get(entry.RequestedActivity, entry.PeriodNumber, aw, aw);
 
         if (activity && currentCount.count >= activity.MaxCapacity) {
             return res.redirect('/promotions?message=Spot+was+already+filled+by+another+camper');
         }
 
-        db.prepare(`UPDATE Schedules SET ActivityName = ? WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper'`)
-            .run(entry.RequestedActivity, entry.CamperID, entry.PeriodNumber);
+        db.prepare(`UPDATE Schedules SET ActivityName = ? WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper' AND WeekNumber = ?`)
+            .run(entry.RequestedActivity, entry.CamperID, entry.PeriodNumber, aw);
         db.prepare('DELETE FROM Waitlists WHERE WaitlistID = ?').run(req.body.WaitlistID);
     }
     res.redirect('/promotions?message=Camper+Promoted');
 });
 
 app.post('/force-promote-waitlist', (req, res) => {
+    const aw = getActiveWeek();
     const entry = db.prepare('SELECT * FROM Waitlists WHERE WaitlistID = ?').get(req.body.WaitlistID);
     if (entry) {
-        db.prepare(`UPDATE Schedules SET ActivityName = ? WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper'`)
-            .run(entry.RequestedActivity, entry.CamperID, entry.PeriodNumber);
+        db.prepare(`UPDATE Schedules SET ActivityName = ? WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper' AND WeekNumber = ?`)
+            .run(entry.RequestedActivity, entry.CamperID, entry.PeriodNumber, aw);
         db.prepare('DELETE FROM Waitlists WHERE WaitlistID = ?').run(entry.WaitlistID);
     }
     res.redirect('/promotions?message=Camper+force-promoted+(over+capacity)');
@@ -2442,9 +2538,13 @@ app.post('/force-promote-waitlist', (req, res) => {
 
 // Promote ALL eligible waitlisted campers at once
 app.post('/promote-all', (req, res) => {
+    const aw = getActiveWeek();
     const eligible = db.prepare(`
         SELECT w.*, a.MaxCapacity,
-        (SELECT COUNT(*) FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT' WHERE s.ActivityName = w.RequestedActivity AND s.PeriodNumber = w.PeriodNumber AND s.PersonType = 'Camper') as CurrentEnrollment
+        (SELECT COUNT(*) FROM Schedules s
+         WHERE s.ActivityName = w.RequestedActivity AND s.PeriodNumber = w.PeriodNumber
+           AND s.PersonType = 'Camper' AND s.WeekNumber = ${aw}
+           AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ${aw} AND HomeGroupColor = 'SPLIT')) as CurrentEnrollment
         FROM Waitlists w
         JOIN Activities a ON w.RequestedActivity = a.Name
         WHERE CurrentEnrollment < a.MaxCapacity
@@ -2456,11 +2556,13 @@ app.post('/promote-all', (req, res) => {
         for (const entry of entries) {
             // Re-check live enrollment inside transaction to avoid double-filling
             const liveCount = db.prepare(
-                `SELECT COUNT(*) as count FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT' WHERE s.ActivityName = ? AND s.PeriodNumber = ? AND s.PersonType = 'Camper'`
-            ).get(entry.RequestedActivity, entry.PeriodNumber);
+                `SELECT COUNT(*) as count FROM Schedules s
+                 WHERE s.ActivityName = ? AND s.PeriodNumber = ? AND s.PersonType = 'Camper' AND s.WeekNumber = ?
+                   AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ? AND HomeGroupColor = 'SPLIT')`
+            ).get(entry.RequestedActivity, entry.PeriodNumber, aw, aw);
             if (liveCount.count < entry.MaxCapacity) {
-                db.prepare(`UPDATE Schedules SET ActivityName = ? WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper'`)
-                    .run(entry.RequestedActivity, entry.CamperID, entry.PeriodNumber);
+                db.prepare(`UPDATE Schedules SET ActivityName = ? WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper' AND WeekNumber = ?`)
+                    .run(entry.RequestedActivity, entry.CamperID, entry.PeriodNumber, aw);
                 db.prepare('DELETE FROM Waitlists WHERE WaitlistID = ?').run(entry.WaitlistID);
                 promoted++;
             }
@@ -2585,9 +2687,17 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
     if (sections.length === 0) return res.redirect('/settings?message=Invalid+file+format+(ACR-005+expected)');
 
     const safeTrim = v => { const s = (v && typeof v === 'string') ? v.trim() : ''; return s.toLowerCase() === 'null' ? '' : s; };
-    const findCamper    = db.prepare("SELECT CamperID, CampLunch FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
-    const insertCamper  = db.prepare("INSERT INTO Campers (FirstName, LastName, HomeGroupColor, ShirtSize, CampLunch) VALUES (?,?,?,?,?)");
-    const updateCamper  = db.prepare("UPDATE Campers SET HomeGroupColor=?, ShirtSize=?, CampLunch=? WHERE CamperID=?");
+    const findCamper    = db.prepare("SELECT CamperID FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
+    const findCamperWd  = db.prepare("SELECT CampLunch FROM CamperWeekData WHERE CamperID=? AND WeekNumber=?");
+    const insertCamper  = db.prepare("INSERT INTO Campers (FirstName, LastName, ShirtSize) VALUES (?,?,?)");
+    const updateCamper  = db.prepare("UPDATE Campers SET ShirtSize=? WHERE CamperID=?");
+    const upsertWeekData = db.prepare(`
+        INSERT INTO CamperWeekData (CamperID, WeekNumber, HomeGroupColor, CampLunch)
+        VALUES (?,?,?,?)
+        ON CONFLICT(CamperID, WeekNumber) DO UPDATE SET
+            HomeGroupColor = excluded.HomeGroupColor,
+            CampLunch      = excluded.CampLunch
+    `);
     const findCounselor = db.prepare("SELECT CounselorID FROM Counselors WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
     const upsertHg      = db.prepare("INSERT OR REPLACE INTO CamperHomeGroups (CamperID, WeekNumber, CounselorID) VALUES (?,?,?)");
     const aw = parseInt(req.body.weekNumber) || getPrepTargetWeek() || getActiveWeek();
@@ -2616,13 +2726,17 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
 
                     let camperId;
                     if (existing) {
-                        const lunch = existing.CampLunch === 'Allergy' ? 'Allergy' : (lunchRaw || 'No');
-                        updateCamper.run(color, shirt, lunch, existing.CamperID);
+                        updateCamper.run(shirt, existing.CamperID);
                         camperId = existing.CamperID;
                     } else {
-                        const info = insertCamper.run(firstName, lastName, color, shirt, lunchRaw || 'No');
+                        const info = insertCamper.run(firstName, lastName, shirt);
                         camperId = info.lastInsertRowid;
                     }
+
+                    // Preserve Allergy lunch flag — never overwrite with a non-allergy value
+                    const existingWd = findCamperWd.get(camperId, aw);
+                    const lunch = existingWd?.CampLunch === 'Allergy' ? 'Allergy' : (lunchRaw || 'No');
+                    upsertWeekData.run(camperId, aw, color, lunch);
 
                     if (counselorId && camperId) {
                         upsertHg.run(camperId, aw, counselorId);
@@ -2670,12 +2784,17 @@ function parseBusAttendanceReport(rawText) {
 
 // Applies a parsed bus report to the given direction. Update-only by name (campers must already
 // exist from the roster import). Sets BusRoute when the report knows it; always sets the ride flag.
-function importBusReport(rawText, dir /* 'AM' | 'PM' */) {
+function importBusReport(rawText, dir /* 'AM' | 'PM' */, weekNumber) {
     const ridesCol = dir === 'PM' ? 'BusRidesPM' : 'BusRidesAM';
     const rows = parseBusAttendanceReport(rawText);
-    const findCamper   = db.prepare("SELECT CamperID FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
-    const updWithRoute = db.prepare(`UPDATE Campers SET BusRoute=?, ${ridesCol}=? WHERE CamperID=?`);
-    const updFlagOnly  = db.prepare(`UPDATE Campers SET ${ridesCol}=? WHERE CamperID=?`);
+    const findCamper = db.prepare("SELECT CamperID FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
+    const upsertWd   = db.prepare(`
+        INSERT INTO CamperWeekData (CamperID, WeekNumber, BusRoute, ${ridesCol})
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(CamperID, WeekNumber) DO UPDATE SET
+            BusRoute  = CASE WHEN excluded.BusRoute IS NOT NULL THEN excluded.BusRoute ELSE BusRoute END,
+            ${ridesCol} = excluded.${ridesCol}
+    `);
     let matched = 0;
     db.transaction(() => {
         for (const r of rows) {
@@ -2683,8 +2802,7 @@ function importBusReport(rawText, dir /* 'AM' | 'PM' */) {
             if (!firstName && !lastName) continue;
             const existing = findCamper.get(`${firstName} ${lastName}`);
             if (!existing) continue;
-            if (r.route !== null) updWithRoute.run(String(r.route), r.rides, existing.CamperID);
-            else                  updFlagOnly.run(r.rides, existing.CamperID);
+            upsertWd.run(existing.CamperID, weekNumber, r.route !== null ? String(r.route) : null, r.rides);
             matched++;
         }
     })();
@@ -2700,8 +2818,9 @@ app.post('/upload-bus-am', upload.single('file'), (req, res) => {
     finally { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); }
     if (!/AM Bus Attendance|ACR-132/i.test(rawText))
         return res.redirect('/settings?message=Invalid+file+format+(AM+Bus+Attendance+ACR-132+expected)');
+    const wk = parseInt(req.body.weekNumber) || getPrepTargetWeek() || getActiveWeek();
     try {
-        const { matched } = importBusReport(rawText, 'AM');
+        const { matched } = importBusReport(rawText, 'AM', wk);
         res.redirect(`/settings?message=AM+Bus+Import+Success+(${matched}+campers)`);
     } catch (err) {
         console.error('ACR-132 AM bus upload error:', err);
@@ -2718,8 +2837,9 @@ app.post('/upload-bus-pm', upload.single('file'), (req, res) => {
     finally { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); }
     if (!/PM Bus Attendance|ACR-133/i.test(rawText))
         return res.redirect('/settings?message=Invalid+file+format+(PM+Bus+Attendance+ACR-133+expected)');
+    const wk = parseInt(req.body.weekNumber) || getPrepTargetWeek() || getActiveWeek();
     try {
-        const { matched } = importBusReport(rawText, 'PM');
+        const { matched } = importBusReport(rawText, 'PM', wk);
         res.redirect(`/settings?message=PM+Bus+Import+Success+(${matched}+campers)`);
     } catch (err) {
         console.error('ACR-133 PM bus upload error:', err);
@@ -2789,6 +2909,8 @@ app.post('/upload-campers-schedule', upload.single('file'), (req, res) => {
     if (!csvSlice || !/^"?Camper"?,"?Shirt"?/i.test(csvSlice.split(/\r?\n/)[0]))
         return res.redirect('/settings?message=Invalid+file+format+(Master+Camper+Schedule+ACR-255+expected)');
 
+    const targetWeek = parseInt(req.body.weekNumber) || getPrepTargetWeek() || getActiveWeek();
+
     const results = [];
     const Readable = require('stream').Readable;
     const s = new Readable(); s.push(csvSlice); s.push(null);
@@ -2796,10 +2918,21 @@ app.post('/upload-campers-schedule', upload.single('file'), (req, res) => {
      .on('data', d => results.push(d))
      .on('end', () => {
         const safeTrim = v => { const s = (v && typeof v === 'string') ? v.trim() : ''; return s.toLowerCase() === 'null' ? '' : s; };
-        const findCamper  = db.prepare("SELECT CamperID, HomeGroupColor FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
-        const updateCamper = db.prepare("UPDATE Campers SET Grade=?, ExtendedHours=? WHERE CamperID=?");
-        const deleteSched  = db.prepare("DELETE FROM Schedules WHERE PersonID=? AND PersonType='Camper'");
-        const insertSched  = db.prepare("INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName) VALUES (?, 'Camper', ?, ?)");
+        // Read HomeGroupColor from CamperWeekData for target week (falls back to Campers for legacy)
+        const findCamper  = db.prepare(`
+            SELECT c.CamperID, COALESCE(cwd.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
+            FROM Campers c
+            LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+            WHERE UPPER(c.FirstName || ' ' || c.LastName) = UPPER(?) LIMIT 1
+        `);
+        const updateGrade   = db.prepare("UPDATE Campers SET Grade=? WHERE CamperID=?");
+        const upsertExtHours = db.prepare(`
+            INSERT INTO CamperWeekData (CamperID, WeekNumber, ExtendedHours)
+            VALUES (?,?,?)
+            ON CONFLICT(CamperID, WeekNumber) DO UPDATE SET ExtendedHours = excluded.ExtendedHours
+        `);
+        const deleteSched  = db.prepare("DELETE FROM Schedules WHERE PersonID=? AND PersonType='Camper' AND WeekNumber=?");
+        const insertSched  = db.prepare("INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName, WeekNumber) VALUES (?, 'Camper', ?, ?, ?)");
 
         try {
             db.transaction((rows) => {
@@ -2812,7 +2945,7 @@ app.post('/upload-campers-schedule', upload.single('file'), (req, res) => {
                     const { firstName, lastName } = parseLastFirst(camperRaw);
                     if (!firstName && !lastName) continue;
 
-                    const existing = findCamper.get(`${firstName} ${lastName}`);
+                    const existing = findCamper.get(targetWeek, `${firstName} ${lastName}`);
                     if (!existing) continue; // update-only
 
                     const grade = parseInt(safeTrim(row['Grade'])) || 0;
@@ -2820,23 +2953,21 @@ app.post('/upload-campers-schedule', upload.single('file'), (req, res) => {
                     const pmExt = safeTrim(row['PM Ext']);
                     const extHours = (amExt && pmExt) ? 'Both' : (amExt || pmExt || null);
 
-                    updateCamper.run(grade, extHours, existing.CamperID);
+                    updateGrade.run(grade, existing.CamperID);
+                    upsertExtHours.run(existing.CamperID, targetWeek, extHours);
 
-                    // Re-import schedule
-                    deleteSched.run(existing.CamperID);
+                    // Re-import schedule for this week only
+                    deleteSched.run(existing.CamperID, targetWeek);
                     const grpColor = existing.HomeGroupColor || '';
                     for (let i = 1; i <= 5; i++) {
                         const act = safeTrim(row[`Period ${i}`]);
-                        if (act) insertSched.run(existing.CamperID, camperOrdinalToClockBlock(i, grpColor), act);
+                        if (act) insertSched.run(existing.CamperID, camperOrdinalToClockBlock(i, grpColor), act, targetWeek);
                     }
                 }
             })(results);
 
-            // Auto-sync offerings for all sessions from newly imported schedule
-            const allSessions = db.prepare("SELECT weekNumber FROM Sessions").all();
-            for (const { weekNumber } of allSessions) {
-                try { syncOfferingsForWeek(weekNumber); } catch(e) { console.error('[sync offerings]', e.message); }
-            }
+            // Auto-sync offerings for the target week from newly imported schedule
+            try { syncOfferingsForWeek(targetWeek); } catch(e) { console.error('[sync offerings]', e.message); }
             res.redirect('/settings?message=Master+Camper+Schedule+Import+Success+(offerings+synced)');
         } catch (err) {
             console.error('Master Schedule upload error:', err);
@@ -3171,22 +3302,26 @@ app.post('/clear-campers', (req, res) => {
 // --- SWAP TOOL ROUTES ---
 app.get('/swap-tool', (req, res) => {
     const query = req.query.name || '';
+    const aw = getActiveWeek();
     let camper = null;
     let currentSchedule = [];
 
     if (query) {
         camper = db.prepare(`
-            SELECT * FROM Campers
-            WHERE (FirstName || ' ' || LastName) LIKE ?
+            SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName,
+                   cwd.HomeGroupColor
+            FROM Campers c
+            LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+            WHERE (c.FirstName || ' ' || c.LastName) LIKE ?
             LIMIT 1
-        `).get(`%${query}%`);
+        `).get(aw, `%${query}%`);
 
         if (camper) {
             currentSchedule = db.prepare(`
                 SELECT * FROM Schedules
-                WHERE PersonID = ? AND PersonType = 'Camper'
+                WHERE PersonID = ? AND PersonType = 'Camper' AND WeekNumber = ?
                 ORDER BY PeriodNumber ASC
-            `).all(camper.CamperID);
+            `).all(camper.CamperID, aw);
         }
     }
 
@@ -3208,16 +3343,21 @@ app.get('/get-options/:camperId/:period', (req, res) => {
     const { camperId, period } = req.params;
     const week = getActiveWeek();
 
-    // Get the camper's home group color
-    const camper = db.prepare('SELECT HomeGroupColor FROM Campers WHERE CamperID = ?').get(camperId);
+    // Get the camper's home group color from CamperWeekData for the active week
+    const camper = db.prepare(`
+        SELECT cwd.HomeGroupColor
+        FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE c.CamperID = ?
+    `).get(week, camperId);
     const color = camper ? camper.HomeGroupColor : null;
 
     // Determine the camper's current activity and its side of camp for this period
     const currentSlot = db.prepare(`
         SELECT a.SideOfCamp FROM Schedules sc
         JOIN Activities a ON a.Name = sc.ActivityName
-        WHERE sc.PersonID = ? AND sc.PeriodNumber = ? AND sc.PersonType = 'Camper'
-    `).get(camperId, period);
+        WHERE sc.PersonID = ? AND sc.PeriodNumber = ? AND sc.PersonType = 'Camper' AND sc.WeekNumber = ?
+    `).get(camperId, period, week);
     const sideOfCamp = currentSlot ? currentSlot.SideOfCamp : null;
 
     // Only return activities that are actually offered this period (WeeklyOfferings),
@@ -3228,8 +3368,10 @@ app.get('/get-options/:camperId/:period', (req, res) => {
                    COALESCE(wo.MaxCapacity, a.MaxCapacity) AS MaxCapacity,
                    COALESCE(apg.AllowedGroups, a.AllowedGroups) AS EffectiveGroups,
                    (SELECT COUNT(*) FROM Schedules s
-                    JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT'
-                    WHERE s.ActivityName = wo.ActivityName AND s.PeriodNumber = @period AND s.PersonType = 'Camper') AS CurrentEnrollment
+                    WHERE s.ActivityName = wo.ActivityName AND s.PeriodNumber = @period
+                      AND s.PersonType = 'Camper' AND s.WeekNumber = @week
+                      AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = @week AND HomeGroupColor = 'SPLIT')
+                   ) AS CurrentEnrollment
             FROM WeeklyOfferings wo
             JOIN Activities a ON a.Name = wo.ActivityName
             LEFT JOIN ActivityPeriodGroups apg
@@ -3253,6 +3395,7 @@ app.get('/get-options/:camperId/:period', (req, res) => {
 // Processes a swap — updates schedule or adds to waitlist if full
 app.get('/process-swap', (req, res) => {
     const { camperId, period, newActivity } = req.query;
+    const aw = getActiveWeek();
 
     if (!camperId || !period || !newActivity) {
         return res.redirect('/swap-tool?error=Missing+parameters');
@@ -3263,11 +3406,16 @@ app.get('/process-swap', (req, res) => {
 
     const currentEnrollment = db.prepare(`
         SELECT COUNT(*) as count FROM Schedules s
-        JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT'
-        WHERE s.ActivityName = ? AND s.PeriodNumber = ? AND s.PersonType = 'Camper'
-    `).get(newActivity, period);
+        WHERE s.ActivityName = ? AND s.PeriodNumber = ? AND s.PersonType = 'Camper' AND s.WeekNumber = ?
+          AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ? AND HomeGroupColor = 'SPLIT')
+    `).get(newActivity, period, aw, aw);
 
-    const camper = db.prepare('SELECT * FROM Campers WHERE CamperID = ?').get(camperId);
+    const camper = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor
+        FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE c.CamperID = ?
+    `).get(aw, camperId);
 
     if (currentEnrollment.count >= activity.MaxCapacity) {
         // Activity is full — add to waitlist instead
@@ -3279,14 +3427,14 @@ app.get('/process-swap', (req, res) => {
         // Capture current activity before overwriting it
         const currentSlot = db.prepare(`
             SELECT ActivityName FROM Schedules
-            WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper'
-        `).get(camperId, period);
+            WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper' AND WeekNumber = ?
+        `).get(camperId, period, aw);
 
         // Do the swap
         db.prepare(`
             UPDATE Schedules SET ActivityName = ?
-            WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper'
-        `).run(newActivity, camperId, period);
+            WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper' AND WeekNumber = ?
+        `).run(newActivity, camperId, period, aw);
 
         // Log the change
         if (camper && currentSlot) {
@@ -3379,14 +3527,15 @@ function getViewerName(req) {
 }
 
 function getScheduledPickupMap(date) {
+    const aw = getActiveWeek();
     const rows = db.prepare(`
         SELECT sp.CamperID, sp.PickupTime, sp.Notes, sp.PeriodNumber,
                s.ActivityName
         FROM ScheduledPickups sp
         LEFT JOIN Schedules s ON s.PersonType='Camper' AND s.PersonID=sp.CamperID
-            AND s.PeriodNumber=sp.PeriodNumber
+            AND s.PeriodNumber=sp.PeriodNumber AND s.WeekNumber=?
         WHERE sp.Date = ?
-    `).all(date);
+    `).all(aw, date);
     const map = {};
     for (const r of rows) map[r.CamperID] = {
         pickupTime: r.PickupTime,
@@ -3540,36 +3689,36 @@ app.get('/attendance', (req, res) => {
     }
 
     // Class sessions — each row is a distinct clock-block + activity (no AM/PM split needed).
+    const classAw = getActiveWeek();
     const classRows = db.prepare(`
         SELECT DISTINCT s.PeriodNumber, s.ActivityName
         FROM Schedules s
-        WHERE s.PersonType = 'Camper' AND s.ActivityName NOT LIKE '#REF%'
+        WHERE s.PersonType = 'Camper' AND s.WeekNumber = ? AND s.ActivityName NOT LIKE '#REF%'
           AND s.ActivityName != 'PM Only - Hartt Chamber Program'
         ORDER BY s.PeriodNumber, s.ActivityName
-    `).all();
+    `).all(classAw);
 
     const checkClassTotal = db.prepare(`
         SELECT COUNT(*) as n FROM Schedules s
-        JOIN Campers c ON c.CamperID = s.PersonID
-        WHERE s.PersonType='Camper' AND s.PeriodNumber=? AND s.ActivityName=?
-          AND c.HomeGroupColor != 'SPLIT'
+        WHERE s.PersonType='Camper' AND s.WeekNumber=? AND s.PeriodNumber=? AND s.ActivityName=?
+          AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor='SPLIT')
     `);
     const checkClassHandled = db.prepare(`
         SELECT COUNT(*) as n FROM (
             SELECT CamperID FROM Attendance
             WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor != 'SPLIT')
             UNION
             SELECT CamperID FROM EarlyDismissals WHERE Date=?
-              AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?)
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
+              AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND WeekNumber=? AND PeriodNumber=? AND ActivityName=?)
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor != 'SPLIT')
         )
     `);
 
     const classSessions = [];
     for (const r of classRows) {
-        const total = checkClassTotal.get(r.PeriodNumber, r.ActivityName)?.n || 0;
-        const handled = checkClassHandled.get(date, r.PeriodNumber, r.ActivityName, date, r.PeriodNumber, r.ActivityName)?.n || 0;
+        const total = checkClassTotal.get(classAw, r.PeriodNumber, r.ActivityName, classAw)?.n || 0;
+        const handled = checkClassHandled.get(date, r.PeriodNumber, r.ActivityName, classAw, date, classAw, r.PeriodNumber, r.ActivityName, classAw)?.n || 0;
         classSessions.push({
             label: `Block ${r.PeriodNumber} — ${r.ActivityName}`,
             periodNumber: r.PeriodNumber, periodKey: String(r.PeriodNumber), periodLabel: String(r.PeriodNumber),
@@ -3580,26 +3729,27 @@ app.get('/attendance', (req, res) => {
     }
 
     // Bus sessions
-    const busRoutes = db.prepare("SELECT DISTINCT BusRoute FROM Campers WHERE BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null' ORDER BY BusRoute").all().map(r => r.BusRoute);
+    const aw = getActiveWeek();
+    const busRoutes = db.prepare("SELECT DISTINCT BusRoute FROM CamperWeekData WHERE WeekNumber=? AND BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null' ORDER BY BusRoute").all(aw).map(r => r.BusRoute);
     const checkBusHandled = {
         am: db.prepare(`
             SELECT COUNT(*) as n FROM (
                 SELECT CamperID FROM Attendance
                 WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-                  AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=? AND BusRidesAM=1)
+                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND BusRidesAM=1)
                 UNION
                 SELECT CamperID FROM EarlyDismissals WHERE Date=?
-                  AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=? AND BusRidesAM=1)
+                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND BusRidesAM=1)
             )
         `),
         pm: db.prepare(`
             SELECT COUNT(*) as n FROM (
                 SELECT CamperID FROM Attendance
                 WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-                  AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=? AND BusRidesPM=1)
+                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND BusRidesPM=1)
                 UNION
                 SELECT CamperID FROM EarlyDismissals WHERE Date=?
-                  AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=? AND BusRidesPM=1)
+                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND BusRidesPM=1)
             )
         `)
     };
@@ -3608,8 +3758,8 @@ app.get('/attendance', (req, res) => {
         for (const session of ['am', 'pm']) {
             const ridesCol = session === 'pm' ? 'BusRidesPM' : 'BusRidesAM';
             const sessionType = `bus_${session}`;
-            const busTotal = db.prepare(`SELECT COUNT(*) as n FROM Campers WHERE BusRoute=? AND ${ridesCol}=1`).get(route)?.n || 0;
-            const handled = checkBusHandled[session].get(date, sessionType, route, date, route)?.n || 0;
+            const busTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1`).get(aw, route)?.n || 0;
+            const handled = checkBusHandled[session].get(date, sessionType, aw, route, date, aw, route)?.n || 0;
             const displayRoute = String(parseFloat(route) % 1 === 0 ? Math.trunc(parseFloat(route)) : route);
             busSessions.push({
                 label: `Bus ${displayRoute} — ${session.toUpperCase()}`,
@@ -3626,18 +3776,18 @@ app.get('/attendance', (req, res) => {
     for (const session of ['am', 'pm']) {
         const sessionType = `extended_${session}`;
         const col = session === 'am' ? "('AM','Both')" : "('PM','Both')";
-        const extTotal = db.prepare(`SELECT COUNT(*) as n FROM Campers WHERE ExtendedHours IN ${col}`).get()?.n || 0;
+        const extTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col}`).get(aw)?.n || 0;
         if (extTotal > 0) {
             const handled = db.prepare(`
                 SELECT COUNT(*) as n FROM (
                     SELECT CamperID FROM Attendance
                     WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-                      AND CamperID IN (SELECT CamperID FROM Campers WHERE ExtendedHours IN ${col})
+                      AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col})
                     UNION
                     SELECT CamperID FROM EarlyDismissals WHERE Date=?
-                      AND CamperID IN (SELECT CamperID FROM Campers WHERE ExtendedHours IN ${col})
+                      AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col})
                 )
-            `).get(date, sessionType, date)?.n || 0;
+            `).get(date, sessionType, aw, date, aw)?.n || 0;
             extSessions.push({
                 label: `Extended ${session.toUpperCase()}`,
                 session: session,
@@ -3651,22 +3801,22 @@ app.get('/attendance', (req, res) => {
     const specialtySessions = [];
     for (const color of SPECIALTY_CAMP_COLORS) {
         const total = db.prepare(
-            "SELECT COUNT(*) as n FROM Campers WHERE HomeGroupColor=?"
-        ).get(color)?.n || 0;
+            "SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor=?"
+        ).get(aw, color)?.n || 0;
         if (total === 0) continue;
         const checkSpHandled = db.prepare(`
             SELECT COUNT(*) as n FROM (
                 SELECT CamperID FROM Attendance
                 WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-                  AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor=?)
+                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor=?)
                 UNION
                 SELECT CamperID FROM EarlyDismissals WHERE Date=?
-                  AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor=?)
+                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor=?)
             )
         `);
         for (const session of ['am', 'pm']) {
             const sessionType = `specialty_${session}`;
-            const handled = checkSpHandled.get(date, sessionType, color, date, color)?.n || 0;
+            const handled = checkSpHandled.get(date, sessionType, aw, color, date, aw, color)?.n || 0;
             specialtySessions.push({
                 label: `${HOME_GROUP_LABELS[color] || color} — ${session.toUpperCase()}`,
                 color, session,
@@ -3792,8 +3942,17 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
     const date = req.query.date || todayStr();
     const sessionType = `homegroup_${session}`;
     const showAmIndicator = SHOW_AM_INDICATOR.has(sessionType);
+    const aw = getActiveWeek();
 
-    const campers = db.prepare("SELECT * FROM Campers WHERE HomeGroupColor=? ORDER BY LastName, FirstName").all(color);
+    const campers = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize,
+               cwd.HomeGroupColor, cwd.CampLunch, cwd.ExtendedHours,
+               cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM
+        FROM Campers c
+        JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE cwd.HomeGroupColor = ?
+        ORDER BY c.LastName, c.FirstName
+    `).all(aw, color);
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
@@ -3844,10 +4003,17 @@ app.get('/attendance/specialty/:color/:session', (req, res) => {
     const date = req.query.date || todayStr();
     const sessionType = `specialty_${session}`;
     const showAmIndicator = SHOW_AM_INDICATOR.has(sessionType);
+    const aw = getActiveWeek();
 
-    const campers = db.prepare(
-        "SELECT * FROM Campers WHERE HomeGroupColor=? ORDER BY LastName, FirstName"
-    ).all(color);
+    const campers = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize,
+               cwd.HomeGroupColor, cwd.CampLunch, cwd.ExtendedHours,
+               cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM
+        FROM Campers c
+        JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE cwd.HomeGroupColor = ?
+        ORDER BY c.LastName, c.FirstName
+    `).all(aw, color);
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
@@ -3907,12 +4073,17 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
     const sessionType = 'class';
 
     // Each clock block + activity is attended by exactly one group, no half filter needed.
+    const aw = getActiveWeek();
     const campers = db.prepare(`
-        SELECT c.* FROM Campers c
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize,
+               cwd.HomeGroupColor, cwd.CampLunch, cwd.ExtendedHours,
+               cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM
+        FROM Campers c
         JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper'
-        WHERE s.PeriodNumber = ? AND s.ActivityName = ?
-        ORDER BY c.HomeGroupColor, c.LastName, c.FirstName
-    `).all(period, activityName);
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE s.PeriodNumber = ? AND s.ActivityName = ? AND s.WeekNumber = ?
+        ORDER BY cwd.HomeGroupColor, c.LastName, c.FirstName
+    `).all(aw, period, activityName, aw);
 
     const absentAMSet = new Set(
         db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType IN ('homegroup_am','specialty_am') AND Status IN ('absent','nurse')")
@@ -4003,7 +4174,16 @@ app.get('/attendance/bus/:route/:session', (req, res) => {
     const showAmIndicator = SHOW_AM_INDICATOR.has(sessionType);
 
     const ridesCol = session === 'pm' ? 'BusRidesPM' : 'BusRidesAM';
-    const campers = db.prepare(`SELECT * FROM Campers WHERE BusRoute=? AND ${ridesCol}=1 ORDER BY LastName, FirstName`).all(route);
+    const aw = getActiveWeek();
+    const campers = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize,
+               cwd.HomeGroupColor, cwd.CampLunch, cwd.ExtendedHours,
+               cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM
+        FROM Campers c
+        JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE cwd.BusRoute = ? AND cwd.${ridesCol} = 1
+        ORDER BY c.LastName, c.FirstName
+    `).all(aw, route);
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
@@ -4056,7 +4236,16 @@ app.get('/attendance/extended/:session', (req, res) => {
     const showAmIndicator = SHOW_AM_INDICATOR.has(sessionType);
 
     const col = session === 'am' ? "('AM','Both')" : "('PM','Both')";
-    const campers = db.prepare(`SELECT * FROM Campers WHERE ExtendedHours IN ${col} ORDER BY LastName, FirstName`).all();
+    const aw = getActiveWeek();
+    const campers = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize,
+               cwd.HomeGroupColor, cwd.CampLunch, cwd.ExtendedHours,
+               cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM
+        FROM Campers c
+        JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE cwd.ExtendedHours IN ${col}
+        ORDER BY c.LastName, c.FirstName
+    `).all(aw);
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
@@ -4124,28 +4313,33 @@ app.post('/attendance/mark', (req, res) => {
 // --- LATE ARRIVALS ---
 app.get('/attendance/late-arrivals', (req, res) => {
     const date = req.query.date || todayStr();
+    const _aw = getActiveWeek();
     const campers = db.prepare(`
-        SELECT c.*, a.Status AS AttendanceStatus, a.SessionType AS AttSessionType, a.MarkedAt AS CheckInTime
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.Age, c.ShirtSize,
+               cwd.HomeGroupColor, cwd.BusRoute, cwd.ExtendedHours, cwd.CampLunch,
+               a.Status AS AttendanceStatus, a.SessionType AS AttSessionType, a.MarkedAt AS CheckInTime
         FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         JOIN Attendance a ON c.CamperID = a.CamperID
         WHERE a.Date = ? AND a.SessionType IN ('homegroup_am','specialty_am') AND a.Status IN ('absent','late')
-        ORDER BY a.Status ASC, c.HomeGroupColor, c.LastName, c.FirstName
-    `).all(date);
+        ORDER BY a.Status ASC, cwd.HomeGroupColor, c.LastName, c.FirstName
+    `).all(_aw, date);
 
     const roster = campers.map(c => {
         const schedule = db.prepare(
-            "SELECT PeriodNumber, ActivityName FROM Schedules WHERE PersonID=? AND PersonType='Camper' ORDER BY PeriodNumber"
-        ).all(c.CamperID);
+            "SELECT PeriodNumber, ActivityName FROM Schedules WHERE PersonID=? AND PersonType='Camper' AND WeekNumber=? ORDER BY PeriodNumber"
+        ).all(c.CamperID, _aw);
         return { ...c, schedule };
     });
 
     const dismissed = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor,
                ed.DismissalTime, ed.Notes, ed.MarkedBy, ed.CreatedAt
         FROM EarlyDismissals ed JOIN Campers c ON c.CamperID = ed.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         WHERE ed.Date = ?
         ORDER BY ed.CreatedAt
-    `).all(date);
+    `).all(_aw, date);
 
     res.render('attendance-late-arrivals', { date, roster, dismissed });
 });
@@ -4153,7 +4347,12 @@ app.get('/attendance/late-arrivals', (req, res) => {
 app.post('/attendance/check-in', (req, res) => {
     const { date, camperId } = req.body;
     const markedBy = getViewerName(req);
-    const camper = db.prepare("SELECT HomeGroupColor FROM Campers WHERE CamperID=?").get(parseInt(camperId));
+    const _aw = getActiveWeek();
+    const camper = db.prepare(`
+        SELECT cwd.HomeGroupColor FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE c.CamperID = ?
+    `).get(_aw, parseInt(camperId));
     const sessionType = camper && SPECIALTY_CAMP_COLORS.includes(camper.HomeGroupColor) ? 'specialty_am' : 'homegroup_am';
     db.prepare(`
         UPDATE Attendance SET Status = 'late', MarkedAt = CURRENT_TIMESTAMP, MarkedBy = ?
@@ -4180,25 +4379,29 @@ app.post('/attendance/early-dismissal', (req, res) => {
 // --- DISMISSAL ARCHIVE ---
 app.get('/attendance/dismissal-archive', (req, res) => {
     const date = req.query.date || todayStr();
+    const _aw = getActiveWeek();
     const dismissals = db.prepare(`
-        SELECT c.FirstName, c.LastName, c.HomeGroupColor,
+        SELECT c.FirstName, c.LastName, cwd.HomeGroupColor,
                ed.DismissalTime, ed.Notes, ed.MarkedBy, ed.CreatedAt
         FROM EarlyDismissals ed JOIN Campers c ON c.CamperID = ed.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         WHERE ed.Date = ? ORDER BY ed.CreatedAt
-    `).all(date);
+    `).all(_aw, date);
     const checkIns = db.prepare(`
-        SELECT c.FirstName, c.LastName, c.HomeGroupColor,
+        SELECT c.FirstName, c.LastName, cwd.HomeGroupColor,
                a.MarkedAt, a.MarkedBy
         FROM Attendance a JOIN Campers c ON c.CamperID = a.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         WHERE a.Date = ? AND a.SessionType = 'homegroup_am' AND a.Status = 'late'
         ORDER BY a.MarkedAt
-    `).all(date);
+    `).all(_aw, date);
     const scheduledPickups = db.prepare(`
         SELECT sp.PickupTime, sp.Notes, sp.CreatedBy,
-               c.FirstName, c.LastName, c.HomeGroupColor
+               c.FirstName, c.LastName, cwd.HomeGroupColor
         FROM ScheduledPickups sp JOIN Campers c ON c.CamperID = sp.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         WHERE sp.Date = ? ORDER BY sp.PickupTime
-    `).all(date);
+    `).all(_aw, date);
     res.render('attendance-dismissal-archive', { date, dismissals, checkIns, scheduledPickups });
 });
 
@@ -4224,16 +4427,21 @@ app.get('/debug-hg', (req, res) => {
 
 app.get('/nurse', (req, res) => {
     const today = todayStr();
+    const _naw = getActiveWeek();
     const visits = db.prepare(`
         SELECT n.VisitID, n.CheckInTime, n.CheckOutTime, n.Notes, n.Dismissed, n.CreatedBy,
-               c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor
+               c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor
         FROM NurseLog n JOIN Campers c ON c.CamperID = n.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         WHERE n.Date = ?
         ORDER BY n.CheckInTime DESC
-    `).all(today);
-    const campers = db.prepare(
-        "SELECT CamperID, FirstName, LastName, HomeGroupColor FROM Campers ORDER BY LastName, FirstName"
-    ).all();
+    `).all(_naw, today);
+    const campers = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor
+        FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        ORDER BY c.LastName, c.FirstName
+    `).all(_naw);
     const message = req.query.message || null;
     res.render('nurse', { visits, campers, today, message, viewMode: req.cookies.viewMode || 'admin' });
 });
@@ -4308,12 +4516,14 @@ app.post('/nurse/update-notes/:visitId', (req, res) => {
 });
 
 app.get('/nurse/archive', (req, res) => {
+    const _naw = getActiveWeek();
     const rows = db.prepare(`
         SELECT n.VisitID, n.Date, n.CheckInTime, n.CheckOutTime, n.Notes, n.Dismissed, n.CreatedBy,
-               c.FirstName, c.LastName, c.HomeGroupColor
+               c.FirstName, c.LastName, cwd.HomeGroupColor
         FROM NurseLog n JOIN Campers c ON c.CamperID = n.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         ORDER BY n.Date DESC, n.CheckInTime DESC
-    `).all();
+    `).all(_naw);
 
     const byDate = {};
     for (const r of rows) {
@@ -4327,14 +4537,21 @@ app.get('/nurse/archive', (req, res) => {
 // --- CASE LOG ---
 app.get('/case-log', (req, res) => {
     const today = todayStr();
+    const _claw = getActiveWeek();
     const visits = db.prepare(`
         SELECT cl.VisitID, cl.CheckInTime, cl.CheckOutTime, cl.Notes, cl.Dismissed, cl.CreatedBy,
-               c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor
+               c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor
         FROM CaseLog cl JOIN Campers c ON c.CamperID = cl.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         WHERE cl.Date = ?
         ORDER BY cl.CheckInTime DESC
-    `).all(today);
-    const campers = db.prepare("SELECT CamperID, FirstName, LastName, HomeGroupColor FROM Campers ORDER BY LastName, FirstName").all();
+    `).all(_claw, today);
+    const campers = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor
+        FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        ORDER BY c.LastName, c.FirstName
+    `).all(_claw);
     const message = req.query.message || null;
     res.render('case-log', { visits, campers, today, message, viewMode: req.cookies.viewMode || 'admin' });
 });
@@ -4390,12 +4607,14 @@ app.post('/case-log/update-notes/:visitId', (req, res) => {
 });
 
 app.get('/case-log/archive', (req, res) => {
+    const _claw = getActiveWeek();
     const rows = db.prepare(`
         SELECT cl.VisitID, cl.Date, cl.CheckInTime, cl.CheckOutTime, cl.Notes, cl.Dismissed, cl.CreatedBy,
-               c.FirstName, c.LastName, c.HomeGroupColor
+               c.FirstName, c.LastName, cwd.HomeGroupColor
         FROM CaseLog cl JOIN Campers c ON c.CamperID = cl.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         ORDER BY cl.Date DESC, cl.CheckInTime DESC
-    `).all();
+    `).all(_claw);
     const byDate = {};
     for (const r of rows) {
         if (!byDate[r.Date]) byDate[r.Date] = [];
@@ -4410,15 +4629,17 @@ app.get('/dismissals', (req, res) => {
     const q = (req.query.q || '').trim();
     const selectedId = parseInt(req.query.camperId) || null;
 
+    const _disaw = getActiveWeek();
     let searchResults = [];
     if (q.length >= 2) {
         searchResults = db.prepare(`
-            SELECT CamperID, FirstName, LastName, HomeGroupColor
-            FROM Campers
-            WHERE FirstName LIKE ? OR LastName LIKE ?
-               OR (FirstName || ' ' || LastName) LIKE ?
-            ORDER BY LastName, FirstName LIMIT 20
-        `).all(`%${q}%`, `%${q}%`, `%${q}%`);
+            SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor
+            FROM Campers c
+            LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+            WHERE c.FirstName LIKE ? OR c.LastName LIKE ?
+               OR (c.FirstName || ' ' || c.LastName) LIKE ?
+            ORDER BY c.LastName, c.FirstName LIMIT 20
+        `).all(_disaw, `%${q}%`, `%${q}%`, `%${q}%`);
     }
 
     let selectedCamper = null;
@@ -4428,17 +4649,19 @@ app.get('/dismissals', (req, res) => {
         existingPickup = db.prepare(`SELECT * FROM ScheduledPickups WHERE CamperID = ? AND Date = ?`).get(selectedId, today);
     }
 
+    const _daw = getActiveWeek();
     const todayPickups = db.prepare(`
         SELECT sp.PickupID, sp.PickupTime, sp.PeriodNumber, sp.Notes, sp.CreatedBy,
-               c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
+               c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor,
                s.ActivityName
         FROM ScheduledPickups sp
         JOIN Campers c ON c.CamperID = sp.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         LEFT JOIN Schedules s ON s.PersonType='Camper' AND s.PersonID=sp.CamperID
-            AND s.PeriodNumber=sp.PeriodNumber
+            AND s.PeriodNumber=sp.PeriodNumber AND s.WeekNumber=?
         WHERE sp.Date = ?
         ORDER BY sp.PickupTime
-    `).all(today);
+    `).all(_daw, _daw, today);
 
     res.render('dismissals', { q, searchResults, selectedCamper, existingPickup, todayPickups, today });
 });
@@ -4446,7 +4669,12 @@ app.get('/dismissals', (req, res) => {
 app.post('/dismissals/schedule', (req, res) => {
     const { camperId, date, pickupTime, notes } = req.body;
     const createdBy = getViewerName(req);
-    const camper = db.prepare("SELECT HomeGroupColor FROM Campers WHERE CamperID = ?").get(parseInt(camperId));
+    const _aw = getActiveWeek();
+    const camper = db.prepare(`
+        SELECT cwd.HomeGroupColor FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE c.CamperID = ?
+    `).get(_aw, parseInt(camperId));
     let periodNumber = null;
     if (pickupTime && camper) {
         const [h, m] = pickupTime.split(':').map(Number);
@@ -4471,16 +4699,18 @@ app.post('/dismissals/cancel', (req, res) => {
 });
 
 app.get('/dismissals/all', (_req, res) => {
+    const _daw = getActiveWeek();
     const pickups = db.prepare(`
         SELECT sp.PickupID, sp.Date, sp.PickupTime, sp.PeriodNumber, sp.Notes, sp.CreatedBy,
-               c.CamperID, c.FirstName, c.LastName, c.HomeGroupColor,
+               c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor,
                s.ActivityName
         FROM ScheduledPickups sp
         JOIN Campers c ON c.CamperID = sp.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         LEFT JOIN Schedules s ON s.PersonType='Camper' AND s.PersonID=sp.CamperID
-            AND s.PeriodNumber=sp.PeriodNumber
+            AND s.PeriodNumber=sp.PeriodNumber AND s.WeekNumber=?
         ORDER BY sp.Date ASC, sp.PickupTime ASC
-    `).all();
+    `).all(_daw, _daw);
     const today = todayStr();
     res.render('dismissals-all', { pickups, today });
 });
@@ -4488,11 +4718,14 @@ app.get('/dismissals/all', (_req, res) => {
 app.post('/dismissals/update', (req, res) => {
     const { pickupId, pickupTime, notes } = req.body;
     const id = parseInt(pickupId);
+    const _aw = getActiveWeek();
     const row = db.prepare(`
-        SELECT sp.PeriodNumber, c.HomeGroupColor
-        FROM ScheduledPickups sp JOIN Campers c ON c.CamperID = sp.CamperID
+        SELECT sp.PeriodNumber, cwd.HomeGroupColor
+        FROM ScheduledPickups sp
+        JOIN Campers c ON c.CamperID = sp.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         WHERE sp.PickupID = ?
-    `).get(id);
+    `).get(_aw, id);
     if (!row) return res.redirect('/dismissals/all');
     let periodNumber = null;
     if (pickupTime) {
@@ -4626,8 +4859,8 @@ app.get('/counselor-scheduling', (req, res) => {
     });
 
     const camperCountRows = db.prepare(
-        "SELECT HomeGroupColor, COUNT(*) as n FROM Campers WHERE HomeGroupColor IN ('Red','Carolina','Green','Navy') GROUP BY HomeGroupColor"
-    ).all();
+        "SELECT HomeGroupColor, COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor IN ('Red','Carolina','Green','Navy') GROUP BY HomeGroupColor"
+    ).all(planWeek);
     const camperCounts = {};
     for (const r of camperCountRows) camperCounts[r.HomeGroupColor] = r.n;
 
@@ -4656,10 +4889,10 @@ app.post('/auto-assign-homegroups', (req, res) => {
     const week = parseInt(req.body.weekNumber) || getActiveWeek();
 
     const camperRows = db.prepare(`
-        SELECT HomeGroupColor, COUNT(*) as n FROM Campers
-        WHERE HomeGroupColor IN ('Red','Carolina','Green','Navy')
+        SELECT HomeGroupColor, COUNT(*) as n FROM CamperWeekData
+        WHERE WeekNumber = ? AND HomeGroupColor IN ('Red','Carolina','Green','Navy')
         GROUP BY HomeGroupColor
-    `).all();
+    `).all(week);
     const camperCounts = Object.fromEntries(camperRows.map(r => [r.HomeGroupColor, r.n]));
     const totalCampers = Object.values(camperCounts).reduce((a, b) => a + b, 0);
 
@@ -4667,11 +4900,11 @@ app.post('/auto-assign-homegroups', (req, res) => {
     // A counselor's color is pinned to the dominant color of their assigned campers so that
     // the scheduler badge stays in sync with the actual attendance roster.
     const pinnedRows = db.prepare(`
-        SELECT chg.CounselorID, c.HomeGroupColor
+        SELECT chg.CounselorID, cwd.HomeGroupColor
         FROM CamperHomeGroups chg
-        JOIN Campers c ON chg.CamperID = c.CamperID
+        JOIN CamperWeekData cwd ON cwd.CamperID = chg.CamperID AND cwd.WeekNumber = chg.WeekNumber
         WHERE chg.WeekNumber = ?
-          AND c.HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')
+          AND cwd.HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')
         GROUP BY chg.CounselorID
     `).all(week);
     const pinnedMap = {};
@@ -4763,11 +4996,11 @@ app.post('/sync-homegroup-colors', (req, res) => {
     // from the dominant color of those campers and write it to CounselorWeekAttributes.
     // Counselors with no assigned campers are left untouched.
     const pinnedRows = db.prepare(`
-        SELECT chg.CounselorID, c.HomeGroupColor
+        SELECT chg.CounselorID, cwd.HomeGroupColor
         FROM CamperHomeGroups chg
-        JOIN Campers c ON chg.CamperID = c.CamperID
+        JOIN CamperWeekData cwd ON cwd.CamperID = chg.CamperID AND cwd.WeekNumber = chg.WeekNumber
         WHERE chg.WeekNumber = ?
-          AND c.HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')
+          AND cwd.HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')
         GROUP BY chg.CounselorID
     `).all(week);
 
@@ -4890,13 +5123,13 @@ function deriveAllowedGroups(colorSet) {
 function syncOfferingsForWeek(weekNumber) {
     const rows = db.prepare(`
         SELECT s.ActivityName, s.PeriodNumber AS CamperPeriod,
-               c.HomeGroupColor, COUNT(*) AS Enrollment
+               cwd.HomeGroupColor, COUNT(*) AS Enrollment
         FROM Schedules s
-        JOIN Campers c ON s.PersonID = c.CamperID
-        WHERE s.PersonType = 'Camper'
-          AND c.HomeGroupColor IN ('Red','Carolina','Green','Navy')
-        GROUP BY s.ActivityName, s.PeriodNumber, c.HomeGroupColor
-    `).all();
+        JOIN CamperWeekData cwd ON cwd.CamperID = s.PersonID AND cwd.WeekNumber = s.WeekNumber
+        WHERE s.PersonType = 'Camper' AND s.WeekNumber = ?
+          AND cwd.HomeGroupColor IN ('Red','Carolina','Green','Navy')
+        GROUP BY s.ActivityName, s.PeriodNumber, cwd.HomeGroupColor
+    `).all(weekNumber);
 
     if (!rows.length) return { activitiesCount: 0, offeringsCount: 0, crossSide: [] };
 
@@ -5135,8 +5368,8 @@ app.get('/export-master-schedule', (_req, res) => {
             s.ActivityName,
             a.SideOfCamp,
             (SELECT COUNT(*) FROM Schedules sc
-             JOIN Campers ca ON ca.CamperID = sc.PersonID AND ca.HomeGroupColor != 'SPLIT'
-             WHERE sc.PersonType = 'Camper' AND sc.PeriodNumber = s.PeriodNumber AND sc.ActivityName = s.ActivityName
+             WHERE sc.PersonType = 'Camper' AND sc.WeekNumber = ${aw} AND sc.PeriodNumber = s.PeriodNumber AND sc.ActivityName = s.ActivityName
+               AND sc.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ${aw} AND HomeGroupColor = 'SPLIT')
             ) AS Enrollment,
             (SELECT GROUP_CONCAT(name, '; ') FROM (
                SELECT c.FirstName || ' ' || c.LastName AS name
@@ -5163,7 +5396,7 @@ app.get('/export-master-schedule', (_req, res) => {
              WHERE cws.WeekNumber = ${aw} AND cws.PeriodNumber = s.PeriodNumber AND cws.ActivityName = s.ActivityName
                AND c.StaffRole IN ('Counselor', 'Swim Counselor')
             ) AS Counselors
-        FROM (SELECT DISTINCT PeriodNumber, ActivityName FROM Schedules WHERE PersonType='Camper') s
+        FROM (SELECT DISTINCT PeriodNumber, ActivityName FROM Schedules WHERE PersonType='Camper' AND WeekNumber=${aw}) s
         LEFT JOIN Activities a ON s.ActivityName = a.Name
         ORDER BY s.PeriodNumber, a.SideOfCamp, s.ActivityName
     `).all();
@@ -5218,19 +5451,18 @@ app.get('/api/attendance-nudge', (req, res) => {
 
     const checkTotal = db.prepare(`
         SELECT COUNT(*) as n FROM Schedules s
-        JOIN Campers c ON c.CamperID = s.PersonID
-        WHERE s.PersonType='Camper' AND s.PeriodNumber=? AND s.ActivityName=?
-          AND c.HomeGroupColor != 'SPLIT'
+        WHERE s.PersonType='Camper' AND s.WeekNumber=? AND s.PeriodNumber=? AND s.ActivityName=?
+          AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor='SPLIT')
     `);
     const checkHandled = db.prepare(`
         SELECT COUNT(*) as n FROM (
             SELECT CamperID FROM Attendance
             WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor != 'SPLIT')
             UNION
             SELECT CamperID FROM EarlyDismissals WHERE Date=?
-              AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?)
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
+              AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND WeekNumber=? AND PeriodNumber=? AND ActivityName=?)
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor != 'SPLIT')
         )
     `);
 
@@ -5271,8 +5503,8 @@ app.get('/api/attendance-nudge', (req, res) => {
     const unsubmitted = [];
     for (const block of activeBlocks) {
         for (const a of getAssignedActivities(block)) {
-            const total   = checkTotal.get(block, a.ActivityName)?.n || 0;
-            const handled = checkHandled.get(today, block, a.ActivityName, today, block, a.ActivityName)?.n || 0;
+            const total   = checkTotal.get(weekNum, block, a.ActivityName, weekNum)?.n || 0;
+            const handled = checkHandled.get(today, block, a.ActivityName, weekNum, today, weekNum, block, a.ActivityName, weekNum)?.n || 0;
             if (total === 0 || handled >= total) continue;
             unsubmitted.push(a.ActivityName);
         }
@@ -5824,13 +6056,14 @@ app.get('/homegroup-assignment', (req, res) => {
     `).all(week);
 
     const campers = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.HomeGroupColor,
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, cwd.HomeGroupColor,
                chg.CounselorID AS AssignedCounselorID
         FROM Campers c
+        JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         LEFT JOIN CamperHomeGroups chg ON chg.CamperID = c.CamperID AND chg.WeekNumber = ?
-        WHERE c.HomeGroupColor IN ('Red','Carolina','Green','Navy')
-        ORDER BY c.HomeGroupColor, c.LastName, c.FirstName
-    `).all(week);
+        WHERE cwd.HomeGroupColor IN ('Red','Carolina','Green','Navy')
+        ORDER BY cwd.HomeGroupColor, c.LastName, c.FirstName
+    `).all(week, week);
 
     res.render('homegroup-assignment', {
         week, sessions, counselors, specialtyCounselors, swimCounselors, unassignedCounselors, campers,
@@ -5910,21 +6143,23 @@ app.get('/split-scheduling', (req, res) => {
         ORDER BY PeriodNumber, SideOfCamp, ActivityName
     `).all(aw);
 
-    const splitCampers = db.prepare(
-        "SELECT CamperID, FirstName, LastName, PreferredName FROM Campers WHERE HomeGroupColor='SPLIT' ORDER BY LastName, FirstName"
-    ).all();
+    const splitCampers = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName
+        FROM Campers c
+        JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE cwd.HomeGroupColor = 'SPLIT'
+        ORDER BY c.LastName, c.FirstName
+    `).all(aw);
     const splitIds = splitCampers.map(c => c.CamperID);
 
-    // Enrollment per class (non-SPLIT campers currently in Schedules)
+    // Enrollment per class (non-SPLIT campers currently in Schedules for active week)
     const enrollmentMap = {};
     for (const o of offerings) {
-        let n;
-        if (splitIds.length > 0) {
-            const ph = splitIds.map(() => '?').join(',');
-            n = db.prepare(`SELECT COUNT(*) as n FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=? AND PersonID NOT IN (${ph})`).get(o.PeriodNumber, o.ActivityName, ...splitIds)?.n || 0;
-        } else {
-            n = db.prepare("SELECT COUNT(*) as n FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?").get(o.PeriodNumber, o.ActivityName)?.n || 0;
-        }
+        const n = db.prepare(`
+            SELECT COUNT(*) as n FROM Schedules
+            WHERE PersonType='Camper' AND WeekNumber=? AND PeriodNumber=? AND ActivityName=?
+              AND PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor='SPLIT')
+        `).get(aw, o.PeriodNumber, o.ActivityName, aw)?.n || 0;
         enrollmentMap[`${o.PeriodNumber}|${o.ActivityName}`] = n;
     }
 
@@ -5932,7 +6167,7 @@ app.get('/split-scheduling', (req, res) => {
     const assignedByKey = {};
     if (splitIds.length > 0) {
         const ph = splitIds.map(() => '?').join(',');
-        db.prepare(`SELECT PersonID, PeriodNumber, ActivityName FROM Schedules WHERE PersonType='Camper' AND PersonID IN (${ph})`).all(...splitIds)
+        db.prepare(`SELECT PersonID, PeriodNumber, ActivityName FROM Schedules WHERE PersonType='Camper' AND WeekNumber=? AND PersonID IN (${ph})`).all(aw, ...splitIds)
             .forEach(r => {
                 const k = `${r.PeriodNumber}|${r.ActivityName}`;
                 if (!assignedByKey[k]) assignedByKey[k] = [];
@@ -5975,17 +6210,22 @@ app.post('/save-split-assignments', (req, res) => {
     const { assignments } = req.body;
     if (!Array.isArray(assignments)) return res.status(400).json({ error: 'Invalid payload' });
 
-    const splitIds = db.prepare("SELECT CamperID FROM Campers WHERE HomeGroupColor='SPLIT'").all().map(c => c.CamperID);
+    const aw = getActiveWeek();
+    const splitIds = db.prepare(`
+        SELECT c.CamperID FROM Campers c
+        JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE cwd.HomeGroupColor = 'SPLIT'
+    `).all(aw).map(c => c.CamperID);
     if (splitIds.length === 0) return res.json({ ok: true });
 
     const ph = splitIds.map(() => '?').join(',');
     try {
         db.transaction(() => {
-            db.prepare(`DELETE FROM Schedules WHERE PersonType='Camper' AND PersonID IN (${ph})`).run(...splitIds);
-            const ins = db.prepare("INSERT OR IGNORE INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName) VALUES (?,?,?,?)");
+            db.prepare(`DELETE FROM Schedules WHERE PersonType='Camper' AND WeekNumber=? AND PersonID IN (${ph})`).run(aw, ...splitIds);
+            const ins = db.prepare("INSERT OR IGNORE INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName, WeekNumber) VALUES (?,?,?,?,?)");
             for (const a of assignments) {
                 if (a.camperID && a.periodNumber && a.activityName) {
-                    ins.run(a.camperID, 'Camper', a.periodNumber, a.activityName);
+                    ins.run(a.camperID, 'Camper', a.periodNumber, a.activityName, aw);
                 }
             }
         })();
@@ -6066,11 +6306,11 @@ app.get('/reports/attendance-rosters', (_req, res) => {
         const campers = db.prepare(`
             SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.PreferredName
             FROM Campers ca
-            JOIN Schedules s ON s.PersonID = ca.CamperID AND s.PersonType = 'Camper'
+            JOIN Schedules s ON s.PersonID = ca.CamperID AND s.PersonType = 'Camper' AND s.WeekNumber = ?
             WHERE s.PeriodNumber = ? AND s.ActivityName = ? COLLATE NOCASE
-              AND ca.HomeGroupColor != 'SPLIT'
+              AND ca.CamperID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ? AND HomeGroupColor = 'SPLIT')
             ORDER BY ca.LastName, ca.FirstName
-        `).all(r.PeriodNumber, r.ActivityName);
+        `).all(aw, r.PeriodNumber, r.ActivityName, aw);
 
         const locRow = db.prepare(`
             SELECT Location FROM Schedules
@@ -6098,15 +6338,16 @@ app.get('/reports/attendance-rosters', (_req, res) => {
                co.FirstName AS CounselorFirst, co.LastName AS CounselorLast,
                COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) AS HomeGroupColor,
                ca.CamperID, ca.FirstName AS CamperFirst, ca.LastName AS CamperLast,
-               ca.PreferredName AS CamperPreferred, ca.HomeGroupColor AS CamperColor
+               ca.PreferredName AS CamperPreferred, cwd.HomeGroupColor AS CamperColor
         FROM CamperHomeGroups chg
         JOIN Counselors co ON co.CounselorID = chg.CounselorID
         LEFT JOIN CounselorWeekAttributes cwa
             ON cwa.CounselorID = co.CounselorID AND cwa.WeekNumber = ?
         JOIN Campers ca ON ca.CamperID = chg.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = ca.CamperID AND cwd.WeekNumber = ?
         WHERE chg.WeekNumber = ?
         ORDER BY co.HomeGroupColor, co.LastName, co.FirstName, ca.LastName, ca.FirstName
-    `).all(aw, aw);
+    `).all(aw, aw, aw);
 
     const hgMap = {};
     hgRows.forEach(r => {
@@ -6131,12 +6372,13 @@ app.get('/reports/attendance-rosters', (_req, res) => {
 
     // ── Bus rosters ──────────────────────────────────────────────────────────
     const busRows = db.prepare(`
-        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.PreferredName, ca.HomeGroupColor, ca.BusRoute,
-               ca.BusRidesAM, ca.BusRidesPM
+        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.PreferredName,
+               cwd.HomeGroupColor, cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM
         FROM Campers ca
-        WHERE ca.BusRoute IS NOT NULL AND TRIM(ca.BusRoute) != '' AND LOWER(TRIM(ca.BusRoute)) != 'null'
-        ORDER BY ca.BusRoute, ca.LastName, ca.FirstName
-    `).all();
+        JOIN CamperWeekData cwd ON cwd.CamperID = ca.CamperID AND cwd.WeekNumber = ?
+        WHERE cwd.BusRoute IS NOT NULL AND TRIM(cwd.BusRoute) != '' AND LOWER(TRIM(cwd.BusRoute)) != 'null'
+        ORDER BY cwd.BusRoute, ca.LastName, ca.FirstName
+    `).all(aw);
 
     const busMap = {};
     busRows.forEach(r => {
@@ -6150,11 +6392,13 @@ app.get('/reports/attendance-rosters', (_req, res) => {
 
     // ── Extended care rosters ────────────────────────────────────────────────
     const extRows = db.prepare(`
-        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.PreferredName, ca.HomeGroupColor, ca.ExtendedHours
+        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.PreferredName,
+               cwd.HomeGroupColor, cwd.ExtendedHours
         FROM Campers ca
-        WHERE ca.ExtendedHours IN ('AM', 'Both', 'PM')
-        ORDER BY ca.HomeGroupColor, ca.LastName, ca.FirstName
-    `).all();
+        JOIN CamperWeekData cwd ON cwd.CamperID = ca.CamperID AND cwd.WeekNumber = ?
+        WHERE cwd.ExtendedHours IN ('AM', 'Both', 'PM')
+        ORDER BY cwd.HomeGroupColor, ca.LastName, ca.FirstName
+    `).all(aw);
 
     const extAM = extRows.filter(r => r.ExtendedHours === 'AM' || r.ExtendedHours === 'Both');
     const extPM = extRows.filter(r => r.ExtendedHours === 'PM' || r.ExtendedHours === 'Both');
@@ -6192,13 +6436,15 @@ app.get('/reports/attendance-rosters', (_req, res) => {
 });
 
 app.get('/reports/name-cards', (_req, res) => {
+    const aw = getActiveWeek();
     const rows = db.prepare(`
-        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.PreferredName, ca.HomeGroupColor,
+        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.PreferredName, cwd.HomeGroupColor,
                s.PeriodNumber, s.ActivityName
         FROM Campers ca
-        JOIN Schedules s ON s.PersonID = ca.CamperID AND s.PersonType = 'Camper'
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = ca.CamperID AND cwd.WeekNumber = ?
+        JOIN Schedules s ON s.PersonID = ca.CamperID AND s.PersonType = 'Camper' AND s.WeekNumber = ?
         ORDER BY ca.LastName, ca.FirstName, s.PeriodNumber
-    `).all();
+    `).all(aw, aw);
 
     const camperMap = {};
     rows.forEach(r => {
@@ -6281,19 +6527,18 @@ const _hgAlertFiredDates = new Map(); // 'am_DATE' | 'pm_DATE' → true
 
 const _pushCheckTotal = db.prepare(`
     SELECT COUNT(*) as n FROM Schedules s
-    JOIN Campers c ON c.CamperID = s.PersonID
-    WHERE s.PersonType='Camper' AND s.PeriodNumber=? AND s.ActivityName=?
-      AND c.HomeGroupColor != 'SPLIT'
+    WHERE s.PersonType='Camper' AND s.WeekNumber=? AND s.PeriodNumber=? AND s.ActivityName=?
+      AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor='SPLIT')
 `);
 const _pushCheckHandled = db.prepare(`
     SELECT COUNT(*) as n FROM (
         SELECT CamperID FROM Attendance
         WHERE Date=? AND SessionType='class' AND PeriodNumber=? AND ActivityName=?
-          AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
+          AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor != 'SPLIT')
         UNION
         SELECT CamperID FROM EarlyDismissals WHERE Date=?
-          AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?)
-          AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
+          AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND WeekNumber=? AND PeriodNumber=? AND ActivityName=?)
+          AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor != 'SPLIT')
     )
 `);
 const _hgPushCamperCountWeek   = db.prepare("SELECT COUNT(*) as n FROM CamperHomeGroups WHERE CounselorID=? AND WeekNumber=?");
@@ -6369,8 +6614,8 @@ setInterval(() => {
                 for (const a of assignments) {
                     const key     = `${counselorId}:${a.ActivityName}`;
                     if (nudged.has(key)) continue;
-                    const total   = _pushCheckTotal.get(block, a.ActivityName)?.n || 0;
-                    const handled = _pushCheckHandled.get(today, block, a.ActivityName, today, block, a.ActivityName)?.n || 0;
+                    const total   = _pushCheckTotal.get(weekNum, block, a.ActivityName, weekNum)?.n || 0;
+                    const handled = _pushCheckHandled.get(today, block, a.ActivityName, weekNum, today, weekNum, block, a.ActivityName, weekNum)?.n || 0;
                     if (total === 0 || handled >= total) continue;
                     toSend.push(a.ActivityName);
                     nudged.add(key);
