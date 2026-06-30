@@ -157,7 +157,7 @@
                         </td>
                         <td>
                             <% if (r.SubmittedAt) { %>
-                                <span class="submitted-ts"><%= new Date(r.SubmittedAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) %></span>
+                                <span class="submitted-ts"><%= new Date(r.SubmittedAt.includes('Z') ? r.SubmittedAt : r.SubmittedAt.replace(' ', 'T') + 'Z').toLocaleDateString('en-US', {month:'short', day:'numeric', timeZone:'America/New_York'}) %></span>
                             <% } else { %>
                                 <span class="no-pref">—</span>
                             <% } %>

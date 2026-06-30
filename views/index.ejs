@@ -490,10 +490,10 @@
         }
         function saveAnnounce(e) { saveHub('announcement', quillAnnounce, e.currentTarget); }
 
-        // Render note timestamps in the browser's local timezone
         document.querySelectorAll('.note-ts[data-ts]').forEach(function(el) {
-            const d = new Date(el.dataset.ts);
-            el.textContent = isNaN(d) ? el.dataset.ts : d.toLocaleString();
+            const raw = el.dataset.ts || '';
+            const d = new Date(raw.includes('Z') ? raw : raw.replace(' ', 'T') + 'Z');
+            el.textContent = isNaN(d) ? raw : d.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
         });
 
         // Director Notes feed controls

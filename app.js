@@ -1148,20 +1148,30 @@ function checkWeekRollover() {
     const activeSession = db.prepare("SELECT * FROM Sessions WHERE isActive=1 LIMIT 1").get();
     if (!activeSession || !activeSession.startDate) return;
 
-    // Parse startDate as local time, find the Friday of that week
-    const start = new Date(activeSession.startDate + 'T00:00:00');
-    const daysToFriday = (5 - start.getDay() + 7) % 7;
-    const friday = new Date(start);
-    friday.setDate(start.getDate() + daysToFriday);
-    friday.setHours(23, 59, 0, 0);
+    // Use noon UTC anchors so day-of-week is stable across DST transitions
+    const [sy, sm, sd] = activeSession.startDate.split('-').map(Number);
+    const startNoon = new Date(Date.UTC(sy, sm - 1, sd, 12, 0, 0));
+    const DOW = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+    const dowName = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'long' }).format(startNoon);
+    const daysToFriday = (5 - (DOW[dowName] ?? 0) + 7) % 7;
 
-    if (new Date() >= friday) {
-        const nextSession = db.prepare("SELECT * FROM Sessions WHERE weekNumber=?").get(activeSession.weekNumber + 1);
-        if (nextSession) {
-            db.exec('UPDATE Sessions SET isActive = 0');
-            db.prepare('UPDATE Sessions SET isActive = 1 WHERE weekNumber = ?').run(nextSession.weekNumber);
-            console.log(`[auto-rollover] Week ${activeSession.weekNumber} → Week ${nextSession.weekNumber}`);
-        }
+    // Get the Eastern date string for that Friday
+    const fridayNoon = new Date(Date.UTC(sy, sm - 1, sd + daysToFriday, 12, 0, 0));
+    const fridayEastern = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(fridayNoon);
+
+    // Roll over once it's past Friday 23:59 Eastern
+    const todayEastern = getTodayEST();
+    const estMins = getESTMins();
+    const pastCutoff = todayEastern > fridayEastern ||
+        (todayEastern === fridayEastern && estMins >= 23 * 60 + 59);
+
+    if (!pastCutoff) return;
+
+    const nextSession = db.prepare("SELECT * FROM Sessions WHERE weekNumber=?").get(activeSession.weekNumber + 1);
+    if (nextSession) {
+        db.exec('UPDATE Sessions SET isActive = 0');
+        db.prepare('UPDATE Sessions SET isActive = 1 WHERE weekNumber = ?').run(nextSession.weekNumber);
+        console.log(`[auto-rollover] Week ${activeSession.weekNumber} → Week ${nextSession.weekNumber}`);
     }
 }
 checkWeekRollover(); // catch any missed rollover on startup
@@ -1296,9 +1306,12 @@ app.get('/staff', (req, res) => {
     const allScheduleChanges = db.prepare(`
         SELECT ChangeID, CamperID, CamperName, ColorGroup, PeriodNumber, OldActivity, NewActivity, ChangedAt
         FROM ScheduleChanges
-        WHERE date(ChangedAt, 'localtime') = ?
+        WHERE ChangedAt >= datetime('now', '-1 day')
         ORDER BY ChangedAt DESC
-    `).all(today);
+    `).all().filter(r => {
+        const d = new Date(r.ChangedAt.includes('Z') ? r.ChangedAt : r.ChangedAt.replace(' ', 'T') + 'Z');
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(d) === today;
+    });
 
     const todayPickups        = filterByRoster(allPickups);
     const todayLateArrivals   = filterByRoster(allLateArrivals);
@@ -3318,8 +3331,9 @@ function todayStr() {
 }
 function yesterdayStr() {
     const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const eastern = new Date(d.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    eastern.setDate(eastern.getDate() - 1);
+    return `${eastern.getFullYear()}-${String(eastern.getMonth()+1).padStart(2,'0')}-${String(eastern.getDate()).padStart(2,'0')}`;
 }
 function getViewerName(req) {
     if (req.cookies.viewMode === 'admin') return req.cookies.adminName || 'Admin';
@@ -6131,10 +6145,12 @@ app.get('/pdf/:type', (req, res) => {
 });
 
 // ── Push notification dispatcher ─────────────────────────────────────────────
-// Runs every 60 s. Sends a push to each subscribed counselor who has an
-// unsubmitted class 15+ minutes into the current period. One push per
-// counselor per class per day (tracked in memory; resets at midnight).
-const _pushNudgedToday = new Map(); // date → Set<"counselorId:activityName">
+// Runs every 60 s.
+//   • Class nudge: fires per-counselor per-class when 15+ min into a period.
+//   • Homegroup alerts: fires once at 9:00 AM (AM) and 4:00 PM (PM) for any
+//     counselor who hasn't fully submitted that homegroup session.
+const _pushNudgedToday   = new Map(); // date → Set<"counselorId:activityName">
+const _hgAlertFiredDates = new Map(); // 'am_DATE' | 'pm_DATE' → true
 
 const _pushCheckTotal = db.prepare(`
     SELECT COUNT(*) as n FROM Schedules s
@@ -6151,6 +6167,28 @@ const _pushCheckHandled = db.prepare(`
         SELECT CamperID FROM EarlyDismissals WHERE Date=?
           AND CamperID IN (SELECT PersonID FROM Schedules WHERE PersonType='Camper' AND PeriodNumber=? AND ActivityName=?)
           AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupColor != 'SPLIT')
+    )
+`);
+const _hgPushCamperCountWeek   = db.prepare("SELECT COUNT(*) as n FROM CamperHomeGroups WHERE CounselorID=? AND WeekNumber=?");
+const _hgPushCamperCountLegacy = db.prepare("SELECT COUNT(*) as n FROM Campers WHERE HomeGroupCounselorID=?");
+const _hgPushHandledWeek = db.prepare(`
+    SELECT COUNT(*) as n FROM (
+        SELECT CamperID FROM Attendance
+        WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
+          AND CamperID IN (SELECT CamperID FROM CamperHomeGroups WHERE CounselorID=? AND WeekNumber=?)
+        UNION
+        SELECT CamperID FROM EarlyDismissals WHERE Date=?
+          AND CamperID IN (SELECT CamperID FROM CamperHomeGroups WHERE CounselorID=? AND WeekNumber=?)
+    )
+`);
+const _hgPushHandledLegacy = db.prepare(`
+    SELECT COUNT(*) as n FROM (
+        SELECT CamperID FROM Attendance
+        WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
+          AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupCounselorID=?)
+        UNION
+        SELECT CamperID FROM EarlyDismissals WHERE Date=?
+          AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupCounselorID=?)
     )
 `);
 
@@ -6176,53 +6214,100 @@ setInterval(() => {
     if (!_pushNudgedToday.has(today)) _pushNudgedToday.set(today, new Set());
     const nudged = _pushNudgedToday.get(today);
 
-    const sportsBlock     = _pushNotifiableBlock(SPORTS_PERIODS, estMins);
-    const enrichmentBlock = _pushNotifiableBlock(ENRICHMENT_PERIODS, estMins);
-    const activeBlocks    = [...new Set([sportsBlock, enrichmentBlock].filter(Boolean))];
-    if (activeBlocks.length === 0) return;
+    for (const [k] of _hgAlertFiredDates) {
+        if (!k.endsWith(today)) _hgAlertFiredDates.delete(k);
+    }
 
-    const weekNum       = getActiveWeek();
     const subscriptions = db.prepare("SELECT * FROM PushSubscriptions").all();
     if (subscriptions.length === 0) return;
 
-    const getAssignments = db.prepare(`
-        SELECT ActivityName FROM CounselorScheduleAssignments
-        WHERE PersonID = ? AND PeriodNumber = ? AND WeekNumber = ?
-    `);
+    // ── Class period nudge ────────────────────────────────────────────────
+    const sportsBlock     = _pushNotifiableBlock(SPORTS_PERIODS, estMins);
+    const enrichmentBlock = _pushNotifiableBlock(ENRICHMENT_PERIODS, estMins);
+    const activeBlocks    = [...new Set([sportsBlock, enrichmentBlock].filter(Boolean))];
 
-    for (const row of subscriptions) {
-        const counselorId = row.CounselorID;
-        const toSend = [];
+    if (activeBlocks.length > 0) {
+        const weekNum = getActiveWeek();
+        const getAssignments = db.prepare(`
+            SELECT ActivityName FROM CounselorScheduleAssignments
+            WHERE PersonID = ? AND PeriodNumber = ? AND WeekNumber = ?
+        `);
 
-        for (const block of activeBlocks) {
-            const assignments = getAssignments.all(counselorId, block, weekNum);
-            for (const a of assignments) {
-                const key     = `${counselorId}:${a.ActivityName}`;
-                if (nudged.has(key)) continue; // already notified today for this class
-                const total   = _pushCheckTotal.get(block, a.ActivityName)?.n || 0;
-                const handled = _pushCheckHandled.get(today, block, a.ActivityName, today, block, a.ActivityName)?.n || 0;
-                if (total === 0 || handled >= total) continue; // submitted
-                toSend.push(a.ActivityName);
-                nudged.add(key);
-            }
-        }
+        for (const row of subscriptions) {
+            const counselorId = row.CounselorID;
+            const toSend = [];
 
-        if (toSend.length === 0) continue;
-
-        const payload = JSON.stringify({
-            title: 'Attendance Reminder',
-            body:  'Please submit attendance for: ' + toSend.join(', '),
-            url:   '/staff'
-        });
-
-        try {
-            const subscription = JSON.parse(row.subscription);
-            webPush.sendNotification(subscription, payload).catch(err => {
-                if (err.statusCode === 410 || err.statusCode === 404) {
-                    db.prepare("DELETE FROM PushSubscriptions WHERE endpoint=?").run(row.endpoint);
+            for (const block of activeBlocks) {
+                const assignments = getAssignments.all(counselorId, block, weekNum);
+                for (const a of assignments) {
+                    const key     = `${counselorId}:${a.ActivityName}`;
+                    if (nudged.has(key)) continue;
+                    const total   = _pushCheckTotal.get(block, a.ActivityName)?.n || 0;
+                    const handled = _pushCheckHandled.get(today, block, a.ActivityName, today, block, a.ActivityName)?.n || 0;
+                    if (total === 0 || handled >= total) continue;
+                    toSend.push(a.ActivityName);
+                    nudged.add(key);
                 }
+            }
+
+            if (toSend.length === 0) continue;
+
+            const payload = JSON.stringify({
+                title: 'Attendance Reminder',
+                body:  'Please submit attendance for: ' + toSend.join(', '),
+                url:   '/staff'
             });
-        } catch (_) {}
+
+            try {
+                const subscription = JSON.parse(row.subscription);
+                webPush.sendNotification(subscription, payload).catch(err => {
+                    if (err.statusCode === 410 || err.statusCode === 404) {
+                        db.prepare("DELETE FROM PushSubscriptions WHERE endpoint=?").run(row.endpoint);
+                    }
+                });
+            } catch (_) {}
+        }
+    }
+
+    // ── Homegroup one-shot alerts: 9:00 AM → AM, 4:00 PM → PM ───────────
+    for (const [session, triggerMins] of [['am', 9 * 60], ['pm', 16 * 60]]) {
+        const alertKey = `${session}_${today}`;
+        if (_hgAlertFiredDates.has(alertKey)) continue;
+        if (estMins < triggerMins || estMins >= triggerMins + 2) continue;
+
+        _hgAlertFiredDates.set(alertKey, true);
+
+        const sessionType = `homegroup_${session}`;
+        const aw = getActiveWeek();
+        const hasWeekHgData = aw && db.prepare("SELECT 1 FROM CamperHomeGroups WHERE WeekNumber=? LIMIT 1").get(aw);
+
+        for (const row of subscriptions) {
+            const cid = row.CounselorID;
+            const camperCount = hasWeekHgData
+                ? _hgPushCamperCountWeek.get(cid, aw)?.n || 0
+                : _hgPushCamperCountLegacy.get(cid)?.n || 0;
+            if (camperCount === 0) continue;
+
+            const handled = hasWeekHgData
+                ? _hgPushHandledWeek.get(today, sessionType, cid, aw, today, cid, aw)?.n || 0
+                : _hgPushHandledLegacy.get(today, sessionType, cid, today, cid)?.n || 0;
+            if (handled >= camperCount) continue;
+
+            const payload = JSON.stringify({
+                title: 'Attendance Reminder',
+                body:  `Please submit ${session.toUpperCase()} homegroup attendance`,
+                url:   '/staff'
+            });
+
+            try {
+                const subscription = JSON.parse(row.subscription);
+                webPush.sendNotification(subscription, payload).catch(err => {
+                    if (err.statusCode === 410 || err.statusCode === 404) {
+                        db.prepare("DELETE FROM PushSubscriptions WHERE endpoint=?").run(row.endpoint);
+                    }
+                });
+            } catch (_) {}
+        }
     }
 }, 60 * 1000);
 // ─────────────────────────────────────────────────────────────────────────────
