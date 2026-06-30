@@ -986,19 +986,23 @@ try {
     db.exec("ALTER TABLE Schedules ADD COLUMN WeekNumber INTEGER");
 }
 
-// Backfill: populate CamperWeekData from Campers for the active week (one-time migration)
-// INSERT OR IGNORE so re-runs on restart don't clobber rows written by week-specific uploads.
+// One-time backfill: copy Campers attributes into CamperWeekData for the active week.
+// Only runs when there is no CamperWeekData for that week yet, so server restarts never
+// re-pollute a week with campers who were uploaded for a different week.
 try {
     const _aw = db.prepare("SELECT weekNumber FROM Sessions WHERE isActive=1 LIMIT 1").get()?.weekNumber ?? 1;
-    db.prepare(`
-        INSERT OR IGNORE INTO CamperWeekData
-            (CamperID, WeekNumber, HomeGroupColor, CampLunch, ExtendedHours,
-             BusRoute, BusRidesAM, BusRidesPM, BusStopAM, BusStopPM)
-        SELECT CamperID, ?, HomeGroupColor, CampLunch, ExtendedHours,
-               BusRoute, COALESCE(BusRidesAM,1), COALESCE(BusRidesPM,1), BusStopAM, BusStopPM
-        FROM Campers
-    `).run(_aw);
-    db.prepare("UPDATE Schedules SET WeekNumber = ? WHERE PersonType = 'Camper' AND WeekNumber IS NULL").run(_aw);
+    const _hasWeekData = db.prepare('SELECT 1 FROM CamperWeekData WHERE WeekNumber=? LIMIT 1').get(_aw);
+    if (!_hasWeekData) {
+        db.prepare(`
+            INSERT OR IGNORE INTO CamperWeekData
+                (CamperID, WeekNumber, HomeGroupColor, CampLunch, ExtendedHours,
+                 BusRoute, BusRidesAM, BusRidesPM, BusStopAM, BusStopPM)
+            SELECT CamperID, ?, HomeGroupColor, CampLunch, ExtendedHours,
+                   BusRoute, COALESCE(BusRidesAM,1), COALESCE(BusRidesPM,1), BusStopAM, BusStopPM
+            FROM Campers
+        `).run(_aw);
+        db.prepare("UPDATE Schedules SET WeekNumber = ? WHERE PersonType = 'Camper' AND WeekNumber IS NULL").run(_aw);
+    }
 } catch(e) { console.error('[migration] CamperWeekData backfill:', e.message); }
 
 db.exec(`INSERT OR IGNORE INTO CounselorWeekSchedules (CounselorID, WeekNumber, PeriodNumber, ActivityName)
