@@ -5814,6 +5814,7 @@ app.get('/reports/name-cards', (_req, res) => {
 // ─── DOCUMENT PDF UPLOAD / SERVE ──────────────────────────────────────────────
 
 const PDF_DOCS = [
+    { slug: 'daily-schedule',             label: 'Daily Schedule',                     icon: '📅' },
     { slug: 'camper-notes',               label: 'Camper Notes',                       icon: '📄' },
     { slug: 'icp-notes',                  label: 'ICP Notes',                          icon: '📄' },
     { slug: 'am-enrichment-locations',    label: 'AM Enrichment Meeting Locations',    icon: '🗺️' },
