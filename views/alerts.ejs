@@ -212,9 +212,11 @@
             .then(r => r.json())
             .then(data => {
                 if (data.count === 0) {
-                    preview.textContent = 'No subscribers registered for this target.';
+                    preview.textContent = 'No matching staff found for this target.';
                 } else {
-                    preview.textContent = `Sends to ${data.count} subscriber${data.count === 1 ? '' : 's'}: ${data.names.join(', ')}`;
+                    preview.innerHTML =
+                        `<strong>Group members (${data.count}):</strong> ${data.names.join(', ')}<br>` +
+                        `<strong>Push subscribers:</strong> ${data.subscriberCount} of ${data.count}`;
                 }
             })
             .catch(() => { preview.textContent = ''; });

@@ -331,6 +331,7 @@ All at `/settings`.
 | Counselor Preferences | `/counselor-preferences` | View and edit each counselor's activity preferences, used by the auto-scheduler to influence assignments |
 | Photo of the Day | `/photo-day` | Upload a photo for the day. Accessible to all staff (not admin-only). |
 | Attendance Nudge Notifications | — | Push notifications sent to subscribed counselors reminding them to submit attendance 15+ minutes into a class period. Staff subscribe automatically when they load any page in staff view on a supported browser. One notification per class per day; no notification if attendance is already submitted. |
+| Instant Alerts | `/alerts` | Send a push notification to a named group or individual counselor. Seven built-in system groups are available (All Counselors, All Unit Leaders, All Admin, and the four AM/PM Sports/Enrichment splits). Admins can also create custom named groups with a hand-picked member list. Alerts sent to **All Admin** additionally display a red banner at the top of the admin hub for any admin currently logged in, regardless of whether they have push notifications enabled. All sent alerts are logged with recipient group, sender, timestamp, and delivery count. |
 | Photo Gallery | `/photo-gallery` | Browse uploaded photos; staff can vote |
 | Export Counselor Schedule | `/export-counselor-schedule` | Download current counselor assignments as CSV |
 | Export Staff Schedule | `/export-staff-schedule` | Download instructor/unit leader assignments as CSV |

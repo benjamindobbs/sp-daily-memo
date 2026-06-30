@@ -17,6 +17,7 @@ Developer reference for the Camp Hub application. Covers the database schema, ta
 | [Routes Reference](./Routes-Reference.md) | All Express routes organized by domain; method, path, auth requirement, what it reads/writes |
 | [Authentication & Authorization](./Auth.md) | Admin vs staff view; session cookie; `ADMIN_ONLY_PREFIXES`; `choose-view` flow |
 | [Data Import Pipeline](./Data-Import.md) | CSV import order; column mappings; what each import creates or updates; migration history |
+| [Instant Alerts](./Instant-Alerts.md) | Sending push notifications to staff groups or individuals; system groups; custom groups; admin hub banner; push subscription setup |
 
 ---
 
@@ -61,5 +62,6 @@ wiki/
 ├── Attendance-and-Health.md   ← attendance and health tables
 ├── Routes-Reference.md        ← full route inventory
 ├── Auth.md                    ← auth and view mode system
-└── Data-Import.md             ← CSV imports and migrations
+├── Data-Import.md             ← CSV imports and migrations
+└── Instant-Alerts.md          ← push notifications and admin banner
 ```

@@ -84,6 +84,7 @@
                         <th>Activity Preferences</th>
                         <th>Pref Match</th>
                         <th>Submitted</th>
+                        <th>&#128276; Alerts</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -159,6 +160,13 @@
                                 <span class="submitted-ts"><%= new Date(r.SubmittedAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) %></span>
                             <% } else { %>
                                 <span class="no-pref">—</span>
+                            <% } %>
+                        </td>
+                        <td style="text-align:center;">
+                            <% if (r.hasNotifications) { %>
+                                <span style="color:#15803d; font-weight:700;" title="Subscribed">&#10003;</span>
+                            <% } else { %>
+                                <span style="color:#d1d5db;" title="Not subscribed">—</span>
                             <% } %>
                         </td>
                     </tr>

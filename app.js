@@ -5245,12 +5245,22 @@ app.get('/api/alerts/preview', (req, res) => {
     const targetType = req.query.targetType;
     const targetId   = parseInt(req.query.targetId);
     if (!targetType || !targetId) return res.json({ count: 0, names: [] });
-    const targets = resolveAlertTargets(targetType, targetId);
-    const ids = [...new Set(targets.map(t => t.CounselorID))];
+
+    let ids = [];
+    if (targetType === 'individual') {
+        ids = [targetId];
+    } else {
+        const group = db.prepare("SELECT * FROM AlertGroups WHERE GroupID = ?").get(targetId);
+        if (group) ids = resolveAlertCounselorIds(group);
+    }
+
     const names = ids.length
         ? db.prepare(`SELECT FirstName || ' ' || LastName AS name FROM Counselors WHERE CounselorID IN (${ids.map(() => '?').join(',')}) ORDER BY LastName`).all(...ids).map(r => r.name)
         : [];
-    res.json({ count: targets.length, names });
+    const subscriberCount = ids.length
+        ? db.prepare(`SELECT COUNT(*) AS n FROM PushSubscriptions WHERE CounselorID IN (${ids.map(() => '?').join(',')})`).get(...ids)?.n || 0
+        : 0;
+    res.json({ count: names.length, names, subscriberCount });
 });
 
 app.get('/api/admin-alert-banner', (_req, res) => {
@@ -5347,6 +5357,10 @@ app.get('/counselor-preferences-summary', (_req, res) => {
     const MAIN_COLORS    = new Set(['Red', 'Carolina', 'Green', 'Navy']);
     const SPECIALTY_COLORS = new Set(['LilPlace', 'KinderPlace', 'SPLIT', 'SPRC', 'Swim']);
 
+    const subscribedIds = new Set(
+        db.prepare("SELECT DISTINCT CounselorID FROM PushSubscriptions").all().map(r => r.CounselorID)
+    );
+
     const rows = counselors.map(c => {
         const effectiveColor = c.weekColor || c.defaultColor || '';
         const isSpecialty = c.StaffRole === 'Swim Counselor' || SPECIALTY_COLORS.has(effectiveColor);
@@ -5366,7 +5380,8 @@ app.get('/counselor-preferences-summary', (_req, res) => {
         const schedMatch = c.SchedulePreference && c.weekScheduleType && c.SchedulePreference === c.weekScheduleType;
 
         return { ...c, sports, enrichment, unclassified, hasPrefs: !!c.HomeGroupPreference, excludeFromStats,
-                 assignedCount, matchedCount, hgMatch, schedMatch };
+                 assignedCount, matchedCount, hgMatch, schedMatch,
+                 hasNotifications: subscribedIds.has(c.CounselorID) };
     });
 
     res.render('counselor-preferences-summary', { rows, activeWeek });
