@@ -344,7 +344,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/export-counselor-schedule', '/export-staff-schedule',
     '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups', '/sync-homegroup-colors',
     '/hub-content', '/director-notes',
-    '/set-active-week', '/set-released-week', '/update-session-label',
+    '/set-active-week', '/set-released-week', '/set-prep-week', '/update-session-label',
     '/clear-counselor-week', '/counselor-week-assignments', '/clear-counselor-schedule', '/clear-counselor-homegroups',
     '/audit', '/merge-class', '/set-activity-side', '/delete-counselor',
     '/update-staff-info', '/update-staff-period', '/remove-staff-period',
@@ -948,6 +948,14 @@ db.exec(`DELETE FROM Staff`);
 for (let w = 1; w <= 6; w++) {
     db.prepare("INSERT OR IGNORE INTO Sessions (weekNumber, label, isActive) VALUES (?, ?, ?)").run(w, `Week ${w}`, w === 1 ? 1 : 0);
 }
+
+// Migration: add isPrepTarget column to Sessions
+try {
+    const sessionCols = db.prepare("PRAGMA table_info(Sessions)").all().map(c => c.name);
+    if (!sessionCols.includes('isPrepTarget')) {
+        db.exec("ALTER TABLE Sessions ADD COLUMN isPrepTarget INTEGER DEFAULT 0");
+    }
+} catch(e) { console.error('[migration] isPrepTarget:', e.message); }
 db.exec(`INSERT OR IGNORE INTO CounselorWeekSchedules (CounselorID, WeekNumber, PeriodNumber, ActivityName)
     SELECT PersonID, 1, PeriodNumber, ActivityName FROM Schedules WHERE PersonType = 'Counselor'`);
 db.exec(`INSERT OR IGNORE INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
@@ -1120,6 +1128,9 @@ webPush.setVapidDetails('mailto:benjamin.dobbs@gmail.com', vapidPublicKey, vapid
 // --- WEEK HELPERS ---
 function getActiveWeek() {
     return db.prepare("SELECT weekNumber FROM Sessions WHERE isActive=1 LIMIT 1").get()?.weekNumber ?? 1;
+}
+function getPrepTargetWeek() {
+    return db.prepare("SELECT weekNumber FROM Sessions WHERE isPrepTarget=1 LIMIT 1").get()?.weekNumber ?? null;
 }
 function getReleasedWeek() {
     return db.prepare("SELECT * FROM Sessions WHERE isReleased=1 LIMIT 1").get() ?? null;
@@ -2047,11 +2058,12 @@ app.get('/settings', (req, res) => {
     const uploadedSlugs = new Set(db.prepare("SELECT slug FROM PdfDocuments").all().map(r => r.slug));
     const pdfExists = {};
     PDF_DOCS.forEach(d => { pdfExists[d.slug] = uploadedSlugs.has(d.slug); });
+    const prepTargetWeek = getPrepTargetWeek();
     res.render('settings', {
         activities, periodOverrides, sessions, alertMessage: req.query.message,
         confirmWeek: req.query.confirmWeek || null, weekCount: req.query.weekCount || null,
         confirmOfferWeek: req.query.confirmOfferWeek || null, offerCount: req.query.offerCount || null,
-        pdfExists, docs: PDF_DOCS
+        pdfExists, docs: PDF_DOCS, prepTargetWeek
     });
 });
 // --- CREATE STAFF ---
@@ -2573,7 +2585,7 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
     const updateCamper  = db.prepare("UPDATE Campers SET HomeGroupColor=?, ShirtSize=?, CampLunch=? WHERE CamperID=?");
     const findCounselor = db.prepare("SELECT CounselorID FROM Counselors WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
     const upsertHg      = db.prepare("INSERT OR REPLACE INTO CamperHomeGroups (CamperID, WeekNumber, CounselorID) VALUES (?,?,?)");
-    const aw = getActiveWeek();
+    const aw = parseInt(req.body.weekNumber) || getPrepTargetWeek() || getActiveWeek();
 
     try {
         db.transaction(() => {
@@ -2960,10 +2972,10 @@ app.post('/upload-counselors', upload.single('file'), (req, res) => {
     });
 });
 
-// 2. IMPORT INSTRUCTORS — uploads to active week (same format as /upload-staff-week)
+// 2. IMPORT INSTRUCTORS — uploads to target week (prep target if set, else active week)
 // CSV: FirstName, LastName, P1–P6, L1–L6. Unknown names are auto-inserted as Instructors.
 app.post('/upload-instructors', upload.single('file'), (req, res) => {
-    const weekNumber = getActiveWeek();
+    const weekNumber = parseInt(req.body.weekNumber) || getPrepTargetWeek() || getActiveWeek();
     const results = [];
     fs.createReadStream(req.file.path).pipe(csv()).on('data', (d) => results.push(d)).on('end', () => {
         const findStaff   = db.prepare("SELECT CounselorID AS StaffID FROM Counselors WHERE FirstName = ? AND LastName = ? LIMIT 1");
@@ -5623,6 +5635,15 @@ app.post('/set-released-week', (req, res) => {
     db.exec('UPDATE Sessions SET isReleased = 0');
     if (!cur?.isReleased) db.prepare('UPDATE Sessions SET isReleased = 1 WHERE weekNumber = ?').run(w);
     res.redirect('/settings?message=Schedule+release+updated');
+});
+
+app.post('/set-prep-week', (req, res) => {
+    const w = parseInt(req.body.weekNumber);
+    if (w < 1 || w > 6) return res.redirect('/settings?message=Invalid+week');
+    const cur = db.prepare('SELECT isPrepTarget FROM Sessions WHERE weekNumber=?').get(w);
+    db.exec('UPDATE Sessions SET isPrepTarget = 0');
+    if (!cur?.isPrepTarget) db.prepare('UPDATE Sessions SET isPrepTarget = 1 WHERE weekNumber = ?').run(w);
+    res.redirect('/settings?message=Prep+target+updated');
 });
 
 app.post('/update-session-label', (req, res) => {
