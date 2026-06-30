@@ -3427,18 +3427,27 @@ app.get('/attendance', (req, res) => {
             counselorGroupColor = isStaffMemberFilter ? null : (cRow.HomeGroupColor || null);
         }
         allowedClasses = new Set();
-        if (isStaffMemberFilter) {
-            // Instructors/Unit Leaders/Sports Leaders: scheduled in StaffWeekSchedules
-            const assignments = db.prepare(
-                'SELECT PeriodNumber, ActivityName FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ?'
-            ).all(filterCid, getActiveWeek());
-            for (const a of assignments) allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName.toLowerCase()}`);
-        } else {
-            // Counselors: scheduled in CounselorWeekSchedules
-            const assignments = db.prepare(
-                'SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ?'
-            ).all(filterCid, getActiveWeek());
-            for (const a of assignments) allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName.toLowerCase()}`);
+        if (cRow) {
+            // Find all CounselorIDs with the same name — dual-enrolled staff appear as multiple rows.
+            // Only Instructors use StaffWeekSchedules (populated by the instructor upload).
+            // Unit Leaders, Sports Leaders, and Counselors all use CounselorWeekSchedules
+            // (populated by the counselor assignment tool).
+            const sameNameIds = db.prepare(
+                'SELECT CounselorID, StaffRole FROM Counselors WHERE FirstName = ? AND LastName = ?'
+            ).all(cRow.FirstName, cRow.LastName);
+            for (const peer of sameNameIds) {
+                if (peer.StaffRole === 'Instructor') {
+                    const rows = db.prepare(
+                        'SELECT PeriodNumber, ActivityName FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ?'
+                    ).all(peer.CounselorID, getActiveWeek());
+                    for (const a of rows) allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName.toLowerCase()}`);
+                } else {
+                    const rows = db.prepare(
+                        'SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ?'
+                    ).all(peer.CounselorID, getActiveWeek());
+                    for (const a of rows) allowedClasses.add(`${a.PeriodNumber}|${a.ActivityName.toLowerCase()}`);
+                }
+            }
         }
     }
 
