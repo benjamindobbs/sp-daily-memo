@@ -3176,7 +3176,13 @@ app.get('/swap-tool', (req, res) => {
         `SELECT CamperID, FirstName, LastName FROM Campers ORDER BY LastName, FirstName`
     ).all();
 
-    res.render('swap-tool', { camper, currentSchedule, query, allCampers });
+    const activeSession = db.prepare("SELECT startDate FROM Sessions WHERE isActive=1 LIMIT 1").get();
+    const weekStart = activeSession?.startDate || null;
+    const swapCount = (camper && weekStart)
+        ? db.prepare("SELECT COUNT(*) as n FROM ScheduleChanges WHERE CamperID = ? AND ChangedAt >= ?").get(camper.CamperID, weekStart)?.n || 0
+        : 0;
+
+    res.render('swap-tool', { camper, currentSchedule, query, allCampers, swapCount });
 });
 
 // Returns available activity options for a given camper's period
