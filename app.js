@@ -206,6 +206,26 @@ function getCaseLogSet(date) {
 }
 
 function computeHomegroupAttStats(session, today) {
+    const sessionType = `homegroup_${session}`;
+    const aw = getActiveWeek();
+    const hasWeekHgData = aw && db.prepare("SELECT 1 FROM CamperHomeGroups WHERE WeekNumber=? LIMIT 1").get(aw);
+
+    if (hasWeekHgData) {
+        const total = db.prepare(`
+            SELECT COUNT(DISTINCT chg.CounselorID) as n
+            FROM CamperHomeGroups chg
+            WHERE chg.WeekNumber=?
+        `).get(aw).n || 0;
+        const submitted = db.prepare(`
+            SELECT COUNT(DISTINCT chg.CounselorID) as n
+            FROM Attendance att
+            JOIN CamperHomeGroups chg ON chg.CamperID = att.CamperID AND chg.WeekNumber=?
+            WHERE att.Date=? AND att.SessionType=?
+        `).get(aw, today, sessionType)?.n || 0;
+        return { total, submitted };
+    }
+
+    // Legacy fallback: use HomeGroupCounselorID directly on Campers
     const total = db.prepare(`
         SELECT COUNT(DISTINCT co.CounselorID) as n
         FROM Counselors co
@@ -216,7 +236,7 @@ function computeHomegroupAttStats(session, today) {
         FROM Attendance att
         JOIN Campers c ON c.CamperID = att.CamperID
         WHERE att.Date=? AND att.SessionType=?
-    `).get(today, `homegroup_${session}`)?.n || 0;
+    `).get(today, sessionType)?.n || 0;
     return { total, submitted };
 }
 
