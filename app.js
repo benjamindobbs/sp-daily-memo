@@ -1365,7 +1365,8 @@ app.get('/admin', (req, res) => {
     const waitlistCount = db.prepare(`
         SELECT COUNT(*) as count FROM Waitlists w
         JOIN Activities a ON w.RequestedActivity = a.Name
-        WHERE (SELECT COUNT(*) FROM Schedules WHERE ActivityName = a.Name AND PeriodNumber = w.PeriodNumber) < a.MaxCapacity
+        WHERE (SELECT COUNT(*) FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT'
+               WHERE s.ActivityName = a.Name AND s.PeriodNumber = w.PeriodNumber) < a.MaxCapacity
     `).get().count;
 
     const estMins = getESTMins();
@@ -1594,7 +1595,7 @@ app.get('/master-schedule', (req, res) => {
             WHERE s.PeriodNumber = ? AND s.ActivityName = ? ORDER BY c.HomeGroupColor
         `);
         const getEnrollment = db.prepare(
-            "SELECT COUNT(*) as n FROM Schedules WHERE PersonType = 'Camper' AND PeriodNumber = ? AND ActivityName = ?"
+            "SELECT COUNT(*) as n FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT' WHERE s.PersonType = 'Camper' AND s.PeriodNumber = ? AND s.ActivityName = ?"
         );
         const getStaff = db.prepare(`
             SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
@@ -2175,6 +2176,7 @@ app.get('/get-new-camper-options/:camperId/:period', (req, res) => {
                    COALESCE(wo.MaxCapacity, a.MaxCapacity) AS MaxCapacity,
                    COALESCE(apg.AllowedGroups, a.AllowedGroups) AS EffectiveGroups,
                    (SELECT COUNT(*) FROM Schedules s
+                    JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT'
                     WHERE s.ActivityName = wo.ActivityName AND s.PeriodNumber = @period AND s.PersonType = 'Camper') AS CurrentEnrollment
             FROM WeeklyOfferings wo
             JOIN Activities a ON a.Name = wo.ActivityName
@@ -2217,8 +2219,9 @@ app.get('/assign-camper-class', (req, res) => {
     const maxCap = offering ? offering.MaxCapacity : act.MaxCapacity;
 
     const enrollment = db.prepare(`
-        SELECT COUNT(*) as count FROM Schedules
-        WHERE ActivityName = ? AND PeriodNumber = ? AND PersonType = 'Camper'
+        SELECT COUNT(*) as count FROM Schedules s
+        JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT'
+        WHERE s.ActivityName = ? AND s.PeriodNumber = ? AND s.PersonType = 'Camper'
     `).get(activity, period).count;
 
     if (enrollment >= maxCap) {
@@ -2346,7 +2349,7 @@ app.post('/delete-activity-period-group', (req, res) => {
 app.get('/promotions', (req, res) => {
     const potentialPromotions = db.prepare(`
         SELECT w.*, c.FirstName, c.LastName, c.HomeGroupColor, a.MaxCapacity,
-        (SELECT COUNT(*) FROM Schedules s WHERE s.ActivityName = w.RequestedActivity AND s.PeriodNumber = w.PeriodNumber AND s.PersonType = 'Camper') as CurrentEnrollment
+        (SELECT COUNT(*) FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT' WHERE s.ActivityName = w.RequestedActivity AND s.PeriodNumber = w.PeriodNumber AND s.PersonType = 'Camper') as CurrentEnrollment
         FROM Waitlists w
         JOIN Campers c ON w.CamperID = c.CamperID
         JOIN Activities a ON w.RequestedActivity = a.Name
@@ -2355,7 +2358,7 @@ app.get('/promotions', (req, res) => {
     `).all();
     const waitlistQueue = db.prepare(`
         SELECT w.*, c.FirstName, c.LastName, c.HomeGroupColor, a.MaxCapacity,
-        (SELECT COUNT(*) FROM Schedules s WHERE s.ActivityName = w.RequestedActivity AND s.PeriodNumber = w.PeriodNumber AND s.PersonType = 'Camper') as CurrentEnrollment
+        (SELECT COUNT(*) FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT' WHERE s.ActivityName = w.RequestedActivity AND s.PeriodNumber = w.PeriodNumber AND s.PersonType = 'Camper') as CurrentEnrollment
         FROM Waitlists w
         JOIN Campers c ON w.CamperID = c.CamperID
         JOIN Activities a ON w.RequestedActivity = a.Name
@@ -2371,7 +2374,7 @@ app.post('/promote-waitlist', (req, res) => {
         // Re-check capacity to guard against race conditions
         const activity = db.prepare('SELECT MaxCapacity FROM Activities WHERE Name = ?').get(entry.RequestedActivity);
         const currentCount = db.prepare(
-            `SELECT COUNT(*) as count FROM Schedules WHERE ActivityName = ? AND PeriodNumber = ? AND PersonType = 'Camper'`
+            `SELECT COUNT(*) as count FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT' WHERE s.ActivityName = ? AND s.PeriodNumber = ? AND s.PersonType = 'Camper'`
         ).get(entry.RequestedActivity, entry.PeriodNumber);
 
         if (activity && currentCount.count >= activity.MaxCapacity) {
@@ -2399,7 +2402,7 @@ app.post('/force-promote-waitlist', (req, res) => {
 app.post('/promote-all', (req, res) => {
     const eligible = db.prepare(`
         SELECT w.*, a.MaxCapacity,
-        (SELECT COUNT(*) FROM Schedules s WHERE s.ActivityName = w.RequestedActivity AND s.PeriodNumber = w.PeriodNumber AND s.PersonType = 'Camper') as CurrentEnrollment
+        (SELECT COUNT(*) FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT' WHERE s.ActivityName = w.RequestedActivity AND s.PeriodNumber = w.PeriodNumber AND s.PersonType = 'Camper') as CurrentEnrollment
         FROM Waitlists w
         JOIN Activities a ON w.RequestedActivity = a.Name
         WHERE CurrentEnrollment < a.MaxCapacity
@@ -2411,7 +2414,7 @@ app.post('/promote-all', (req, res) => {
         for (const entry of entries) {
             // Re-check live enrollment inside transaction to avoid double-filling
             const liveCount = db.prepare(
-                `SELECT COUNT(*) as count FROM Schedules WHERE ActivityName = ? AND PeriodNumber = ? AND PersonType = 'Camper'`
+                `SELECT COUNT(*) as count FROM Schedules s JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT' WHERE s.ActivityName = ? AND s.PeriodNumber = ? AND s.PersonType = 'Camper'`
             ).get(entry.RequestedActivity, entry.PeriodNumber);
             if (liveCount.count < entry.MaxCapacity) {
                 db.prepare(`UPDATE Schedules SET ActivityName = ? WHERE PersonID = ? AND PeriodNumber = ? AND PersonType = 'Camper'`)
@@ -3177,6 +3180,7 @@ app.get('/get-options/:camperId/:period', (req, res) => {
                    COALESCE(wo.MaxCapacity, a.MaxCapacity) AS MaxCapacity,
                    COALESCE(apg.AllowedGroups, a.AllowedGroups) AS EffectiveGroups,
                    (SELECT COUNT(*) FROM Schedules s
+                    JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT'
                     WHERE s.ActivityName = wo.ActivityName AND s.PeriodNumber = @period AND s.PersonType = 'Camper') AS CurrentEnrollment
             FROM WeeklyOfferings wo
             JOIN Activities a ON a.Name = wo.ActivityName
@@ -3210,8 +3214,9 @@ app.get('/process-swap', (req, res) => {
     if (!activity) return res.redirect('/swap-tool?error=Activity+not+found');
 
     const currentEnrollment = db.prepare(`
-        SELECT COUNT(*) as count FROM Schedules
-        WHERE ActivityName = ? AND PeriodNumber = ? AND PersonType = 'Camper'
+        SELECT COUNT(*) as count FROM Schedules s
+        JOIN Campers c ON c.CamperID = s.PersonID AND c.HomeGroupColor != 'SPLIT'
+        WHERE s.ActivityName = ? AND s.PeriodNumber = ? AND s.PersonType = 'Camper'
     `).get(newActivity, period);
 
     const camper = db.prepare('SELECT * FROM Campers WHERE CamperID = ?').get(camperId);
@@ -5057,6 +5062,7 @@ app.get('/export-master-schedule', (_req, res) => {
             s.ActivityName,
             a.SideOfCamp,
             (SELECT COUNT(*) FROM Schedules sc
+             JOIN Campers ca ON ca.CamperID = sc.PersonID AND ca.HomeGroupColor != 'SPLIT'
              WHERE sc.PersonType = 'Camper' AND sc.PeriodNumber = s.PeriodNumber AND sc.ActivityName = s.ActivityName
             ) AS Enrollment,
             (SELECT GROUP_CONCAT(name, '; ') FROM (
@@ -5921,6 +5927,7 @@ app.get('/reports/attendance-rosters', (_req, res) => {
             FROM Campers ca
             JOIN Schedules s ON s.PersonID = ca.CamperID AND s.PersonType = 'Camper'
             WHERE s.PeriodNumber = ? AND s.ActivityName = ? COLLATE NOCASE
+              AND ca.HomeGroupColor != 'SPLIT'
             ORDER BY ca.LastName, ca.FirstName
         `).all(r.PeriodNumber, r.ActivityName);
 
