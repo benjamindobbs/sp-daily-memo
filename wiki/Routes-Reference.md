@@ -201,10 +201,8 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/update-activity` | ✓ | Update activity fields |
 | POST | `/add-activity-period-group` | ✓ | Add a per-period group override for an activity |
 | POST | `/delete-activity-period-group` | ✓ | Remove a per-period group override |
-| POST | `/upload-campers` | ✓ | CSV import for camper roster (ACR-005) |
-| POST | `/upload-campers-schedule` | ✓ | CSV import for master schedule |
-| GET | `/bus-audit` | ✓ | Resolve specialty campers whose stop maps to >1 route (West Hartford 2/5, Wolcott Park / Bishops Corner 3/4) |
-| POST | `/bus-audit/set` | ✓ | Set `BusRoute` for one camper from the audit page (`camperId`, `route`) |
+| POST | `/upload-campers` | ✓ | CSV import for camper roster (ACR-005). Sets color, shirt, lunch, and home group — does not touch bus data |
+| POST | `/upload-campers-schedule` | ✓ | CSV import for master schedule (ACR-255). Sets grade, extended hours, and class schedule — does not touch bus data |
 | POST | `/upload-bus-am` | ✓ | CSV import of ACR-132 (AM Bus Attendance). Sets `BusRoute` + `BusRidesAM` per camper from the report's bus sections |
 | POST | `/upload-bus-pm` | ✓ | CSV import of ACR-133 (PM Bus Attendance). Sets `BusRoute` + `BusRidesPM` |
 | POST | `/upload-counselors` | ✓ | CSV import for all staff roster |

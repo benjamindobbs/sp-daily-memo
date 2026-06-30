@@ -289,7 +289,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/faculty-summer', '/upload-staff-week', '/clear-staff-week',
     '/counselor-directory', '/counselor-view', '/promotions',
     '/promote-waitlist', '/force-promote-waitlist', '/promote-all', '/remove-waitlist', '/upload-campers', '/upload-campers-schedule', '/upload-counselors',
-    '/bus-audit', '/upload-bus-am', '/upload-bus-pm',
+    '/upload-bus-am', '/upload-bus-pm',
     '/upload-staff', '/upload-instructors', '/upload-activity-rules', '/add-activity',
     '/delete-activity', '/update-activity', '/add-activity-period-group',
     '/delete-activity-period-group',
@@ -2387,62 +2387,10 @@ function mapColor(raw) {
     return COLOR_MAP[raw.trim().toLowerCase()] || raw.trim();
 }
 
-// Main-camp home groups. These campers get their bus ROUTE number from ACR-255's
-// "Bus Number" column. Everyone else (KinderPlace, Li'l Place, SPLIT, SPRC, Robotics)
-// is specialty and never appears on ACR-255, so their route is derived from the
-// ACR-005 stop name below.
-const MAIN_CAMP_COLORS = ['Red', 'Carolina', 'Green', 'Navy'];
-const isMainCampColor = color => MAIN_CAMP_COLORS.includes(color);
-
-// ACR-005 bus stop NAME → route number. A few stops can't be pinned by name alone:
-//   "West Hartford"               → Bus 2 OR Bus 5 (two physical stops share the label)
-//   "Wolcott Park"/"Bishops Corner" → Bus 3 OR Bus 4 (those buses share all stops)
-// Those resolve to a review code ('WH' / 'WP') so an admin can pick the route in /bus-audit.
-const BUS_STOP_TO_ROUTE = {
-    'glastonbury': 1, 'wethersfield': 1, 'newington': 1, 'hartford': 1,
-    'canton': 2, 'avon': 2, 'simsbury': 2, 'simbury': 2, 'northwest catholic': 2,
-};
-const BUS_STOP_AMBIGUOUS = {
-    'wolcott park': 'WP', 'bishops corner': 'WP', // Bus 3 vs 4
-    'west hartford': 'WH',                          // Bus 2 vs 5
-};
-// "No Bus 2 PM" etc. explicitly names the route number for the direction they DO ride.
-function noBusRouteHint(cell) {
-    const m = /no\s+bus\s+(\d+)/i.exec(cell || '');
-    return m ? parseInt(m[1], 10) : null;
-}
-// A real stop name, or null if the cell is blank / a "No ..." placeholder.
-function busStopName(cell) {
-    const v = (cell || '').trim();
-    if (!v || /^no\b/i.test(v)) return null;
-    return v;
-}
-// Resolve a specialty camper's route from their ACR-005 AM/PM bus cells.
-// Returns { route, review }: route is a number or null; review is 'WH'/'WP'/null.
-function resolveSpecialtyRoute(amCell, pmCell) {
-    const hint = noBusRouteHint(amCell) || noBusRouteHint(pmCell);
-    if (hint) return { route: hint, review: null };          // explicit number wins
-    const stop = (busStopName(amCell) || busStopName(pmCell) || '').toLowerCase();
-    if (!stop) return { route: null, review: null };          // no stop → not a rider
-    if (BUS_STOP_TO_ROUTE[stop] !== undefined) return { route: BUS_STOP_TO_ROUTE[stop], review: null };
-    if (BUS_STOP_AMBIGUOUS[stop]) return { route: null, review: BUS_STOP_AMBIGUOUS[stop] };
-    return { route: null, review: null };                     // unrecognized stop → leave unset
-}
-// Ride flag for one direction. "No Bus N {dir}" is always an explicit opt-out (0).
-// A bare "No {dir} Bus Selected" means "no stop picked": main-camp riders still ride
-// (their seat comes from ACR-255), specialty campers don't. A named stop always rides.
-function busRideFlag(cell, isMain) {
-    const v = (cell || '').trim();
-    if (!v) return null;                          // absent column → preserve existing
-    if (/^no\s+bus\s+\d/i.test(v)) return 0;      // "No Bus 2 AM" → explicit opt-out
-    if (/^no\b/i.test(v)) return isMain ? 1 : 0;  // "No AM Bus Selected"
-    return 1;                                      // named stop → rides
-}
-
-// ACR-005 roster upload: upserts campers with color, lunch, shirt, and bus ride flags/stops.
+// ACR-005 roster upload: upserts campers with color, lunch, and shirt size.
 // Parses homegroup section headers to assign CamperHomeGroups for the active week.
-// Sets BusRoute for SPECIALTY campers only (from the stop name); main-camp BusRoute is left
-// to ACR-255. Does NOT touch Grade, ExtendedHours, or Schedules.
+// Does NOT touch bus data (BusRoute, BusRidesAM/PM, BusStopAM/PM) — those come from
+// ACR-132/133. Does NOT touch Grade, ExtendedHours, or Schedules.
 app.post('/upload-campers', upload.single('file'), (req, res) => {
     if (!req.file) return res.redirect('/settings?message=No+file+uploaded');
 
@@ -2507,17 +2455,11 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
     if (sections.length === 0) return res.redirect('/settings?message=Invalid+file+format+(ACR-005+expected)');
 
     const safeTrim = v => { const s = (v && typeof v === 'string') ? v.trim() : ''; return s.toLowerCase() === 'null' ? '' : s; };
-    // Bus handling is split by camper type (see helpers near mapColor):
-    //   Ride flags (BusRidesAM/PM) come from the ACR-005 AM/PM Bus cells for everyone.
-    //   Route NUMBER: main camp is left to ACR-255's "Bus Number"; specialty campers are
-    //   resolved here from the stop name (ambiguous stops are left null for /bus-audit).
-    const findCamper       = db.prepare("SELECT CamperID, CampLunch FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
-    const insertCamper     = db.prepare("INSERT INTO Campers (FirstName, LastName, HomeGroupColor, ShirtSize, CampLunch, BusRidesAM, BusRidesPM, BusStopAM, BusStopPM, BusRoute) VALUES (?,?,?,?,?,?,?,?,?,?)");
-    // Main camp: never touch BusRoute (ACR-255 owns it). Specialty: set it from the stop.
-    const updateMain       = db.prepare("UPDATE Campers SET HomeGroupColor=?, ShirtSize=?, CampLunch=?, BusRidesAM=COALESCE(?,BusRidesAM), BusRidesPM=COALESCE(?,BusRidesPM), BusStopAM=?, BusStopPM=? WHERE CamperID=?");
-    const updateSpecialty  = db.prepare("UPDATE Campers SET HomeGroupColor=?, ShirtSize=?, CampLunch=?, BusRidesAM=COALESCE(?,BusRidesAM), BusRidesPM=COALESCE(?,BusRidesPM), BusStopAM=?, BusStopPM=?, BusRoute=? WHERE CamperID=?");
-    const findCounselor    = db.prepare("SELECT CounselorID FROM Counselors WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
-    const upsertHg         = db.prepare("INSERT OR REPLACE INTO CamperHomeGroups (CamperID, WeekNumber, CounselorID) VALUES (?,?,?)");
+    const findCamper    = db.prepare("SELECT CamperID, CampLunch FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
+    const insertCamper  = db.prepare("INSERT INTO Campers (FirstName, LastName, HomeGroupColor, ShirtSize, CampLunch) VALUES (?,?,?,?,?)");
+    const updateCamper  = db.prepare("UPDATE Campers SET HomeGroupColor=?, ShirtSize=?, CampLunch=? WHERE CamperID=?");
+    const findCounselor = db.prepare("SELECT CounselorID FROM Counselors WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
+    const upsertHg      = db.prepare("INSERT OR REPLACE INTO CamperHomeGroups (CamperID, WeekNumber, CounselorID) VALUES (?,?,?)");
     const aw = getActiveWeek();
 
     try {
@@ -2537,33 +2479,18 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
                     if (!firstName && !lastName) continue;
 
                     const color    = mapColor(safeTrim(row['Color']));
-                    const isMain   = isMainCampColor(color);
                     const shirt    = safeTrim(row['T-Shirt']) || null;
                     const lunchRaw = safeTrim(row['Lunch']);
-                    const amCell   = row['AM Bus'] !== undefined ? row['AM Bus'] : null;
-                    const pmCell   = row['PM Bus'] !== undefined ? row['PM Bus'] : null;
-                    const ridesAM  = amCell !== null ? busRideFlag(amCell, isMain) : null;
-                    const ridesPM  = pmCell !== null ? busRideFlag(pmCell, isMain) : null;
-                    const stopAM   = amCell !== null ? (safeTrim(amCell) || null) : null;
-                    const stopPM   = pmCell !== null ? (safeTrim(pmCell) || null) : null;
-                    // Specialty route from the stop name (null if ambiguous → resolved in /bus-audit).
-                    const specRoute = isMain ? null : resolveSpecialtyRoute(amCell, pmCell).route;
                     const fullName = `${firstName} ${lastName}`;
                     const existing = findCamper.get(fullName);
 
                     let camperId;
                     if (existing) {
                         const lunch = existing.CampLunch === 'Allergy' ? 'Allergy' : (lunchRaw || 'No');
-                        if (isMain) {
-                            updateMain.run(color, shirt, lunch, ridesAM, ridesPM, stopAM, stopPM, existing.CamperID);
-                        } else {
-                            updateSpecialty.run(color, shirt, lunch, ridesAM, ridesPM, stopAM, stopPM, specRoute, existing.CamperID);
-                        }
+                        updateCamper.run(color, shirt, lunch, existing.CamperID);
                         camperId = existing.CamperID;
                     } else {
-                        const dflt = isMain ? 1 : 0;
-                        const info = insertCamper.run(firstName, lastName, color, shirt, lunchRaw || 'No',
-                            ridesAM ?? dflt, ridesPM ?? dflt, stopAM, stopPM, isMain ? null : specRoute);
+                        const info = insertCamper.run(firstName, lastName, color, shirt, lunchRaw || 'No');
                         camperId = info.lastInsertRowid;
                     }
 
@@ -2579,38 +2506,6 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
         console.error('ACR-005 upload error:', err);
         res.redirect('/settings?message=Database+Error+Check+Console');
     }
-});
-
-// --- BUS ROUTE AUDIT ---
-// Specialty campers whose ACR-005 stop name can't pin a single route (West Hartford = Bus 2/5,
-// Wolcott Park / Bishops Corner = Bus 3/4) land here with BusRoute = NULL. An admin picks the
-// route; once set, the camper drops off the list and appears on the correct bus sheet.
-app.get('/bus-audit', (req, res) => {
-    const rows = db.prepare(`
-        SELECT CamperID, FirstName, LastName, HomeGroupColor, BusStopAM, BusStopPM,
-               BusRidesAM, BusRidesPM
-        FROM Campers
-        WHERE BusRoute IS NULL
-          AND HomeGroupColor NOT IN ('Red','Carolina','Green','Navy')
-          AND (BusStopAM IS NOT NULL OR BusStopPM IS NOT NULL)
-        ORDER BY LastName, FirstName
-    `).all();
-    const westHartford = [], wolcottBishops = [];
-    for (const r of rows) {
-        const { review } = resolveSpecialtyRoute(r.BusStopAM, r.BusStopPM);
-        if (review === 'WH') westHartford.push(r);
-        else if (review === 'WP') wolcottBishops.push(r);
-    }
-    res.render('bus-audit', { westHartford, wolcottBishops, viewMode: 'admin' });
-});
-
-app.post('/bus-audit/set', (req, res) => {
-    const camperId = parseInt(req.body.camperId);
-    const route = parseInt(req.body.route);
-    if (camperId && route) {
-        db.prepare("UPDATE Campers SET BusRoute=? WHERE CamperID=?").run(String(route), camperId);
-    }
-    res.redirect('/bus-audit');
 });
 
 // --- BUS ATTENDANCE REPORTS (ACR-132 AM / ACR-133 PM) ---
@@ -2772,7 +2667,7 @@ app.post('/upload-campers-schedule', upload.single('file'), (req, res) => {
      .on('end', () => {
         const safeTrim = v => { const s = (v && typeof v === 'string') ? v.trim() : ''; return s.toLowerCase() === 'null' ? '' : s; };
         const findCamper  = db.prepare("SELECT CamperID, HomeGroupColor FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
-        const updateCamper = db.prepare("UPDATE Campers SET Grade=?, BusRoute=?, ExtendedHours=? WHERE CamperID=?");
+        const updateCamper = db.prepare("UPDATE Campers SET Grade=?, ExtendedHours=? WHERE CamperID=?");
         const deleteSched  = db.prepare("DELETE FROM Schedules WHERE PersonID=? AND PersonType='Camper'");
         const insertSched  = db.prepare("INSERT INTO Schedules (PersonID, PersonType, PeriodNumber, ActivityName) VALUES (?, 'Camper', ?, ?)");
 
@@ -2791,13 +2686,11 @@ app.post('/upload-campers-schedule', upload.single('file'), (req, res) => {
                     if (!existing) continue; // update-only
 
                     const grade = parseInt(safeTrim(row['Grade'])) || 0;
-                    const busRaw = safeTrim(row['Bus Number']).replace(/^Bus\s*/i, '');
-                    const bus = busRaw ? (parseInt(busRaw) || null) : null;
                     const amExt = safeTrim(row['AM Ext']);
                     const pmExt = safeTrim(row['PM Ext']);
                     const extHours = (amExt && pmExt) ? 'Both' : (amExt || pmExt || null);
 
-                    updateCamper.run(grade, bus, extHours, existing.CamperID);
+                    updateCamper.run(grade, extHours, existing.CamperID);
 
                     // Re-import schedule
                     deleteSched.run(existing.CamperID);
@@ -2808,9 +2701,6 @@ app.post('/upload-campers-schedule', upload.single('file'), (req, res) => {
                     }
                 }
             })(results);
-
-            // Normalize float bus routes written by this import (e.g. "1.0" → "1")
-            db.exec(`UPDATE Campers SET BusRoute = CAST(CAST(BusRoute AS INTEGER) AS TEXT) WHERE BusRoute GLOB '[0-9]*.[0-9]*'`);
 
             // Auto-sync offerings for all sessions from newly imported schedule
             const allSessions = db.prepare("SELECT weekNumber FROM Sessions").all();
