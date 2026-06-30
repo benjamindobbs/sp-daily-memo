@@ -3733,7 +3733,6 @@ app.get('/attendance', (req, res) => {
     }
 
     // Bus sessions
-    const aw = getActiveWeek();
     const busRoutes = db.prepare("SELECT DISTINCT BusRoute FROM CamperWeekData WHERE WeekNumber=? AND BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null' ORDER BY BusRoute").all(aw).map(r => r.BusRoute);
     const checkBusHandled = {
         am: db.prepare(`
