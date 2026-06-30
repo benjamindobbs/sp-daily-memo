@@ -1034,13 +1034,18 @@ db.exec(`CREATE TABLE IF NOT EXISTS AlertGroupMembers (
     PRIMARY KEY (GroupID, CounselorID)
 )`);
 db.exec(`CREATE TABLE IF NOT EXISTS AlertLog (
-    AlertID       INTEGER PRIMARY KEY AUTOINCREMENT,
-    message       TEXT NOT NULL,
-    targetLabel   TEXT NOT NULL,
-    sentBy        TEXT,
-    sentAt        DATETIME DEFAULT CURRENT_TIMESTAMP,
-    deliveryCount INTEGER DEFAULT 0
+    AlertID          INTEGER PRIMARY KEY AUTOINCREMENT,
+    message          TEXT NOT NULL,
+    targetLabel      TEXT NOT NULL,
+    sentBy           TEXT,
+    sentAt           DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deliveryCount    INTEGER DEFAULT 0,
+    showAdminBanner  INTEGER DEFAULT 0
 )`);
+try {
+    const alCols = db.prepare("PRAGMA table_info(AlertLog)").all().map(c => c.name);
+    if (!alCols.includes('showAdminBanner')) db.exec("ALTER TABLE AlertLog ADD COLUMN showAdminBanner INTEGER DEFAULT 0");
+} catch(e) { console.error('[migration] AlertLog.showAdminBanner:', e.message); }
 const SYSTEM_ALERT_GROUPS = [
     'All Counselors', 'All Unit Leaders', 'All Admin',
     'All AM Sports', 'All PM Sports', 'All AM Enrichment', 'All PM Enrichment',
@@ -5184,23 +5189,20 @@ function resolveAlertTargets(targetType, targetId) {
     return db.prepare(`SELECT * FROM PushSubscriptions WHERE CounselorID IN (${placeholders})`).all(...ids);
 }
 
-function sendInstantAlert(message, targetLabel, targets, sentBy) {
+function sendInstantAlert(message, targetLabel, targets, sentBy, showAdminBanner = 0) {
     const payload = JSON.stringify({ title: 'Camp Alert', body: message, url: '/staff', tag: 'instant-alert' });
-    let delivered = 0;
     for (const row of targets) {
         try {
             const sub = JSON.parse(row.subscription);
-            webPush.sendNotification(sub, payload)
-                .then(() => { delivered++; })
-                .catch(err => {
-                    if (err.statusCode === 410 || err.statusCode === 404) {
-                        db.prepare("DELETE FROM PushSubscriptions WHERE endpoint=?").run(row.endpoint);
-                    }
-                });
+            webPush.sendNotification(sub, payload).catch(err => {
+                if (err.statusCode === 410 || err.statusCode === 404) {
+                    db.prepare("DELETE FROM PushSubscriptions WHERE endpoint=?").run(row.endpoint);
+                }
+            });
         } catch (_) {}
     }
-    db.prepare("INSERT INTO AlertLog (message, targetLabel, sentBy, deliveryCount) VALUES (?,?,?,?)")
-        .run(message, targetLabel, sentBy || null, targets.length);
+    db.prepare("INSERT INTO AlertLog (message, targetLabel, sentBy, deliveryCount, showAdminBanner) VALUES (?,?,?,?,?)")
+        .run(message, targetLabel, sentBy || null, targets.length, showAdminBanner ? 1 : 0);
 }
 
 app.get('/alerts', (req, res) => {
@@ -5232,9 +5234,10 @@ app.post('/alerts/send', (req, res) => {
         targetLabel = c ? `${c.FirstName} ${c.LastName}` : `Counselor ${targetId}`;
     }
 
-    const targets = resolveAlertTargets(targetType, targetId);
-    const sentBy  = req.cookies.adminName || null;
-    sendInstantAlert(message, targetLabel, targets, sentBy);
+    const targets         = resolveAlertTargets(targetType, targetId);
+    const sentBy          = req.cookies.adminName || null;
+    const showAdminBanner = (targetType === 'group' && targetLabel === 'All Admin') ? 1 : 0;
+    sendInstantAlert(message, targetLabel, targets, sentBy, showAdminBanner);
     res.redirect(`/alerts?message=Alert+sent+to+${encodeURIComponent(targetLabel)}+(${targets.length}+subscriber${targets.length === 1 ? '' : 's'})`);
 });
 
@@ -5248,6 +5251,12 @@ app.get('/api/alerts/preview', (req, res) => {
         ? db.prepare(`SELECT FirstName || ' ' || LastName AS name FROM Counselors WHERE CounselorID IN (${ids.map(() => '?').join(',')}) ORDER BY LastName`).all(...ids).map(r => r.name)
         : [];
     res.json({ count: targets.length, names });
+});
+
+app.get('/api/admin-alert-banner', (_req, res) => {
+    const row = db.prepare("SELECT AlertID, message, sentBy, sentAt FROM AlertLog WHERE showAdminBanner=1 ORDER BY AlertID DESC LIMIT 1").get();
+    if (!row) return res.json({ alert: null });
+    res.json({ alert: row });
 });
 
 app.post('/alerts/groups', (req, res) => {
