@@ -113,6 +113,7 @@ function computeClassAttStats(clockBlock, side, today) {
         FROM Schedules s
         JOIN Activities a ON a.Name = s.ActivityName
         WHERE s.PersonType = 'Camper' AND s.PeriodNumber = ? AND a.SideOfCamp = ?
+          AND s.ActivityName != 'PM Only - Hartt Chamber Program'
     `).all(clockBlock, side);
     if (classes.length === 0) return { total: 0, submitted: 0 };
     const checkTotal   = db.prepare(`
@@ -3503,6 +3504,7 @@ app.get('/attendance', (req, res) => {
         SELECT DISTINCT s.PeriodNumber, s.ActivityName
         FROM Schedules s
         WHERE s.PersonType = 'Camper' AND s.ActivityName NOT LIKE '#REF%'
+          AND s.ActivityName != 'PM Only - Hartt Chamber Program'
         ORDER BY s.PeriodNumber, s.ActivityName
     `).all();
 
