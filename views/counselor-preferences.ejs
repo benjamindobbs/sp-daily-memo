@@ -184,6 +184,23 @@
             </div><!-- /prefsContainer -->
 
         </form>
+
+        <div class="card" style="margin-top:24px;">
+            <h3 style="margin:0 0 6px;">Notifications</h3>
+            <p class="text-muted" style="margin:0 0 16px; font-size:0.85rem;">Receive push alerts and attendance reminders on this device.</p>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button id="enableNotifyBtn" onclick="enablePushNotifications()" class="btn btn-primary" style="display:none;">
+                    &#128276; Enable notifications
+                </button>
+                <button id="disableNotifyBtn" onclick="disablePushNotifications()" class="btn" style="display:none; background:#fee2e2; color:#991b1b; border-color:#fca5a5;">
+                    &#128277; Disable notifications
+                </button>
+            </div>
+            <p id="notifyUnsupported" style="display:none; font-size:0.82rem; color:var(--text-muted); margin:8px 0 0;">
+                Push notifications are not available in this browser. On iPhone, add this site to your Home Screen first, then open it from there.
+            </p>
+        </div>
+
     </div>
 
     <script>
@@ -255,6 +272,23 @@
                 label.style.display = label.dataset.name.includes(term) ? '' : 'none';
             });
         }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const supported = ('Notification' in window) && ('PushManager' in window);
+            if (!supported) {
+                document.getElementById('notifyUnsupported').style.display = '';
+            }
+            // nav.js sets swReg asynchronously; poll briefly to pick it up
+            var attempts = 0;
+            var interval = setInterval(function () {
+                if (typeof updateNotifyButton === 'function') {
+                    updateNotifyButton();
+                    clearInterval(interval);
+                } else if (++attempts > 20) {
+                    clearInterval(interval);
+                }
+            }, 150);
+        });
     </script>
 </body>
 </html>

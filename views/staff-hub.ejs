@@ -265,11 +265,15 @@
         <% } %>
 
         <% if (selectedCounselorName) { %>
-        <div style="margin-top:20px; font-size:0.875rem; display:flex; align-items:center; gap:10px;">
+        <div style="margin-top:20px; font-size:0.875rem; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <span style="background:#f1f5f9; border:1px solid var(--border-color); border-radius:20px; padding:5px 14px;">
                 Attending as: <strong><%= selectedCounselorName %></strong>
             </span>
             <a href="/counselor-preferences" style="color:var(--text-muted); font-size:0.78rem;">Change</a>
+            <button id="enableNotifyBtn" onclick="enablePushNotifications()"
+                style="background:none; border:1px solid var(--border-color); border-radius:20px; padding:5px 14px; font-size:0.78rem; color:var(--text-muted); cursor:pointer; display:none;">
+                &#128276; Enable notifications
+            </button>
         </div>
         <% } %>
 

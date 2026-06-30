@@ -1105,6 +1105,11 @@ try {
     const alCols = db.prepare("PRAGMA table_info(AlertLog)").all().map(c => c.name);
     if (!alCols.includes('showAdminBanner')) db.exec("ALTER TABLE AlertLog ADD COLUMN showAdminBanner INTEGER DEFAULT 0");
 } catch(e) { console.error('[migration] AlertLog.showAdminBanner:', e.message); }
+db.exec(`CREATE TABLE IF NOT EXISTS AlertTargets (
+    AlertID     INTEGER NOT NULL REFERENCES AlertLog(AlertID) ON DELETE CASCADE,
+    CounselorID INTEGER NOT NULL,
+    PRIMARY KEY (AlertID, CounselorID)
+)`);
 const SYSTEM_ALERT_GROUPS = [
     'All Counselors', 'All Unit Leaders', 'All Admin',
     'All AM Sports', 'All PM Sports', 'All AM Enrichment', 'All PM Enrichment',
@@ -5229,17 +5234,46 @@ app.get('/api/attendance-nudge', (req, res) => {
         )
     `);
 
+    // Resolve all assigned activity names for this counselor across all relevant tables,
+    // using the same multi-table, name-match logic as the attendance filter.
+    const UL_SL_ROLES = new Set(['Unit Leader', 'Sports Leader']);
+    const cRow = db.prepare("SELECT FirstName, LastName, StaffRole FROM Counselors WHERE CounselorID = ?").get(counselorId);
+    const sameNameIds = cRow
+        ? db.prepare("SELECT CounselorID, StaffRole FROM Counselors WHERE FirstName = ? AND LastName = ?").all(cRow.FirstName, cRow.LastName)
+        : [];
+
+    function getAssignedActivities(block) {
+        const seen = new Set();
+        const results = [];
+        for (const peer of sameNameIds) {
+            let rows = [];
+            if (peer.StaffRole === 'Instructor') {
+                rows = db.prepare("SELECT ActivityName FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ? AND PeriodNumber = ?")
+                    .all(peer.CounselorID, weekNum, block);
+            } else if (UL_SL_ROLES.has(peer.StaffRole)) {
+                rows = [
+                    ...db.prepare("SELECT ActivityName FROM CounselorScheduleAssignments WHERE PersonID = ? AND PeriodNumber = ? AND WeekNumber = ?")
+                        .all(peer.CounselorID, block, weekNum),
+                    ...db.prepare("SELECT ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ? AND PeriodNumber = ?")
+                        .all(peer.CounselorID, weekNum, block)
+                ];
+            } else {
+                rows = db.prepare("SELECT ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ? AND PeriodNumber = ?")
+                    .all(peer.CounselorID, weekNum, block);
+            }
+            for (const r of rows) {
+                if (!seen.has(r.ActivityName)) { seen.add(r.ActivityName); results.push(r); }
+            }
+        }
+        return results;
+    }
+
     const unsubmitted = [];
     for (const block of activeBlocks) {
-        const assignments = db.prepare(`
-            SELECT ActivityName FROM CounselorScheduleAssignments
-            WHERE PersonID = ? AND PeriodNumber = ? AND WeekNumber = ?
-        `).all(counselorId, block, weekNum);
-
-        for (const a of assignments) {
+        for (const a of getAssignedActivities(block)) {
             const total   = checkTotal.get(block, a.ActivityName)?.n || 0;
             const handled = checkHandled.get(today, block, a.ActivityName, today, block, a.ActivityName)?.n || 0;
-            if (total === 0 || handled >= total) continue; // submitted or no non-SPLIT campers
+            if (total === 0 || handled >= total) continue;
             unsubmitted.push(a.ActivityName);
         }
     }
@@ -5265,6 +5299,13 @@ app.post('/api/push-subscribe', (req, res) => {
     res.json({ ok: true });
 });
 
+app.post('/api/push-unsubscribe', (req, res) => {
+    const counselorId = parseInt(req.cookies.selectedCounselor);
+    if (!counselorId) return res.status(401).json({ error: 'No counselor selected' });
+    db.prepare("DELETE FROM PushSubscriptions WHERE CounselorID = ?").run(counselorId);
+    res.json({ ok: true });
+});
+
 // --- INSTANT ALERTS ---
 
 function resolveAlertCounselorIds(group) {
@@ -5275,10 +5316,7 @@ function resolveAlertCounselorIds(group) {
     if (name === 'All Unit Leaders')
         return db.prepare("SELECT CounselorID FROM Counselors WHERE StaffRole = 'Unit Leader'").all().map(r => r.CounselorID);
     if (name === 'All Admin') {
-        return db.prepare(`
-            SELECT c.CounselorID FROM AdminUsers a
-            JOIN Counselors c ON UPPER(c.FirstName || ' ' || c.LastName) = UPPER(a.name)
-        `).all().map(r => r.CounselorID);
+        return db.prepare("SELECT CounselorID FROM Counselors WHERE StaffRole = 'Director'").all().map(r => r.CounselorID);
     }
     const ST_AM_SPORTS     = ["'All Sports'","'AM Sports / PM Enrichment'","'AM Sports Only'"];
     const ST_PM_SPORTS     = ["'All Sports'","'AM Enrichment / PM Sports'","'PM Sports Only'"];
@@ -5316,7 +5354,7 @@ function resolveAlertTargets(targetType, targetId) {
     return db.prepare(`SELECT * FROM PushSubscriptions WHERE CounselorID IN (${placeholders})`).all(...ids);
 }
 
-function sendInstantAlert(message, targetLabel, targets, sentBy, showAdminBanner = 0) {
+function sendInstantAlert(message, targetLabel, targets, sentBy, showAdminBanner = 0, counselorIds = []) {
     const payload = JSON.stringify({ title: 'Camp Alert', body: message, url: '/staff', tag: 'instant-alert' });
     for (const row of targets) {
         try {
@@ -5328,8 +5366,13 @@ function sendInstantAlert(message, targetLabel, targets, sentBy, showAdminBanner
             });
         } catch (_) {}
     }
-    db.prepare("INSERT INTO AlertLog (message, targetLabel, sentBy, deliveryCount, showAdminBanner) VALUES (?,?,?,?,?)")
+    const info = db.prepare("INSERT INTO AlertLog (message, targetLabel, sentBy, deliveryCount, showAdminBanner) VALUES (?,?,?,?,?)")
         .run(message, targetLabel, sentBy || null, targets.length, showAdminBanner ? 1 : 0);
+    const alertId = info.lastInsertRowid;
+    if (counselorIds.length > 0) {
+        const insTarget = db.prepare("INSERT OR IGNORE INTO AlertTargets (AlertID, CounselorID) VALUES (?, ?)");
+        for (const cid of counselorIds) insTarget.run(alertId, cid);
+    }
 }
 
 app.get('/alerts', (req, res) => {
@@ -5364,7 +5407,14 @@ app.post('/alerts/send', (req, res) => {
     const targets         = resolveAlertTargets(targetType, targetId);
     const sentBy          = req.cookies.adminName || null;
     const showAdminBanner = (targetType === 'group' && targetLabel === 'All Admin') ? 1 : 0;
-    sendInstantAlert(message, targetLabel, targets, sentBy, showAdminBanner);
+    let counselorIds;
+    if (targetType === 'individual') {
+        counselorIds = [targetId];
+    } else {
+        const group = db.prepare("SELECT * FROM AlertGroups WHERE GroupID = ?").get(targetId);
+        counselorIds = group ? resolveAlertCounselorIds(group) : [];
+    }
+    sendInstantAlert(message, targetLabel, targets, sentBy, showAdminBanner, counselorIds);
     res.redirect(`/alerts?message=Alert+sent+to+${encodeURIComponent(targetLabel)}+(${targets.length}+subscriber${targets.length === 1 ? '' : 's'})`);
 });
 
@@ -5392,6 +5442,20 @@ app.get('/api/alerts/preview', (req, res) => {
 
 app.get('/api/admin-alert-banner', (_req, res) => {
     const row = db.prepare("SELECT AlertID, message, sentBy, sentAt FROM AlertLog WHERE showAdminBanner=1 ORDER BY AlertID DESC LIMIT 1").get();
+    if (!row) return res.json({ alert: null });
+    res.json({ alert: row });
+});
+
+app.get('/api/staff-alert-banner', (req, res) => {
+    const cid = parseInt(req.cookies.selectedCounselor) || null;
+    if (!cid) return res.json({ alert: null });
+    const row = db.prepare(`
+        SELECT al.AlertID, al.message, al.sentBy, al.sentAt
+        FROM AlertLog al
+        JOIN AlertTargets at ON at.AlertID = al.AlertID
+        WHERE at.CounselorID = ?
+        ORDER BY al.AlertID DESC LIMIT 1
+    `).get(cid);
     if (!row) return res.json({ alert: null });
     res.json({ alert: row });
 });

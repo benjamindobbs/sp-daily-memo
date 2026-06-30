@@ -18,6 +18,7 @@
   - [Health](#health)
   - [Settings & Data Management](#settings--data-management)
   - [Other Admin Tools](#other-admin-tools)
+- [Staff: Setting Up Notifications](#staff-setting-up-notifications)
 
 ---
 
@@ -330,9 +331,72 @@ All at `/settings`.
 |---|---|---|
 | Counselor Preferences | `/counselor-preferences` | View and edit each counselor's activity preferences, used by the auto-scheduler to influence assignments |
 | Photo of the Day | `/photo-day` | Upload a photo for the day. Accessible to all staff (not admin-only). |
-| Attendance Nudge Notifications | — | Push notifications sent to subscribed counselors reminding them to submit attendance 15+ minutes into a class period. Staff subscribe automatically when they load any page in staff view on a supported browser. One notification per class per day; no notification if attendance is already submitted. |
+| Attendance Nudge Notifications | — | Push notifications sent to subscribed counselors reminding them to submit attendance 15+ minutes into a class period. Staff subscribe via the **Enable notifications** button in My Preferences. One notification per class per day; no notification if attendance is already submitted. See [Staff: Setting Up Notifications](#staff-setting-up-notifications). |
 | Instant Alerts | `/alerts` | Send a push notification to a named group or individual counselor. Seven built-in system groups are available (All Counselors, All Unit Leaders, All Admin, and the four AM/PM Sports/Enrichment splits). Admins can also create custom named groups with a hand-picked member list. Alerts sent to **All Admin** additionally display a red banner at the top of the admin hub for any admin currently logged in, regardless of whether they have push notifications enabled. All sent alerts are logged with recipient group, sender, timestamp, and delivery count. |
 | Photo Gallery | `/photo-gallery` | Browse uploaded photos; staff can vote |
 | Export Counselor Schedule | `/export-counselor-schedule` | Download current counselor assignments as CSV |
 | Export Staff Schedule | `/export-staff-schedule` | Download instructor/unit leader assignments as CSV |
 | Export Master Schedule | `/export-master-schedule` | Download the full class-by-period master schedule as CSV |
+
+---
+
+## Staff: Setting Up Notifications
+
+Camp Hub can send push notifications to remind staff to submit attendance and to deliver instant alerts from admin. Setup is a one-time step on each device.
+
+> **You will need to enable notifications on each device you use.** Notifications are linked to the specific browser and device, not your account.
+
+---
+
+### iPhone / iPad (Safari)
+
+Push notifications on iPhone and iPad require the site to be saved to your Home Screen first. Safari's regular browser tab does not support them.
+
+**Step 1 — Add to Home Screen**
+
+1. Open Camp Hub in **Safari** (not Chrome or another app).
+2. Tap the **Share** button at the bottom of the screen (the box with an arrow pointing up).
+3. Scroll down and tap **Add to Home Screen**.
+4. Tap **Add** in the top-right corner.
+
+A Camp Hub icon will appear on your Home Screen like any other app.
+
+**Step 2 — Enable notifications**
+
+1. Open Camp Hub by tapping the **Home Screen icon** (not by opening Safari directly).
+2. Tap **My Preferences** in the navigation bar.
+3. Scroll to the **Notifications** section at the bottom of the page.
+4. Tap **Enable notifications**.
+5. When your device asks "Allow Camp Hub to send you notifications?", tap **Allow**.
+
+You're done. Notifications will now appear on your device even when Camp Hub is not open.
+
+> **Requirements:** iOS 16.4 or later. If you don't see the Enable notifications button, check that you opened Camp Hub from the Home Screen icon, not from Safari.
+
+> **If you accidentally tapped "Don't Allow":** Go to **Settings → Camp Hub → Notifications** and turn notifications on, then return to My Preferences and tap Enable notifications again.
+
+---
+
+### Android / Chrome (desktop or mobile)
+
+**Step 1 — Open My Preferences**
+
+1. Log into Camp Hub in staff view and tap **My Preferences** in the navigation bar.
+
+**Step 2 — Enable notifications**
+
+1. Scroll to the **Notifications** section at the bottom of the page.
+2. Click or tap **Enable notifications**.
+3. When the browser asks for permission, click or tap **Allow**.
+
+That's it. No home screen setup required on Android or desktop Chrome.
+
+> **Optional — Add to Home Screen on Android:** Tap the three-dot menu in Chrome and select **Add to Home Screen**. This makes Camp Hub open full-screen like an app, but it is not required for notifications to work.
+
+> **If you accidentally clicked "Block":** Click the lock icon in the address bar, find Notifications, and change it to Allow. Then return to My Preferences and tap Enable notifications.
+
+---
+
+### Disabling notifications
+
+To turn off notifications on any device, go to **My Preferences** and tap **Disable notifications**. This removes the subscription immediately. You can re-enable at any time by tapping Enable notifications again.
