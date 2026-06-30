@@ -14,7 +14,7 @@ One row per mark. The unique constraint `(Date, CamperID, SessionType, PeriodNum
 |---|---|---|---|
 | `homegroup` | Morning or afternoon home group check-in | `0` | `''` |
 | `class` | Class period attendance | `1`–`6` | Activity name |
-| `bus` | Bus route AM/PM | `0` | `''` |
+| `bus_am` / `bus_pm` | Bus route AM or PM direction | `0` | `''` |
 | `extended` | Extended hours AM/PM | `0` | `''` |
 | `specialty` | LilPlace, KinderPlace, SPLIT AM | `0` | `''` |
 | `late-arrival` | Campers who arrive after normal start | `0` | `''` |
@@ -135,9 +135,17 @@ Single-column truth table keyed by date. If today's date is in this table, SPLIT
 
 ---
 
+## Bus Attendance (AM/PM Split)
+
+Bus routes now have separate AM and PM attendance sheets. Whether a camper appears on a bus sheet is controlled by `Campers.BusRidesAM` and `Campers.BusRidesPM` (set during the ACR-005 import). A camper with `BusRidesPM=0` will not appear on the PM bus sheet even if they have a bus route assigned.
+
+The attendance overview progress counter for bus routes similarly tracks only AM riders for the AM count and PM riders for the PM count.
+
+---
+
 ## Late Arrivals
 
-Campers who arrive after the normal start time are checked in via `GET /attendance/late-arrivals` and `POST /attendance/check-in`. This writes an `Attendance` record with `SessionType='late-arrival'` and `Status='present'`.
+Campers who arrive after the normal start time are checked in via `GET /attendance/late-arrivals` and `POST /attendance/check-in`. This includes campers marked absent on both `homegroup_am` and `specialty_am` session types, so specialty camp (SPRC, KinderPlace, LilPlace) absences appear alongside main camp absences. Checking a camper in updates the correct session type based on their `HomeGroupColor`.
 
 ---
 

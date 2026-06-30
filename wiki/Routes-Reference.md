@@ -62,6 +62,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/archive-schedule-changes` | ✓ | Move selected log entries to archive |
 | GET | `/promotions` | ✓ | Waitlist promotion page |
 | POST | `/promote-waitlist` | ✓ | Promote one camper off waitlist |
+| POST | `/force-promote-waitlist` | ✓ | Force-promote one camper into a full class (bypasses capacity check) |
 | POST | `/promote-all` | ✓ | Promote all eligible waitlist entries |
 | POST | `/remove-waitlist/:id` | ✓ | Remove a waitlist entry |
 | GET | `/counselor-scheduling` | ✓ | Counselor schedule builder |
@@ -93,6 +94,16 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/clear-weekly-offerings` | ✓ | Remove offerings for the active week |
 | POST | `/api/sync-offerings` | ✓ | Alias for sync (JSON response) |
 | POST | `/sync-offerings-from-schedule` | ✓ | Rebuild `WeeklyOfferings` from `Schedules` for the active week |
+
+---
+
+## Push Notifications
+
+| Method | Path | Admin only | Description |
+|---|---|:---:|---|
+| GET | `/api/vapid-public-key` | | Returns the server's VAPID public key for push subscription setup |
+| POST | `/api/push-subscribe` | | Register or update a browser push subscription for the current counselor (reads `selectedCounselor` cookie) |
+| GET | `/api/attendance-nudge` | | Polled by the client; returns `{ notify: true, classes: [...] }` if the current counselor has unsubmitted class attendance 15+ min into an active period |
 
 ---
 
@@ -180,6 +191,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/clear-counselor-homegroups` | ✓ | Clear home group assignments for the active week |
 | POST | `/create-staff` | ✓ | Add a new staff member |
 | POST | `/create-camper` | ✓ | Add a new camper |
+| POST | `/create-blank-class` | ✓ | Create a class offering for the active week with no enrolled campers |
 | GET | `/assign-camper-schedule/:id` | ✓ | Assign class schedule to a new camper |
 | GET | `/get-new-camper-options/:camperId/:period` | ✓ | Ajax: available classes for new camper scheduling |
 | GET | `/assign-camper-class` | ✓ | Ajax: assign a class to a new camper |

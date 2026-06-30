@@ -154,13 +154,17 @@ Separate from class scheduling. `CamperHomeGroups` stores which camper belongs t
 
 ## SPLIT Scheduling
 
-SPLIT campers have a non-standard schedule (AM specialty, PM standard classes). `/split-scheduling` manages their AM specialty period assignments separately from the main `Schedules` table.
+SPLIT campers have a non-standard schedule (AM specialty, PM standard classes). `/split-scheduling` manages their period assignments separately from the main `Schedules` table.
+
+Covered periods: **1, 2, 4, 5, 6**. Periods 1 and 2 are Enrichment AM; period 4 shows both Sports and Enrichment sides; periods 5 and 6 are Sports PM. Period 3 is not included (AM block 3 is not part of the SPLIT assignment set).
 
 ---
 
 ## Waitlist & Promotions
 
 When a swap is attempted into a full class, the camper is added to `Waitlists`. The `/promotions` page surfaces eligible campers (class has an open spot) and lets the admin promote one or all at once.
+
+A **Force Promote** button (`POST /force-promote-waitlist`) is also available on each waitlist card regardless of capacity. This bypasses the enrollment check and directly updates the camper's `Schedules` row to the requested activity. Use when the class is intentionally over-enrolled.
 
 ---
 

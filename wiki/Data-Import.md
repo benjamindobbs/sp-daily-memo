@@ -56,6 +56,7 @@ Imports have dependencies. Always follow this sequence for a fresh setup:
 **What it does:**
 - Creates or updates camper records in `Campers`.
 - Sets: `FirstName`, `LastName`, `HomeGroupColor`, `CampLunch`, `ShirtSize`, `Age`.
+- Sets `BusRidesAM` and `BusRidesPM` from the `AM Bus` and `PM Bus` columns. A value beginning with "No" (e.g. "No AM Bus Selected") sets the flag to `0`; any other non-empty value sets it to `1`. If the column is absent, the existing flag is left unchanged.
 - Does **not** set schedule data — that comes from the Master Camper Schedule (ACR-255) import.
 
 ---
@@ -196,3 +197,6 @@ Notable migrations in order:
 | `CounselorScheduleBackups` created | Snapshot backup table. |
 | `PdfDocuments` created | PDF files stored as BLOBs in the database instead of the filesystem, so they survive server restarts. Any PDFs already in `uploads/` are migrated in automatically on first boot. |
 | `DirectorNotes.category` added | **[migrated]** — Adds tab-based categorization. Values: `director`, `camper`, `staff`, `timesheet`. Existing notes default to `director`. |
+| `Campers.BusRidesAM` / `BusRidesPM` added | **[migrated]** — Per-direction bus ride flags. Default `1` (rides). ACR-005 import sets these from the `AM Bus` / `PM Bus` columns: a value starting with "No" sets the flag to `0`. |
+| `AppConfig` created | Key/value store for persistent server config (currently VAPID keys for web push). Auto-generates VAPID keys on first startup. |
+| `PushSubscriptions` created | Stores web push subscriptions for counselor attendance nudge notifications. One row per browser endpoint. |

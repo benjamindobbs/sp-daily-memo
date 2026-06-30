@@ -21,6 +21,8 @@ Primary record for every enrolled camper.
 | `ExtendedHours` | TEXT | | `AM`, `PM`, `AM+PM`, or NULL |
 | `CampLunch` | TEXT | DEFAULT `'No'` | `No – Packed`, `Yes`, `Allergy Meal` |
 | `ShirtSize` | TEXT | | **[migrated]** — from ACR-005 import |
+| `BusRidesAM` | INTEGER | DEFAULT `1` | **[migrated]** — `1` = rides the AM bus, `0` = does not. Set from ACR-005 `AM Bus` column. |
+| `BusRidesPM` | INTEGER | DEFAULT `1` | **[migrated]** — `1` = rides the PM bus, `0` = does not. Set from ACR-005 `PM Bus` column. |
 
 **Normalizations applied at startup:**
 - `BusRoute` values of `'null'`, `''`, or a color group name are cleared to NULL.
@@ -472,3 +474,32 @@ Stores uploaded PDF files as BLOBs so they persist across server restarts withou
 | `uploadedAt` | DATETIME | |
 
 On first startup after this table was added, any existing PDFs in `uploads/` are automatically migrated into this table and removed from disk.
+
+---
+
+## AppConfig
+
+General key/value store for persistent server configuration. Currently used to store VAPID keys for web push notifications so they survive redeploys.
+
+| Column | Type | Notes |
+|---|---|---|
+| `key` | TEXT PK | Configuration key (e.g. `vapidPublicKey`, `vapidPrivateKey`) |
+| `value` | TEXT | Configuration value |
+
+VAPID keys are auto-generated on first startup and stored here. They are reloaded on subsequent startups so push subscriptions remain valid.
+
+---
+
+## PushSubscriptions
+
+Web Push API subscriptions for counselor attendance nudge notifications.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `CounselorID` | INTEGER | FK → `Counselors.CounselorID` |
+| `endpoint` | TEXT | UNIQUE — push service endpoint URL |
+| `subscription` | TEXT | Full serialized push subscription object (JSON) |
+| `CreatedAt` | DATETIME | |
+
+One row per browser/device. If a push send fails with 410 or 404 (subscription expired/unsubscribed), the row is automatically deleted.

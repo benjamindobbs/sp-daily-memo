@@ -208,6 +208,8 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | ✓ **Seen Earlier** | Camper was marked present on a different roster earlier in the same session |
 | 🏕️ **Field Trip** | Shown on SPLIT AM specialty sheets when the group has been marked as on a field trip; individual SPLIT campers appearing on class sheets show a bus icon next to their name |
 
+**Home group AM/PM sheets** also show a **🚌 Bus [route]** chip and an **⏰ Extended** chip next to camper names so staff can quickly see who needs bus or extended care pickup without switching to another roster.
+
 **SPLIT campers** appearing on a class roster show a read-only status pulled from the Specialty AM sheet — they cannot be marked from the class roster directly.
 
 **Marking attendance:**
@@ -224,7 +226,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | Page | URL | Admin Only | Description |
 |---|---|:---:|---|
 | Admin Hub | `/admin` | ✓ | Dashboard: director notes, announcements, camper/staff counts, links to all admin tools |
-| Staff Hub | `/staff` | | Counselor-facing dashboard: daily schedule, home group roster, attendance links |
+| Staff Hub | `/staff` | | Counselor-facing dashboard: daily schedule, home group roster, attendance links. Auto-refreshes silently every 15 minutes. |
 
 ---
 
@@ -232,7 +234,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 
 | Page | URL | Description |
 |---|---|---|
-| Master Schedule | `/master-schedule` | All classes by period. Filter by period, side, and color group. Click a class name to open its roster. |
+| Master Schedule | `/master-schedule` | All classes by period. Filter by period, side, and color group. Click a class name to open its roster. Instructor, Unit Leader, and Sports Leader names are clickable links to their staff profile for all users. |
 | Class Roster | `/class-roster/:period/:activity` | Full camper list for one class period. Admin can update the location. |
 | Camper Lookup | `/search` | Search campers by name. Shows full schedule, bus route, and extended hours. |
 | Camper Profile | `/camper/:id` | Full detail for one camper: schedule, contacts, notes. Admin can edit all fields or delete the record. |
@@ -249,11 +251,11 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 |---|---|---|
 | Swap Tool | `/swap-tool` | Move a camper from one class to another. Shows capacity and waitlist status for all available options. |
 | Schedule History | `/schedule-history` | Log of recent swap and assignment changes. Admin can archive entries. |
-| Waitlist / Promotions | `/promotions` | Lists campers eligible to be promoted off the waitlist into an open spot. Promote individually or all at once. |
+| Waitlist / Promotions | `/promotions` | Lists campers eligible to be promoted off the waitlist into an open spot. Promote individually, all at once, or force-promote into an over-capacity class. |
 | Counselor Scheduling | `/counselor-scheduling` | Full counselor assignment builder — see [Counselor Scheduling](#counselor-scheduling) above. |
 | Counselor Schedule Backups | `/counselor-schedule-backups` | Named snapshots of saved counselor assignments. Restore or delete from here. |
 | Home Group Assignment | `/homegroup-assignment` | Assign counselors to color-group home groups by week. Can mirror assignments from one week to another. |
-| SPLIT Scheduling | `/split-scheduling` | Dedicated view for managing SPLIT camper period assignments. |
+| SPLIT Scheduling | `/split-scheduling` | Dedicated view for managing SPLIT camper period assignments (periods 1, 2, 4, 5, 6). |
 | Audit Roster | `/audit` | Flags scheduling issues: missing grades, duplicate assignments, unassigned campers, classes with no counselor. |
 
 ---
@@ -307,6 +309,7 @@ All at `/settings`.
 | **Print Reports** | Printable attendance rosters and camper name cards |
 | **Add Staff Member** | Create an individual staff record with all profile fields (name, role, group color, schedule type, bus, extended hours, phone, email) |
 | **Add Camper** | Create an individual camper record and immediately assign classes through the class assignment tool |
+| **Create Blank Class** | Add a class offering to the active week's schedule without any enrolled campers — useful for adding ad-hoc classes (e.g. Free Swim) that weren't in the original import |
 
 ---
 
@@ -315,7 +318,8 @@ All at `/settings`.
 | Tool | URL | Description |
 |---|---|---|
 | Counselor Preferences | `/counselor-preferences` | View and edit each counselor's activity preferences, used by the auto-scheduler to influence assignments |
-| Photo of the Day | `/photo-day` | Upload camper photos and associate them with camper records |
+| Photo of the Day | `/photo-day` | Upload a photo for the day. Accessible to all staff (not admin-only). |
+| Attendance Nudge Notifications | — | Push notifications sent to subscribed counselors reminding them to submit attendance 15+ minutes into a class period. Staff subscribe automatically when they load any page in staff view on a supported browser. One notification per class per day; no notification if attendance is already submitted. |
 | Photo Gallery | `/photo-gallery` | Browse uploaded photos; staff can vote |
 | Export Counselor Schedule | `/export-counselor-schedule` | Download current counselor assignments as CSV |
 | Export Staff Schedule | `/export-staff-schedule` | Download instructor/unit leader assignments as CSV |
