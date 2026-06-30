@@ -142,7 +142,7 @@
                     <div class="camper-row" data-camperid="<%= c.CamperID %>" data-name="<%= (c.FirstName+' '+c.LastName).toLowerCase() %>" data-status="<%= c.currentStatus || '' %>">
                         <span class="tag <%= c.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px; flex-shrink:0;"><%= c.HomeGroupColor %></span>
                         <span class="camper-name"><%= c.FirstName %> <%= c.LastName %></span>
-                        <% if (c.BusRoute) { %>
+                        <% if (c.BusRoute && (sessionType !== 'homegroup_am' && sessionType !== 'homegroup_pm' || (sessionType === 'homegroup_am' && c.BusRidesAM) || (sessionType === 'homegroup_pm' && c.BusRidesPM))) { %>
                         <% const busDisplay = String(parseFloat(c.BusRoute) % 1 === 0 ? Math.trunc(parseFloat(c.BusRoute)) : c.BusRoute); %>
                         <span style="font-size:0.7rem; font-weight:600; background:#dbeafe; color:#1e40af; border-radius:4px; padding:1px 7px; white-space:nowrap;">&#128652; Bus <%= busDisplay %></span>
                         <% } %>

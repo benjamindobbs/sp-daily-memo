@@ -149,14 +149,16 @@ function computeExtAttStats(session, today) {
 }
 
 function computeBusAttStats(session, today) {
-    const total = db.prepare(
-        "SELECT COUNT(DISTINCT BusRoute) as n FROM Campers WHERE BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null'"
-    ).get().n || 0;
+    const ridesCol = session === 'pm' ? 'BusRidesPM' : 'BusRidesAM';
+    const total = db.prepare(`
+        SELECT COUNT(DISTINCT BusRoute) as n FROM Campers
+        WHERE BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null' AND ${ridesCol} = 1
+    `).get().n || 0;
     const submitted = db.prepare(`
         SELECT COUNT(DISTINCT c.BusRoute) as n
         FROM Attendance att
         JOIN Campers c ON c.CamperID = att.CamperID
-        WHERE att.Date=? AND att.SessionType=?
+        WHERE att.Date=? AND att.SessionType=? AND c.${ridesCol} = 1
     `).get(today, `bus_${session}`)?.n || 0;
     return { total, submitted };
 }
@@ -815,6 +817,12 @@ try {
     const counsCols = db.prepare("PRAGMA table_info(Counselors)").all().map(c => c.name);
     if (!counsCols.includes('StaffRole')) db.exec("ALTER TABLE Counselors ADD COLUMN StaffRole TEXT DEFAULT 'Counselor'");
 } catch(e) { console.error('[migration] Counselors.StaffRole:', e.message); }
+
+try {
+    const camperBusCols = db.prepare("PRAGMA table_info(Campers)").all().map(c => c.name);
+    if (!camperBusCols.includes('BusRidesAM')) db.exec("ALTER TABLE Campers ADD COLUMN BusRidesAM INTEGER DEFAULT 1");
+    if (!camperBusCols.includes('BusRidesPM')) db.exec("ALTER TABLE Campers ADD COLUMN BusRidesPM INTEGER DEFAULT 1");
+} catch(e) { console.error('[migration] Campers.BusRidesAM/PM:', e.message); }
 
 try {
     const cwaCols = db.prepare("PRAGMA table_info(CounselorWeekAttributes)").all().map(c => c.name);
@@ -2416,9 +2424,17 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
     if (sections.length === 0) return res.redirect('/settings?message=Invalid+file+format+(ACR-005+expected)');
 
     const safeTrim = v => { const s = (v && typeof v === 'string') ? v.trim() : ''; return s.toLowerCase() === 'null' ? '' : s; };
+    // "AM Bus"/"PM Bus" columns hold either a stop name (rides=1), or "No AM/PM Bus Selected" /
+    // "No Bus X AM/PM" (rides=0). The route number itself stays sourced from ACR-255's "Bus Number"
+    // column — these flags only capture whether the camper rides in that direction.
+    const parseRidesFlag = raw => {
+        const v = (raw || '').trim();
+        if (!v) return null;
+        return /^no\b/i.test(v) ? 0 : 1;
+    };
     const findCamper    = db.prepare("SELECT CamperID, CampLunch FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
-    const insertCamper  = db.prepare("INSERT INTO Campers (FirstName, LastName, HomeGroupColor, ShirtSize, CampLunch) VALUES (?,?,?,?,?)");
-    const updateCamper  = db.prepare("UPDATE Campers SET HomeGroupColor=?, ShirtSize=?, CampLunch=? WHERE CamperID=?");
+    const insertCamper  = db.prepare("INSERT INTO Campers (FirstName, LastName, HomeGroupColor, ShirtSize, CampLunch, BusRidesAM, BusRidesPM) VALUES (?,?,?,?,?,?,?)");
+    const updateCamper  = db.prepare("UPDATE Campers SET HomeGroupColor=?, ShirtSize=?, CampLunch=?, BusRidesAM=COALESCE(?,BusRidesAM), BusRidesPM=COALESCE(?,BusRidesPM) WHERE CamperID=?");
     const findCounselor = db.prepare("SELECT CounselorID FROM Counselors WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
     const upsertHg      = db.prepare("INSERT OR REPLACE INTO CamperHomeGroups (CamperID, WeekNumber, CounselorID) VALUES (?,?,?)");
     const aw = getActiveWeek();
@@ -2442,16 +2458,18 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
                     const color    = mapColor(safeTrim(row['Color']));
                     const shirt    = safeTrim(row['T-Shirt']) || null;
                     const lunchRaw = safeTrim(row['Lunch']);
+                    const ridesAM  = row['AM Bus'] !== undefined ? parseRidesFlag(row['AM Bus']) : null;
+                    const ridesPM  = row['PM Bus'] !== undefined ? parseRidesFlag(row['PM Bus']) : null;
                     const fullName = `${firstName} ${lastName}`;
                     const existing = findCamper.get(fullName);
 
                     let camperId;
                     if (existing) {
                         const lunch = existing.CampLunch === 'Allergy' ? 'Allergy' : (lunchRaw || 'No');
-                        updateCamper.run(color, shirt, lunch, existing.CamperID);
+                        updateCamper.run(color, shirt, lunch, ridesAM, ridesPM, existing.CamperID);
                         camperId = existing.CamperID;
                     } else {
-                        const info = insertCamper.run(firstName, lastName, color, shirt, lunchRaw || 'No');
+                        const info = insertCamper.run(firstName, lastName, color, shirt, lunchRaw || 'No', ridesAM ?? 1, ridesPM ?? 1);
                         camperId = info.lastInsertRowid;
                     }
 
@@ -3295,29 +3313,42 @@ app.get('/attendance', (req, res) => {
 
     // Bus sessions
     const busRoutes = db.prepare("SELECT DISTINCT BusRoute FROM Campers WHERE BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null' ORDER BY BusRoute").all().map(r => r.BusRoute);
-    const checkBusHandled = db.prepare(`
-        SELECT COUNT(*) as n FROM (
-            SELECT CamperID FROM Attendance
-            WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=?)
-            UNION
-            SELECT CamperID FROM EarlyDismissals WHERE Date=?
-              AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=?)
-        )
-    `);
+    const checkBusHandled = {
+        am: db.prepare(`
+            SELECT COUNT(*) as n FROM (
+                SELECT CamperID FROM Attendance
+                WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
+                  AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=? AND BusRidesAM=1)
+                UNION
+                SELECT CamperID FROM EarlyDismissals WHERE Date=?
+                  AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=? AND BusRidesAM=1)
+            )
+        `),
+        pm: db.prepare(`
+            SELECT COUNT(*) as n FROM (
+                SELECT CamperID FROM Attendance
+                WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
+                  AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=? AND BusRidesPM=1)
+                UNION
+                SELECT CamperID FROM EarlyDismissals WHERE Date=?
+                  AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=? AND BusRidesPM=1)
+            )
+        `)
+    };
     const busSessions = [];
     for (const route of busRoutes) {
-        const busTotal = db.prepare("SELECT COUNT(*) as n FROM Campers WHERE BusRoute=?").get(route)?.n || 0;
         for (const session of ['am', 'pm']) {
+            const ridesCol = session === 'pm' ? 'BusRidesPM' : 'BusRidesAM';
             const sessionType = `bus_${session}`;
-            const handled = checkBusHandled.get(date, sessionType, route, date, route)?.n || 0;
+            const busTotal = db.prepare(`SELECT COUNT(*) as n FROM Campers WHERE BusRoute=? AND ${ridesCol}=1`).get(route)?.n || 0;
+            const handled = checkBusHandled[session].get(date, sessionType, route, date, route)?.n || 0;
             const displayRoute = String(parseFloat(route) % 1 === 0 ? Math.trunc(parseFloat(route)) : route);
             busSessions.push({
                 label: `Bus ${displayRoute} — ${session.toUpperCase()}`,
                 route,
                 session: session,
                 link: `/attendance/bus/${encodeURIComponent(route)}/${session}?date=${date}`,
-                submitted: busTotal > 0 && handled >= busTotal
+                submitted: busTotal === 0 || handled >= busTotal
             });
         }
     }
@@ -3703,7 +3734,8 @@ app.get('/attendance/bus/:route/:session', (req, res) => {
     const sessionType = `bus_${session}`;
     const showAmIndicator = SHOW_AM_INDICATOR.has(sessionType);
 
-    const campers = db.prepare("SELECT * FROM Campers WHERE BusRoute=? ORDER BY LastName, FirstName").all(route);
+    const ridesCol = session === 'pm' ? 'BusRidesPM' : 'BusRidesAM';
+    const campers = db.prepare(`SELECT * FROM Campers WHERE BusRoute=? AND ${ridesCol}=1 ORDER BY LastName, FirstName`).all(route);
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
@@ -5588,7 +5620,8 @@ app.get('/reports/attendance-rosters', (_req, res) => {
 
     // ── Bus rosters ──────────────────────────────────────────────────────────
     const busRows = db.prepare(`
-        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.HomeGroupColor, ca.BusRoute
+        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.HomeGroupColor, ca.BusRoute,
+               ca.BusRidesAM, ca.BusRidesPM
         FROM Campers ca
         WHERE ca.BusRoute IS NOT NULL AND TRIM(ca.BusRoute) != '' AND LOWER(TRIM(ca.BusRoute)) != 'null'
         ORDER BY ca.BusRoute, ca.LastName, ca.FirstName
@@ -5597,10 +5630,11 @@ app.get('/reports/attendance-rosters', (_req, res) => {
     const busMap = {};
     busRows.forEach(r => {
         const route = r.BusRoute;
-        if (!busMap[route]) busMap[route] = [];
-        busMap[route].push(r);
+        if (!busMap[route]) busMap[route] = { am: [], pm: [] };
+        if (r.BusRidesAM !== 0) busMap[route].am.push(r);
+        if (r.BusRidesPM !== 0) busMap[route].pm.push(r);
     });
-    const busSheets = Object.entries(busMap).map(([route, campers]) => ({ route, campers }));
+    const busSheets = Object.entries(busMap).map(([route, { am, pm }]) => ({ route, campersAM: am, campersPM: pm }));
     const busSheetsByRoute = Object.fromEntries(busSheets.map(s => [s.route, s]));
 
     // ── Extended care rosters ────────────────────────────────────────────────
