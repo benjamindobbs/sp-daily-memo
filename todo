@@ -1,0 +1,12 @@
+Need to change camper profile to show AM/PM bus with ability to edit each
+
+Add new pdf upload for Daily Schedule
+
+New Feature: Instant Alerts
+-Add ability to send out push notifications to specific users (should send push notif to user with that name set in preferences)
+-Add ability to create groups of staff/counselors
+-Create default user groups:
+-All Admin
+-All Unit Leaders
+-All AM Sports, AM Enrichment, PM Sports, PM Enrichment Counselors
+-All Counselors

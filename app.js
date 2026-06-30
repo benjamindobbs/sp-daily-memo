@@ -2444,13 +2444,17 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
     if (sections.length === 0) return res.redirect('/settings?message=Invalid+file+format+(ACR-005+expected)');
 
     const safeTrim = v => { const s = (v && typeof v === 'string') ? v.trim() : ''; return s.toLowerCase() === 'null' ? '' : s; };
-    // "AM Bus"/"PM Bus" columns hold either a stop name (rides=1), or "No AM/PM Bus Selected" /
-    // "No Bus X AM/PM" (rides=0). The route number itself stays sourced from ACR-255's "Bus Number"
-    // column — these flags only capture whether the camper rides in that direction.
+    // "AM Bus"/"PM Bus" columns hold either a named stop or one of two "no" patterns:
+    //   "No Bus N AM/PM"       → explicit one-direction opt-out for a specific bus → 0
+    //   "No AM/PM Bus Selected" → CampBrain default when no stop is configured; ambiguous →
+    //                             return null so COALESCE preserves the existing DB value.
+    // The route NUMBER comes from ACR-255's "Bus Number" column, not from this field.
     const parseRidesFlag = raw => {
         const v = (raw || '').trim();
         if (!v) return null;
-        return /^no\b/i.test(v) ? 0 : 1;
+        if (/^no\s+bus\s+\d/i.test(v)) return 0;   // "No Bus 2 AM", "No Bus 1 PM", etc.
+        if (/^no\b/i.test(v)) return null;           // "No AM Bus Selected" → preserve existing
+        return 1;                                     // named stop → rides
     };
     const findCamper    = db.prepare("SELECT CamperID, CampLunch FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
     const insertCamper  = db.prepare("INSERT INTO Campers (FirstName, LastName, HomeGroupColor, ShirtSize, CampLunch, BusRidesAM, BusRidesPM) VALUES (?,?,?,?,?,?,?)");
@@ -3877,11 +3881,11 @@ app.post('/attendance/mark', (req, res) => {
 app.get('/attendance/late-arrivals', (req, res) => {
     const date = req.query.date || todayStr();
     const campers = db.prepare(`
-        SELECT c.*, a.Status AS AttendanceStatus, a.SessionType AS AttSessionType
+        SELECT c.*, a.Status AS AttendanceStatus, a.SessionType AS AttSessionType, a.MarkedAt AS CheckInTime
         FROM Campers c
         JOIN Attendance a ON c.CamperID = a.CamperID
-        WHERE a.Date = ? AND a.SessionType IN ('homegroup_am','specialty_am') AND a.Status = 'absent'
-        ORDER BY c.HomeGroupColor, c.LastName, c.FirstName
+        WHERE a.Date = ? AND a.SessionType IN ('homegroup_am','specialty_am') AND a.Status IN ('absent','late')
+        ORDER BY a.Status ASC, c.HomeGroupColor, c.LastName, c.FirstName
     `).all(date);
 
     const roster = campers.map(c => {

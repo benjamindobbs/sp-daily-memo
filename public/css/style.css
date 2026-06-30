@@ -383,6 +383,8 @@ body {
 .sched-pill { font-size: 0.7rem; background: #f1f5f9; color: var(--text-muted); padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
 .btn-checkin { padding: 7px 16px; background: #22c55e; color: white; border: none; border-radius: 6px; font-weight: 700; font-size: 0.82rem; cursor: pointer; font-family: inherit; }
 .btn-checkin:hover { background: #16a34a; }
+.late-row.arrived td { opacity: 0.45; }
+.late-row.arrived .camper-name-link { text-decoration: line-through; }
 
 /* ============================================================
    ATTENDANCE OVERVIEW

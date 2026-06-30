@@ -147,6 +147,23 @@ The attendance overview progress counter for bus routes similarly tracks only AM
 
 Campers who arrive after the normal start time are checked in via `GET /attendance/late-arrivals` and `POST /attendance/check-in`. This includes campers marked absent on both `homegroup_am` and `specialty_am` session types, so specialty camp (SPRC, KinderPlace, LilPlace) absences appear alongside main camp absences. Checking a camper in updates the correct session type based on their `HomeGroupColor`.
 
+### Check-in behavior
+
+When a camper is checked in (`Status` updated from `absent` → `late`), the late arrivals grid continues to show them with:
+- Strikethrough name text and dimmed row
+- A green **✓ Arrived** label instead of the Check In button
+
+Arrived rows are automatically hidden by a client-side timer once the period they were checked into has ended. Period end cutoffs (EDT):
+
+| Checked in before | Row hidden after |
+|---|---|
+| 10:35 AM | 10:35 AM (block 1 over for all groups) |
+| 1:00 PM | 1:00 PM (blocks 2/3 over for all groups) |
+| 2:40 PM | 2:40 PM (block 4 over for all groups) |
+| 4:05 PM | 4:05 PM (end of camp day) |
+
+The empty state ("No late arrivals") is shown automatically once all rows are either hidden or absent rows have been cleared.
+
 ---
 
 ## Schedule Change Log

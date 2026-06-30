@@ -54,14 +54,13 @@
         </div>
 
         <div class="late-card table-scroll">
-            <% if (roster.length === 0) { %>
-                <div class="empty-state">
-                    <span style="font-size: 2.5rem;">&#10003;</span>
-                    <p style="font-weight: 600; margin-top: 10px;">No late arrivals for this date.</p>
-                    <p style="font-size: 0.875rem;">All campers marked absent this morning have checked in, or no morning attendance has been taken yet.</p>
-                </div>
-            <% } else { %>
-                <table class="late-table">
+            <div class="empty-state" id="emptyState" style="<%= roster.length > 0 ? 'display:none;' : '' %>">
+                <span style="font-size: 2.5rem;">&#10003;</span>
+                <p style="font-weight: 600; margin-top: 10px;">No late arrivals for this date.</p>
+                <p style="font-size: 0.875rem;">All campers marked absent this morning have checked in, or no morning attendance has been taken yet.</p>
+            </div>
+            <% if (roster.length > 0) { %>
+                <table class="late-table" id="lateTable">
                     <thead>
                         <tr>
                             <th>Camper</th>
@@ -71,8 +70,12 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <% roster.forEach(function(c) { %>
-                        <tr>
+                        <% roster.forEach(function(c) {
+                            const isLate = c.AttendanceStatus === 'late';
+                        %>
+                        <tr class="late-row<%= isLate ? ' arrived' : '' %>"
+                            data-status="<%= c.AttendanceStatus %>"
+                            data-checkin="<%= isLate && c.CheckInTime ? c.CheckInTime : '' %>">
                             <td>
                                 <a href="/search?name=<%= encodeURIComponent(c.FirstName+' '+c.LastName) %>"
                                    class="camper-name-link">
@@ -91,11 +94,15 @@
                                 </div>
                             </td>
                             <td style="text-align:right;">
-                                <form action="/attendance/check-in" method="POST" style="display:inline;">
-                                    <input type="hidden" name="date" value="<%= date %>">
-                                    <input type="hidden" name="camperId" value="<%= c.CamperID %>">
-                                    <button type="submit" class="btn-checkin">&#10003; Check In</button>
-                                </form>
+                                <% if (isLate) { %>
+                                    <span style="color:#15803d; font-weight:600; font-size:0.875rem;">&#10003; Arrived</span>
+                                <% } else { %>
+                                    <form action="/attendance/check-in" method="POST" style="display:inline;">
+                                        <input type="hidden" name="date" value="<%= date %>">
+                                        <input type="hidden" name="camperId" value="<%= c.CamperID %>">
+                                        <button type="submit" class="btn-checkin">&#10003; Check In</button>
+                                    </form>
+                                <% } %>
                             </td>
                         </tr>
                         <% }); %>
@@ -103,6 +110,66 @@
                 </table>
             <% } %>
         </div>
+
+        <script>
+        (function () {
+            // Period end cutoffs in minutes from midnight EDT (UTC-4, summer)
+            // A "late" row is hidden once the period it was checked into has ended for all groups.
+            // Boundaries: block 1 ends 10:35, blocks 2/3 end 13:00, block 4 ends 14:40, rest end 16:05
+            var CUTOFFS = [635, 780, 880, 965]; // 10:35, 13:00, 14:40, 16:05
+
+            function edtMinsNow() {
+                var d = new Date();
+                return (d.getUTCHours() * 60 + d.getUTCMinutes() - 240 + 1440) % 1440;
+            }
+
+            function checkInEDTMins(checkInStr) {
+                // checkInStr is SQLite CURRENT_TIMESTAMP: "YYYY-MM-DD HH:MM:SS" in UTC
+                if (!checkInStr) return null;
+                var parts = checkInStr.match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
+                if (!parts) return null;
+                var utcH = parseInt(parts[4], 10);
+                var utcM = parseInt(parts[5], 10);
+                return (utcH * 60 + utcM - 240 + 1440) % 1440;
+            }
+
+            function periodEndFor(checkInMins) {
+                for (var i = 0; i < CUTOFFS.length; i++) {
+                    if (checkInMins < CUTOFFS[i]) return CUTOFFS[i];
+                }
+                return CUTOFFS[CUTOFFS.length - 1];
+            }
+
+            function applyVisibility() {
+                var nowMins = edtMinsNow();
+                var rows = document.querySelectorAll('tr.late-row.arrived');
+                var anyVisible = document.querySelectorAll('tr.late-row:not(.arrived)').length > 0;
+
+                rows.forEach(function (row) {
+                    var checkIn = checkInEDTMins(row.dataset.checkin);
+                    if (checkIn === null) return;
+                    var endMins = periodEndFor(checkIn);
+                    if (nowMins >= endMins) {
+                        row.style.display = 'none';
+                    } else {
+                        anyVisible = true;
+                    }
+                });
+
+                var empty = document.getElementById('emptyState');
+                if (empty) empty.style.display = anyVisible ? 'none' : '';
+
+                var table = document.getElementById('lateTable');
+                if (table) {
+                    var visibleRows = table.querySelectorAll('tr.late-row:not([style*="display: none"]):not([style*="display:none"])');
+                    if (visibleRows.length === 0 && empty) empty.style.display = '';
+                }
+            }
+
+            applyVisibility();
+            setInterval(applyVisibility, 30000);
+        })();
+        </script>
 
         <% if (dismissed && dismissed.length > 0) { %>
         <h2 style="margin:32px 0 12px; font-size:1.1rem;">&#128663; Early Dismissals</h2>
