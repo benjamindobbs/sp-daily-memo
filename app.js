@@ -310,6 +310,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/split-scheduling', '/save-split-assignments',
     '/reports', '/upload-pdf',
     '/create-staff', '/create-camper', '/assign-camper-schedule', '/get-new-camper-options', '/assign-camper-class',
+    '/alerts', '/api/alerts',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -1020,6 +1021,32 @@ db.exec(`CREATE TABLE IF NOT EXISTS PushSubscriptions (
     subscription TEXT   NOT NULL,
     CreatedAt   DATETIME DEFAULT CURRENT_TIMESTAMP
 )`);
+
+db.exec(`CREATE TABLE IF NOT EXISTS AlertGroups (
+    GroupID   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name      TEXT NOT NULL UNIQUE,
+    isSystem  INTEGER NOT NULL DEFAULT 0,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS AlertGroupMembers (
+    GroupID     INTEGER NOT NULL REFERENCES AlertGroups(GroupID) ON DELETE CASCADE,
+    CounselorID INTEGER NOT NULL REFERENCES Counselors(CounselorID) ON DELETE CASCADE,
+    PRIMARY KEY (GroupID, CounselorID)
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS AlertLog (
+    AlertID       INTEGER PRIMARY KEY AUTOINCREMENT,
+    message       TEXT NOT NULL,
+    targetLabel   TEXT NOT NULL,
+    sentBy        TEXT,
+    sentAt        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deliveryCount INTEGER DEFAULT 0
+)`);
+const SYSTEM_ALERT_GROUPS = [
+    'All Counselors', 'All Unit Leaders', 'All Admin',
+    'All AM Sports', 'All PM Sports', 'All AM Enrichment', 'All PM Enrichment',
+];
+const seedGroup = db.prepare("INSERT OR IGNORE INTO AlertGroups (name, isSystem) VALUES (?, 1)");
+for (const name of SYSTEM_ALERT_GROUPS) seedGroup.run(name);
 
 // Load or generate VAPID keys (stored in DB so they survive redeploys)
 let vapidPublicKey  = db.prepare("SELECT value FROM AppConfig WHERE key='vapidPublicKey'").get()?.value;
@@ -5104,6 +5131,159 @@ app.post('/api/push-subscribe', (req, res) => {
         ON CONFLICT(endpoint) DO UPDATE SET CounselorID=excluded.CounselorID, subscription=excluded.subscription
     `).run(counselorId, sub.endpoint, JSON.stringify(sub));
     res.json({ ok: true });
+});
+
+// --- INSTANT ALERTS ---
+
+function resolveAlertCounselorIds(group) {
+    const aw = getActiveWeek();
+    const name = group.name;
+    if (name === 'All Counselors')
+        return db.prepare("SELECT CounselorID FROM Counselors WHERE StaffRole IN ('Counselor','Swim Counselor')").all().map(r => r.CounselorID);
+    if (name === 'All Unit Leaders')
+        return db.prepare("SELECT CounselorID FROM Counselors WHERE StaffRole = 'Unit Leader'").all().map(r => r.CounselorID);
+    if (name === 'All Admin') {
+        return db.prepare(`
+            SELECT c.CounselorID FROM AdminUsers a
+            JOIN Counselors c ON UPPER(c.FirstName || ' ' || c.LastName) = UPPER(a.name)
+        `).all().map(r => r.CounselorID);
+    }
+    const ST_AM_SPORTS     = ["'All Sports'","'AM Sports / PM Enrichment'","'AM Sports Only'"];
+    const ST_PM_SPORTS     = ["'All Sports'","'AM Enrichment / PM Sports'","'PM Sports Only'"];
+    const ST_AM_ENRICHMENT = ["'All Enrichment'","'AM Enrichment / PM Sports'","'AM Enrichment Only'"];
+    const ST_PM_ENRICHMENT = ["'All Enrichment'","'AM Sports / PM Enrichment'","'PM Enrichment Only'"];
+    const scheduleTypeMap = {
+        'All AM Sports':     ST_AM_SPORTS,
+        'All PM Sports':     ST_PM_SPORTS,
+        'All AM Enrichment': ST_AM_ENRICHMENT,
+        'All PM Enrichment': ST_PM_ENRICHMENT,
+    };
+    if (scheduleTypeMap[name]) {
+        const inList = scheduleTypeMap[name].join(',');
+        return db.prepare(`
+            SELECT DISTINCT CounselorID FROM CounselorWeekAttributes
+            WHERE WeekNumber = ? AND ScheduleType IN (${inList})
+        `).all(aw).map(r => r.CounselorID);
+    }
+    // Custom group
+    return db.prepare(`
+        SELECT CounselorID FROM AlertGroupMembers WHERE GroupID = ?
+    `).all(group.GroupID).map(r => r.CounselorID);
+}
+
+function resolveAlertTargets(targetType, targetId) {
+    if (targetType === 'individual') {
+        const subs = db.prepare("SELECT * FROM PushSubscriptions WHERE CounselorID = ?").all(targetId);
+        return subs;
+    }
+    const group = db.prepare("SELECT * FROM AlertGroups WHERE GroupID = ?").get(targetId);
+    if (!group) return [];
+    const ids = resolveAlertCounselorIds(group);
+    if (ids.length === 0) return [];
+    const placeholders = ids.map(() => '?').join(',');
+    return db.prepare(`SELECT * FROM PushSubscriptions WHERE CounselorID IN (${placeholders})`).all(...ids);
+}
+
+function sendInstantAlert(message, targetLabel, targets, sentBy) {
+    const payload = JSON.stringify({ title: 'Camp Alert', body: message, url: '/staff', tag: 'instant-alert' });
+    let delivered = 0;
+    for (const row of targets) {
+        try {
+            const sub = JSON.parse(row.subscription);
+            webPush.sendNotification(sub, payload)
+                .then(() => { delivered++; })
+                .catch(err => {
+                    if (err.statusCode === 410 || err.statusCode === 404) {
+                        db.prepare("DELETE FROM PushSubscriptions WHERE endpoint=?").run(row.endpoint);
+                    }
+                });
+        } catch (_) {}
+    }
+    db.prepare("INSERT INTO AlertLog (message, targetLabel, sentBy, deliveryCount) VALUES (?,?,?,?)")
+        .run(message, targetLabel, sentBy || null, targets.length);
+}
+
+app.get('/alerts', (req, res) => {
+    const groups      = db.prepare("SELECT * FROM AlertGroups ORDER BY isSystem DESC, name").all();
+    const counselors  = db.prepare("SELECT CounselorID, FirstName, LastName, StaffRole FROM Counselors ORDER BY LastName, FirstName").all();
+    const log         = db.prepare("SELECT * FROM AlertLog ORDER BY sentAt DESC LIMIT 50").all();
+    const memberRows  = db.prepare("SELECT GroupID, CounselorID FROM AlertGroupMembers").all();
+    const memberMap   = {};
+    for (const r of memberRows) {
+        if (!memberMap[r.GroupID]) memberMap[r.GroupID] = new Set();
+        memberMap[r.GroupID].add(r.CounselorID);
+    }
+    const flash = req.query.message || null;
+    res.render('alerts', { groups, counselors, log, memberMap, flash, viewMode: 'admin' });
+});
+
+app.post('/alerts/send', (req, res) => {
+    const message    = (req.body.message || '').trim().slice(0, 200);
+    const targetType = req.body.targetType; // 'group' or 'individual'
+    const targetId   = parseInt(req.body.targetId);
+    if (!message || !targetType || !targetId) return res.redirect('/alerts?message=Missing+fields');
+
+    let targetLabel;
+    if (targetType === 'group') {
+        const g = db.prepare("SELECT name FROM AlertGroups WHERE GroupID = ?").get(targetId);
+        targetLabel = g ? g.name : `Group ${targetId}`;
+    } else {
+        const c = db.prepare("SELECT FirstName, LastName FROM Counselors WHERE CounselorID = ?").get(targetId);
+        targetLabel = c ? `${c.FirstName} ${c.LastName}` : `Counselor ${targetId}`;
+    }
+
+    const targets = resolveAlertTargets(targetType, targetId);
+    const sentBy  = req.cookies.adminName || null;
+    sendInstantAlert(message, targetLabel, targets, sentBy);
+    res.redirect(`/alerts?message=Alert+sent+to+${encodeURIComponent(targetLabel)}+(${targets.length}+subscriber${targets.length === 1 ? '' : 's'})`);
+});
+
+app.get('/api/alerts/preview', (req, res) => {
+    const targetType = req.query.targetType;
+    const targetId   = parseInt(req.query.targetId);
+    if (!targetType || !targetId) return res.json({ count: 0, names: [] });
+    const targets = resolveAlertTargets(targetType, targetId);
+    const ids = [...new Set(targets.map(t => t.CounselorID))];
+    const names = ids.length
+        ? db.prepare(`SELECT FirstName || ' ' || LastName AS name FROM Counselors WHERE CounselorID IN (${ids.map(() => '?').join(',')}) ORDER BY LastName`).all(...ids).map(r => r.name)
+        : [];
+    res.json({ count: targets.length, names });
+});
+
+app.post('/alerts/groups', (req, res) => {
+    const name    = (req.body.name || '').trim();
+    const members = [].concat(req.body.members || []).map(Number).filter(Boolean);
+    if (!name) return res.redirect('/alerts?message=Group+name+required');
+    try {
+        const info = db.prepare("INSERT INTO AlertGroups (name, isSystem) VALUES (?, 0)").run(name);
+        const gid  = info.lastInsertRowid;
+        const ins  = db.prepare("INSERT OR IGNORE INTO AlertGroupMembers (GroupID, CounselorID) VALUES (?, ?)");
+        db.transaction(() => { for (const cid of members) ins.run(gid, cid); })();
+    } catch (e) {
+        return res.redirect('/alerts?message=Group+name+already+exists');
+    }
+    res.redirect('/alerts?message=Group+created');
+});
+
+app.post('/alerts/groups/:id/delete', (req, res) => {
+    const gid   = parseInt(req.params.id);
+    const group = db.prepare("SELECT isSystem FROM AlertGroups WHERE GroupID = ?").get(gid);
+    if (!group || group.isSystem) return res.redirect('/alerts?message=Cannot+delete+system+group');
+    db.prepare("DELETE FROM AlertGroups WHERE GroupID = ?").run(gid);
+    res.redirect('/alerts?message=Group+deleted');
+});
+
+app.post('/alerts/groups/:id/members', (req, res) => {
+    const gid   = parseInt(req.params.id);
+    const group = db.prepare("SELECT isSystem FROM AlertGroups WHERE GroupID = ?").get(gid);
+    if (!group || group.isSystem) return res.redirect('/alerts?message=Cannot+edit+system+group');
+    const members = [].concat(req.body.members || []).map(Number).filter(Boolean);
+    const ins = db.prepare("INSERT OR IGNORE INTO AlertGroupMembers (GroupID, CounselorID) VALUES (?, ?)");
+    db.transaction(() => {
+        db.prepare("DELETE FROM AlertGroupMembers WHERE GroupID = ?").run(gid);
+        for (const cid of members) ins.run(gid, cid);
+    })();
+    res.redirect('/alerts?message=Group+updated');
 });
 
 app.get('/counselor-preferences', (req, res) => {

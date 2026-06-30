@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instant Alerts | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+</head>
+<body>
+
+<nav class="nav-bar">
+    <a href="/admin" class="nav-btn">&#127968; Hub</a>
+    <a href="/alerts" class="nav-btn primary">&#128226; Alerts</a>
+    <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+    <a href="/dismissals" class="nav-btn">&#128663; Dismissals</a>
+    <a href="/nurse" class="nav-btn">&#128137; Nurse</a>
+    <a href="/settings" class="nav-btn">&#9881;&#65039; Settings</a>
+</nav>
+
+<div class="container">
+    <h1>&#128226; Instant Alerts</h1>
+
+    <% if (flash) { %>
+        <div class="alert"><%= flash %></div>
+    <% } %>
+
+    <%
+    const systemGroups = groups.filter(g => g.isSystem);
+    const customGroups = groups.filter(g => !g.isSystem);
+    %>
+
+    <!-- ── SEND ALERT ───────────────────────────────────────────────── -->
+    <div class="card" style="margin-bottom:24px;">
+        <h2 style="margin:0 0 16px;">Send Alert</h2>
+
+        <form id="alertForm" action="/alerts/send" method="POST">
+            <div style="margin-bottom:14px;">
+                <label style="font-weight:600; display:block; margin-bottom:6px;">Message</label>
+                <textarea name="message" id="alertMsg" maxlength="200" required
+                    style="width:100%; min-height:80px; font-size:0.95rem; padding:8px; border:1px solid #d1d5db; border-radius:6px; resize:vertical; box-sizing:border-box;"
+                    placeholder="Type your alert message…"></textarea>
+                <div style="text-align:right; font-size:0.75rem; color:#6b7280; margin-top:2px;">
+                    <span id="charCount">0</span>/200
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label style="font-weight:600; display:block; margin-bottom:8px;">Target</label>
+                <div style="display:flex; gap:16px; margin-bottom:10px;">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:500;">
+                        <input type="radio" name="targetType" value="group" id="targetGroup" checked> Group
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:500;">
+                        <input type="radio" name="targetType" value="individual" id="targetIndividual"> Individual
+                    </label>
+                </div>
+
+                <div id="groupPanel">
+                    <select name="targetId" id="groupSelect" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:0.9rem;">
+                        <optgroup label="System Groups">
+                            <% for (const g of systemGroups) { %>
+                            <option value="<%= g.GroupID %>"><%= g.name %></option>
+                            <% } %>
+                        </optgroup>
+                        <% if (customGroups.length > 0) { %>
+                        <optgroup label="Custom Groups">
+                            <% for (const g of customGroups) { %>
+                            <option value="<%= g.GroupID %>"><%= g.name %></option>
+                            <% } %>
+                        </optgroup>
+                        <% } %>
+                    </select>
+                </div>
+
+                <div id="individualPanel" style="display:none;">
+                    <select name="targetId" id="counselorSelect" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:0.9rem;" disabled>
+                        <% for (const c of counselors) { %>
+                        <option value="<%= c.CounselorID %>"><%= c.FirstName %> <%= c.LastName %> — <%= c.StaffRole %></option>
+                        <% } %>
+                    </select>
+                </div>
+            </div>
+
+            <div id="previewLine" style="font-size:0.82rem; color:#6b7280; margin-bottom:12px; min-height:1.2em;"></div>
+
+            <button type="submit" class="btn primary">&#128226; Send Alert</button>
+        </form>
+    </div>
+
+    <!-- ── CUSTOM GROUPS ─────────────────────────────────────────────── -->
+    <div class="card" style="margin-bottom:24px;">
+        <h2 style="margin:0 0 16px;">Custom Groups</h2>
+
+        <% if (customGroups.length === 0) { %>
+            <p style="color:#6b7280; font-size:0.88rem; margin:0 0 16px;">No custom groups yet. Create one below.</p>
+        <% } else { %>
+        <div style="margin-bottom:20px;">
+            <% for (const g of customGroups) { %>
+            <details style="border:1px solid #e5e7eb; border-radius:6px; margin-bottom:8px;">
+                <summary style="padding:10px 14px; cursor:pointer; font-weight:600; display:flex; justify-content:space-between; align-items:center; list-style:none;">
+                    <span><%= g.name %> <span style="font-weight:400; font-size:0.8rem; color:#6b7280;">(<%= (memberMap[g.GroupID] || new Set()).size %> members)</span></span>
+                    <form action="/alerts/groups/<%= g.GroupID %>/delete" method="POST" style="display:inline;" onsubmit="return confirm('Delete group <%= g.name %>?')">
+                        <button type="submit" class="btn btn-small" style="background:#fee2e2;color:#991b1b;border:none;font-size:0.75rem;padding:2px 8px;cursor:pointer;">Delete</button>
+                    </form>
+                </summary>
+                <div style="padding:10px 14px; border-top:1px solid #e5e7eb;">
+                    <form action="/alerts/groups/<%= g.GroupID %>/members" method="POST">
+                        <div style="display:flex; flex-wrap:wrap; gap:6px 20px; margin-bottom:10px;">
+                            <% for (const c of counselors) { %>
+                            <label style="display:flex; align-items:center; gap:5px; font-size:0.85rem; cursor:pointer;">
+                                <input type="checkbox" name="members" value="<%= c.CounselorID %>"
+                                    <%= (memberMap[g.GroupID] && memberMap[g.GroupID].has(c.CounselorID)) ? 'checked' : '' %>>
+                                <%= c.FirstName %> <%= c.LastName %>
+                            </label>
+                            <% } %>
+                        </div>
+                        <button type="submit" class="btn primary btn-small">Save Members</button>
+                    </form>
+                </div>
+            </details>
+            <% } %>
+        </div>
+        <% } %>
+
+        <details>
+            <summary style="cursor:pointer; font-weight:600; font-size:0.9rem; color:#2563eb; padding:4px 0;">+ New Custom Group</summary>
+            <form action="/alerts/groups" method="POST" style="margin-top:12px;">
+                <div style="margin-bottom:10px;">
+                    <input type="text" name="name" required placeholder="Group name" maxlength="80"
+                        style="width:100%; padding:7px 10px; border:1px solid #d1d5db; border-radius:6px; font-size:0.9rem; box-sizing:border-box;">
+                </div>
+                <div style="display:flex; flex-wrap:wrap; gap:6px 20px; margin-bottom:10px;">
+                    <% for (const c of counselors) { %>
+                    <label style="display:flex; align-items:center; gap:5px; font-size:0.85rem; cursor:pointer;">
+                        <input type="checkbox" name="members" value="<%= c.CounselorID %>">
+                        <%= c.FirstName %> <%= c.LastName %>
+                    </label>
+                    <% } %>
+                </div>
+                <button type="submit" class="btn primary btn-small">Create Group</button>
+            </form>
+        </details>
+    </div>
+
+    <!-- ── ALERT HISTORY ─────────────────────────────────────────────── -->
+    <div class="card">
+        <h2 style="margin:0 0 16px;">Alert History</h2>
+        <% if (log.length === 0) { %>
+            <p style="color:#6b7280; font-size:0.88rem; margin:0;">No alerts sent yet.</p>
+        <% } else { %>
+        <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                <thead>
+                    <tr style="background:#f9fafb; border-bottom:2px solid #e5e7eb;">
+                        <th style="text-align:left; padding:8px 10px; font-weight:600;">Message</th>
+                        <th style="text-align:left; padding:8px 10px; font-weight:600;">Target</th>
+                        <th style="text-align:left; padding:8px 10px; font-weight:600;">Sent by</th>
+                        <th style="text-align:left; padding:8px 10px; font-weight:600;">Time</th>
+                        <th style="text-align:right; padding:8px 10px; font-weight:600;">Delivered</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% for (const entry of log) { %>
+                    <tr style="border-bottom:1px solid #f3f4f6;">
+                        <td style="padding:8px 10px; max-width:300px; word-break:break-word;"><%= entry.message %></td>
+                        <td style="padding:8px 10px; white-space:nowrap;"><%= entry.targetLabel %></td>
+                        <td style="padding:8px 10px; white-space:nowrap; color:#6b7280;"><%= entry.sentBy || '—' %></td>
+                        <td style="padding:8px 10px; white-space:nowrap; color:#6b7280;"><%= new Date(entry.sentAt + 'Z').toLocaleString('en-US', {timeZone:'America/New_York', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) %></td>
+                        <td style="padding:8px 10px; text-align:right;"><%= entry.deliveryCount %></td>
+                    </tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+        <% } %>
+    </div>
+</div>
+
+<script>
+(function () {
+    const msgEl      = document.getElementById('alertMsg');
+    const charCount  = document.getElementById('charCount');
+    const groupRadio = document.getElementById('targetGroup');
+    const indRadio   = document.getElementById('targetIndividual');
+    const groupPanel = document.getElementById('groupPanel');
+    const indPanel   = document.getElementById('individualPanel');
+    const groupSel   = document.getElementById('groupSelect');
+    const indSel     = document.getElementById('counselorSelect');
+    const preview    = document.getElementById('previewLine');
+
+    msgEl.addEventListener('input', () => { charCount.textContent = msgEl.value.length; });
+
+    function togglePanels() {
+        const isGroup = groupRadio.checked;
+        groupPanel.style.display = isGroup ? '' : 'none';
+        indPanel.style.display   = isGroup ? 'none' : '';
+        groupSel.disabled        = !isGroup;
+        indSel.disabled          = isGroup;
+        fetchPreview();
+    }
+    groupRadio.addEventListener('change', togglePanels);
+    indRadio.addEventListener('change', togglePanels);
+    groupSel.addEventListener('change', fetchPreview);
+    indSel.addEventListener('change', fetchPreview);
+
+    function fetchPreview() {
+        const type = groupRadio.checked ? 'group' : 'individual';
+        const id   = groupRadio.checked ? groupSel.value : indSel.value;
+        if (!id) { preview.textContent = ''; return; }
+        fetch(`/api/alerts/preview?targetType=${type}&targetId=${id}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.count === 0) {
+                    preview.textContent = 'No subscribers registered for this target.';
+                } else {
+                    preview.textContent = `Sends to ${data.count} subscriber${data.count === 1 ? '' : 's'}: ${data.names.join(', ')}`;
+                }
+            })
+            .catch(() => { preview.textContent = ''; });
+    }
+
+    fetchPreview();
+})();
+</script>
+
+</body>
+</html>

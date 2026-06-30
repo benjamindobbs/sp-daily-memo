@@ -107,6 +107,19 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 
 ---
 
+## Instant Alerts
+
+| Method | Path | Admin only | Description |
+|---|---|:---:|---|
+| GET | `/alerts` | ✓ | Alerts page — compose form, custom group manager, alert history |
+| POST | `/alerts/send` | ✓ | Send an alert: `{ message, targetType: 'group'\|'individual', targetId }` |
+| GET | `/api/alerts/preview` | ✓ | AJAX: `?targetType=&targetId=` → `{ count, names[] }` — how many subscribers would receive |
+| POST | `/alerts/groups` | ✓ | Create a custom group: `{ name, members[] }` |
+| POST | `/alerts/groups/:id/delete` | ✓ | Delete a custom group (system groups cannot be deleted) |
+| POST | `/alerts/groups/:id/members` | ✓ | Replace the member list for a custom group |
+
+---
+
 ## Counselor Preferences
 
 | Method | Path | Admin only | Description |

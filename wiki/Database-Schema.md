@@ -507,3 +507,44 @@ Web Push API subscriptions for counselor attendance nudge notifications.
 | `CreatedAt` | DATETIME | |
 
 One row per browser/device. If a push send fails with 410 or 404 (subscription expired/unsubscribed), the row is automatically deleted.
+
+---
+
+## AlertGroups
+
+Named targeting groups for Instant Alerts. System groups (`isSystem=1`) are seeded at startup and resolved dynamically at send-time; they cannot be deleted. Custom groups (`isSystem=0`) have explicit member lists stored in `AlertGroupMembers`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `GroupID` | INTEGER PK | |
+| `name` | TEXT | UNIQUE |
+| `isSystem` | INTEGER | `1` = built-in system group, `0` = admin-created custom group |
+| `createdAt` | DATETIME | |
+
+**System groups:** All Counselors · All Unit Leaders · All Admin · All AM Sports · All PM Sports · All AM Enrichment · All PM Enrichment
+
+---
+
+## AlertGroupMembers
+
+Junction table linking custom `AlertGroups` to their member `Counselors`. Not used for system groups (those are resolved from live data at send time).
+
+| Column | Type | Notes |
+|---|---|---|
+| `GroupID` | INTEGER PK | FK → `AlertGroups.GroupID` ON DELETE CASCADE |
+| `CounselorID` | INTEGER PK | FK → `Counselors.CounselorID` ON DELETE CASCADE |
+
+---
+
+## AlertLog
+
+Audit log of every sent Instant Alert.
+
+| Column | Type | Notes |
+|---|---|---|
+| `AlertID` | INTEGER PK | |
+| `message` | TEXT | The alert text (max 200 chars) |
+| `targetLabel` | TEXT | Human-readable target: group name or counselor full name |
+| `sentBy` | TEXT | `adminName` cookie value at time of send |
+| `sentAt` | DATETIME | |
+| `deliveryCount` | INTEGER | Number of push subscription endpoints the message was dispatched to |
