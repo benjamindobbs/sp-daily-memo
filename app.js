@@ -142,24 +142,51 @@ function computeClassAttStats(clockBlock, side, today) {
 }
 
 function computeExtAttStats(session, today) {
-    const n = db.prepare(
-        "SELECT COUNT(*) as n FROM Attendance WHERE Date=? AND SessionType=?"
-    ).get(today, `extended_${session}`)?.n || 0;
-    return { total: 1, submitted: n > 0 ? 1 : 0 };
+    const col = session === 'am' ? "('AM','Both')" : "('PM','Both')";
+    const extTotal = db.prepare(`SELECT COUNT(*) as n FROM Campers WHERE ExtendedHours IN ${col}`).get()?.n || 0;
+    if (extTotal === 0) return { total: 1, submitted: 1 };
+    const handled = db.prepare(`
+        SELECT COUNT(*) as n FROM (
+            SELECT CamperID FROM Attendance
+            WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
+              AND CamperID IN (SELECT CamperID FROM Campers WHERE ExtendedHours IN ${col})
+            UNION
+            SELECT CamperID FROM EarlyDismissals WHERE Date=?
+              AND CamperID IN (SELECT CamperID FROM Campers WHERE ExtendedHours IN ${col})
+        )
+    `).get(today, `extended_${session}`, today)?.n || 0;
+    return { total: 1, submitted: handled >= extTotal ? 1 : 0 };
 }
 
 function computeBusAttStats(session, today) {
     const ridesCol = session === 'pm' ? 'BusRidesPM' : 'BusRidesAM';
-    const total = db.prepare(`
-        SELECT COUNT(DISTINCT BusRoute) as n FROM Campers
+    const sessionType = `bus_${session}`;
+    const routes = db.prepare(`
+        SELECT DISTINCT BusRoute FROM Campers
         WHERE BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null' AND ${ridesCol} = 1
-    `).get().n || 0;
-    const submitted = db.prepare(`
-        SELECT COUNT(DISTINCT c.BusRoute) as n
-        FROM Attendance att
-        JOIN Campers c ON c.CamperID = att.CamperID
-        WHERE att.Date=? AND att.SessionType=? AND c.${ridesCol} = 1
-    `).get(today, `bus_${session}`)?.n || 0;
+    `).all().map(r => r.BusRoute);
+
+    const total = routes.length;
+    if (total === 0) return { total: 0, submitted: 0 };
+
+    const checkTotal   = db.prepare(`SELECT COUNT(*) as n FROM Campers WHERE BusRoute=? AND ${ridesCol}=1`);
+    const checkHandled = db.prepare(`
+        SELECT COUNT(*) as n FROM (
+            SELECT CamperID FROM Attendance
+            WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
+              AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=? AND ${ridesCol}=1)
+            UNION
+            SELECT CamperID FROM EarlyDismissals WHERE Date=?
+              AND CamperID IN (SELECT CamperID FROM Campers WHERE BusRoute=? AND ${ridesCol}=1)
+        )
+    `);
+
+    let submitted = 0;
+    for (const route of routes) {
+        const busTotal = checkTotal.get(route)?.n || 0;
+        const handled  = checkHandled.get(today, sessionType, route, today, route)?.n || 0;
+        if (busTotal === 0 || handled >= busTotal) submitted++;
+    }
     return { total, submitted };
 }
 
@@ -210,33 +237,51 @@ function computeHomegroupAttStats(session, today) {
     const aw = getActiveWeek();
     const hasWeekHgData = aw && db.prepare("SELECT 1 FROM CamperHomeGroups WHERE WeekNumber=? LIMIT 1").get(aw);
 
+    let counselors, checkHandled;
     if (hasWeekHgData) {
-        const total = db.prepare(`
-            SELECT COUNT(DISTINCT chg.CounselorID) as n
-            FROM CamperHomeGroups chg
-            WHERE chg.WeekNumber=?
-        `).get(aw).n || 0;
-        const submitted = db.prepare(`
-            SELECT COUNT(DISTINCT chg.CounselorID) as n
-            FROM Attendance att
-            JOIN CamperHomeGroups chg ON chg.CamperID = att.CamperID AND chg.WeekNumber=?
-            WHERE att.Date=? AND att.SessionType=?
-        `).get(aw, today, sessionType)?.n || 0;
-        return { total, submitted };
+        counselors = db.prepare(`
+            SELECT co.CounselorID, COUNT(chg.CamperID) as camperCount
+            FROM Counselors co
+            JOIN CamperHomeGroups chg ON chg.CounselorID = co.CounselorID AND chg.WeekNumber = ?
+            GROUP BY co.CounselorID
+        `).all(aw);
+        checkHandled = db.prepare(`
+            SELECT COUNT(*) as n FROM (
+                SELECT CamperID FROM Attendance
+                WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
+                  AND CamperID IN (SELECT CamperID FROM CamperHomeGroups WHERE CounselorID=? AND WeekNumber=?)
+                UNION
+                SELECT CamperID FROM EarlyDismissals WHERE Date=?
+                  AND CamperID IN (SELECT CamperID FROM CamperHomeGroups WHERE CounselorID=? AND WeekNumber=?)
+            )
+        `);
+    } else {
+        counselors = db.prepare(`
+            SELECT co.CounselorID, COUNT(ca.CamperID) as camperCount
+            FROM Counselors co
+            JOIN Campers ca ON ca.HomeGroupCounselorID = co.CounselorID
+            GROUP BY co.CounselorID
+        `).all();
+        checkHandled = db.prepare(`
+            SELECT COUNT(*) as n FROM (
+                SELECT CamperID FROM Attendance
+                WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
+                  AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupCounselorID=?)
+                UNION
+                SELECT CamperID FROM EarlyDismissals WHERE Date=?
+                  AND CamperID IN (SELECT CamperID FROM Campers WHERE HomeGroupCounselorID=?)
+            )
+        `);
     }
 
-    // Legacy fallback: use HomeGroupCounselorID directly on Campers
-    const total = db.prepare(`
-        SELECT COUNT(DISTINCT co.CounselorID) as n
-        FROM Counselors co
-        JOIN Campers ca ON ca.HomeGroupCounselorID = co.CounselorID
-    `).get().n || 0;
-    const submitted = db.prepare(`
-        SELECT COUNT(DISTINCT c.HomeGroupCounselorID) as n
-        FROM Attendance att
-        JOIN Campers c ON c.CamperID = att.CamperID
-        WHERE att.Date=? AND att.SessionType=?
-    `).get(today, sessionType)?.n || 0;
+    const total = counselors.length;
+    let submitted = 0;
+    for (const c of counselors) {
+        const handled = hasWeekHgData
+            ? checkHandled.get(today, sessionType, c.CounselorID, aw, today, c.CounselorID, aw)?.n || 0
+            : checkHandled.get(today, sessionType, c.CounselorID, today, c.CounselorID)?.n || 0;
+        if (c.camperCount === 0 || handled >= c.camperCount) submitted++;
+    }
     return { total, submitted };
 }
 
