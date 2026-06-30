@@ -102,6 +102,26 @@
         </div>
 
         <%
+        const winnerToShow = (photoPhase === 'winner' && todayWinner && todayWinner.votes > 0)
+            ? { ...todayWinner, label: "Today's Photo of the Day" }
+            : (yesterdayWinner && yesterdayWinner.votes > 0)
+                ? { ...yesterdayWinner, label: "Yesterday's Photo of the Day" }
+                : null;
+        %>
+        <% if (winnerToShow) { %>
+        <div class="card" style="margin-top:20px; display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;">
+            <img src="<%= winnerToShow.imageUrl %>" alt="Photo by <%= winnerToShow.counselorName %>"
+                 style="width:200px; height:150px; border-radius:10px; object-fit:cover; flex-shrink:0;">
+            <div style="flex:1; min-width:160px;">
+                <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:4px;">&#127942; <%= winnerToShow.label %></div>
+                <div style="font-size:1.2rem; font-weight:700; margin-bottom:4px;"><%= winnerToShow.counselorName.split(' ')[0] %></div>
+                <div style="font-size:0.82rem; color:var(--text-muted);"><%= winnerToShow.votes %> vote<%= winnerToShow.votes === 1 ? '' : 's' %></div>
+                <a href="/photo-gallery" style="display:inline-block; margin-top:8px; font-size:0.82rem; color:var(--primary);">View gallery &rarr;</a>
+            </div>
+        </div>
+        <% } %>
+
+        <%
         const anyAbsent = Object.values(absentByGroup).some(arr => arr.length > 0);
         %>
         <% if (anyAbsent) { %>
@@ -249,15 +269,6 @@
                 <% }); %>
             </div>
             <% } %>
-        </div>
-        <% } %>
-
-        <% if (yesterdayWinner && yesterdayWinner.votes > 0) { %>
-        <div class="card" style="margin-top:20px;">
-            <h3 style="margin:0 0 10px;">&#127942; Yesterday's Photo of the Day</h3>
-            <p style="margin:0 0 12px; font-size:0.95rem;">Congrats, <strong><%= yesterdayWinner.counselorName.split(' ')[0] %></strong>!</p>
-            <img src="<%= yesterdayWinner.imageUrl %>" alt="Photo by <%= yesterdayWinner.counselorName %>"
-                 style="width:100%; max-width:480px; border-radius:10px; object-fit:cover; aspect-ratio:4/3; display:block;">
         </div>
         <% } %>
 

@@ -1240,6 +1240,16 @@ app.get('/staff', (req, res) => {
 
     // --- Today's activity feed ---
     const today = todayStr();
+    const photoPhase = getPhotoPhase();
+    const todayWinner = photoPhase === 'winner'
+        ? db.prepare(`
+            SELECT p.counselorName, p.imageUrl, COUNT(v.id) as votes
+            FROM PhotoSubmissions p
+            LEFT JOIN PhotoVotes v ON v.photoId = p.id
+            WHERE p.date = ?
+            GROUP BY p.id ORDER BY votes DESC, p.submittedAt ASC LIMIT 1
+        `).get(today) || null
+        : null;
     const aw = getActiveWeek();
 
     // Build counselor roster camper ID set for filtering (if a counselor is selected)
@@ -1323,7 +1333,8 @@ app.get('/staff', (req, res) => {
     const absentByGroup = getAbsentByGroup(today, rosterCamperIds);
 
     res.render('staff-hub', {
-        selectedCounselorName, announcement, releasedSchedule, releasedSessionLabel, yesterdayWinner,
+        selectedCounselorName, announcement, releasedSchedule, releasedSessionLabel,
+        yesterdayWinner, todayWinner, photoPhase,
         todayPickups, todayLateArrivals, todayEarlyDismissals, todayScheduleChanges, today, absentByGroup
     });
 });
