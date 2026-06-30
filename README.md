@@ -54,6 +54,17 @@ All imports happen on the **Settings** page (`/settings`).
 | Master Camper Schedule (ACR-255) | ACR-255 export from camp management | Enriches existing campers with: grade, bus route, extended hours, activity schedule. Must run **after** camper roster import. **In CB:** Select All Seasons → add Session filter → select all SP W[X] - Period sessions (Periods 1–5) → Run report as CSV. |
 | Instructor Schedules | `FirstName`, `LastName`, `P1`–`P6`, `L1`–`L6` | Locations (`L1`–`L6`) are optional. Unknown names are auto-created as Instructors. Uploads to the **active week**. |
 
+#### Bus routes & the Bus Route Audit
+
+Bus assignment is read from two reports:
+
+- **Main camp** (Red/Carolina/Green/Navy) carries its real bus number on **ACR-255** — that's the source of truth for their route. (Even if their ACR-005 shows "No Bus Selected," they still ride; only an explicit "No Bus N AM/PM" takes them off that direction.)
+- **Specialty camp** (KinderPlace, Li'l Place, SPLIT, SPRC, Robotics) isn't on ACR-255, so their route comes from the ACR-005 bus **stop name**.
+
+Most specialty stops map cleanly to a bus, but two are ambiguous: **West Hartford** (Bus 2 or 5) and **Wolcott Park / Bishops Corner** (Bus 3 or 4). Those campers are parked with no route until you resolve them in **Settings → Bus Route Audit** (`/bus-audit`), which lists them in two sections with a dropdown to pick the bus. Run the audit after each ACR-005 re-import.
+
+**New: AM/PM Bus Attendance imports (ACR-132 / ACR-133).** These reports list every camper under their actual **Bus N** section, so the route and ride direction are unambiguous — no audit needed. Import **ACR-132 (AM Bus)** and **ACR-133 (PM Bus)** from Settings after the roster import; each sets every camper's route plus that direction's ride flag. This is a newer path being trialed alongside the ACR-005/255 bus handling.
+
 ---
 
 ### Faculty Full Summer — Multi-Week Setup
@@ -166,7 +177,7 @@ All profile editing requires **admin view**. Staff view shows the same pages rea
 2. Click the camper's name to open their profile (`/camper/:id`)
 3. The left column in admin view shows an editable **Camper Details** form with:
    - Home Counselor (dropdown, grouped by color)
-   - Bus Route
+   - Bus Route (text field) + **Rides AM Bus** / **Rides PM Bus** checkboxes — controls which direction bus sheets the camper appears on; clearing the route field automatically zeros both flags
    - Extended Hours (No / AM Only / PM Only / AM + PM)
    - Camp Lunch (No – Packed / Yes / Allergy Meal)
 4. Click **Save Changes** to commit

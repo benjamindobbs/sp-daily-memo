@@ -89,10 +89,20 @@
                         <div class="info-row">
                             <span class="info-label">Bus Route</span>
                         </div>
-                        <div style="margin-bottom: 16px;">
+                        <div style="margin-bottom: 8px;">
                             <input type="text" name="busRoute" value="<%= (camper.BusRoute && camper.BusRoute.toLowerCase() !== 'null') ? camper.BusRoute : '' %>"
-                                placeholder="e.g. Route 12"
+                                placeholder="Route number (e.g. 4)"
                                 style="width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.9rem; box-sizing:border-box;">
+                        </div>
+                        <div style="display:flex; gap:16px; margin-bottom:16px;">
+                            <label style="display:flex; align-items:center; gap:6px; font-size:0.875rem; cursor:pointer;">
+                                <input type="checkbox" name="busRidesAM" value="1" <%= camper.BusRidesAM ? 'checked' : '' %>>
+                                Rides AM Bus
+                            </label>
+                            <label style="display:flex; align-items:center; gap:6px; font-size:0.875rem; cursor:pointer;">
+                                <input type="checkbox" name="busRidesPM" value="1" <%= camper.BusRidesPM ? 'checked' : '' %>>
+                                Rides PM Bus
+                            </label>
                         </div>
 
                         <div class="info-row">
@@ -151,9 +161,13 @@
                     <div class="info-row" style="margin-top:12px;">
                         <span class="info-label">Bus Route</span>
                         <span class="info-value">
-                            <% var _br = camper.BusRoute; %>
-                            <% if (_br && _br.toLowerCase() !== 'null') { %>
-                                &#128652; <%= _br %>
+                            <% var _br = camper.BusRoute && camper.BusRoute.toLowerCase() !== 'null' ? camper.BusRoute : null; %>
+                            <% if (_br) { %>
+                                &#128652; Bus <%= _br %>
+                                <% var _dirs = [camper.BusRidesAM ? 'AM' : null, camper.BusRidesPM ? 'PM' : null].filter(Boolean); %>
+                                <% if (_dirs.length > 0 && _dirs.length < 2) { %>
+                                    <span style="font-size:0.78rem; color:var(--text-muted); margin-left:4px;">(<%= _dirs.join(' only') %>)</span>
+                                <% } %>
                             <% } else { %>
                                 <span class="text-muted">Parent Pickup</span>
                             <% } %>

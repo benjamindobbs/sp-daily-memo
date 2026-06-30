@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bus Route Audit | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+</head>
+<body>
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/settings" class="nav-btn">&#9881; Settings</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
+    </nav>
+
+    <div class="container-lg">
+        <header class="page-header">
+            <a href="/settings" class="back-link">&#8592; Settings</a>
+            <span class="pipe-sep">|</span>
+            <div>
+                <h1>&#128652; Bus Route Audit</h1>
+                <p>Specialty campers whose bus stop maps to more than one route. Pick the correct bus so they appear on the right sheet.</p>
+            </div>
+        </header>
+
+        <%
+            const sections = [
+                { title: 'West Hartford &mdash; Bus 2 or Bus 5', note: 'Two physical "West Hartford" stops share one label; one is on Bus 2, the other on Bus 5.', rows: westHartford, options: [2, 5] },
+                { title: 'Wolcott Park / Bishops Corner &mdash; Bus 3 or Bus 4', note: 'Buses 3 and 4 serve the same stops; the stop name can\'t tell them apart.', rows: wolcottBishops, options: [3, 4] }
+            ];
+            const totalPending = westHartford.length + wolcottBishops.length;
+        %>
+
+        <% if (totalPending === 0) { %>
+            <div class="late-card" style="text-align:center; padding:48px 20px; color:var(--text-muted);">
+                <span style="font-size: 2.5rem;">&#10003;</span>
+                <p style="font-weight: 600; margin-top: 10px;">No campers need a bus route review.</p>
+                <p style="font-size: 0.875rem;">Every specialty rider has a resolved route. New ambiguous riders will appear here after the next ACR-005 import.</p>
+            </div>
+        <% } %>
+
+        <% sections.forEach(function(sec) { %>
+            <% if (sec.rows.length > 0) { %>
+            <h2 style="margin:28px 0 6px; font-size:1.1rem;"><%- sec.title %> <span class="text-muted" style="font-size:0.85rem; font-weight:400;">(<%= sec.rows.length %>)</span></h2>
+            <p class="text-muted" style="margin:0 0 12px; font-size:0.85rem;"><%- sec.note %></p>
+            <div class="late-card table-scroll">
+                <table class="late-table">
+                    <thead>
+                        <tr>
+                            <th>Camper</th>
+                            <th>Program</th>
+                            <th>AM Stop</th>
+                            <th>PM Stop</th>
+                            <th style="text-align:right;">Assign Route</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% sec.rows.forEach(function(c) { %>
+                        <tr>
+                            <td>
+                                <a href="/search?name=<%= encodeURIComponent(c.FirstName+' '+c.LastName) %>" class="camper-name-link">
+                                    <%= c.FirstName %> <%= c.LastName %>
+                                </a>
+                            </td>
+                            <td><span class="tag <%= c.HomeGroupColor %>"><%= c.HomeGroupColor %></span></td>
+                            <td style="font-size:0.85rem;"><%= c.BusStopAM || '—' %></td>
+                            <td style="font-size:0.85rem;"><%= c.BusStopPM || '—' %></td>
+                            <td style="text-align:right;">
+                                <form action="/bus-audit/set" method="POST" style="display:inline-flex; gap:8px; align-items:center;">
+                                    <input type="hidden" name="camperId" value="<%= c.CamperID %>">
+                                    <select name="route" required
+                                        style="padding:7px 10px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.85rem; background:white;">
+                                        <option value="" disabled selected>— Bus —</option>
+                                        <% sec.options.forEach(function(opt) { %>
+                                        <option value="<%= opt %>">Bus <%= opt %></option>
+                                        <% }); %>
+                                    </select>
+                                    <button type="submit" class="btn btn-small btn-primary">Save</button>
+                                </form>
+                            </td>
+                        </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            </div>
+            <% } %>
+        <% }); %>
+    </div>
+</body>
+</html>

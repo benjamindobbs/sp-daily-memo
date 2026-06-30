@@ -45,7 +45,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/update-staff-period` | ✓ | Add/update one period on an instructor's weekly schedule |
 | POST | `/remove-staff-period` | ✓ | Remove one period from an instructor's weekly schedule |
 | GET | `/camper/:id` | | Individual camper profile |
-| POST | `/camper/:id/update` | ✓ | Edit camper fields (counselor, bus, extended hours, lunch) |
+| POST | `/camper/:id/update` | ✓ | Edit camper fields: `homeGroupCounselorID`, `busRoute`, `busRidesAM` (checkbox → `1`/`0`), `busRidesPM` (checkbox → `1`/`0`), `extendedHours`, `campLunch`. If `busRoute` is cleared, both ride flags are forced to `0`. |
 | POST | `/camper/:id/delete` | ✓ | Remove a camper from the roster |
 | GET | `/faculty-summer` | | Full-summer instructor schedule view |
 
@@ -203,6 +203,10 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/delete-activity-period-group` | ✓ | Remove a per-period group override |
 | POST | `/upload-campers` | ✓ | CSV import for camper roster (ACR-005) |
 | POST | `/upload-campers-schedule` | ✓ | CSV import for master schedule |
+| GET | `/bus-audit` | ✓ | Resolve specialty campers whose stop maps to >1 route (West Hartford 2/5, Wolcott Park / Bishops Corner 3/4) |
+| POST | `/bus-audit/set` | ✓ | Set `BusRoute` for one camper from the audit page (`camperId`, `route`) |
+| POST | `/upload-bus-am` | ✓ | CSV import of ACR-132 (AM Bus Attendance). Sets `BusRoute` + `BusRidesAM` per camper from the report's bus sections |
+| POST | `/upload-bus-pm` | ✓ | CSV import of ACR-133 (PM Bus Attendance). Sets `BusRoute` + `BusRidesPM` |
 | POST | `/upload-counselors` | ✓ | CSV import for all staff roster |
 | POST | `/upload-instructors` | ✓ | CSV import for instructor schedules |
 | POST | `/upload-staff-week/:weekNumber` | ✓ | Faculty full summer CSV upload for one week |

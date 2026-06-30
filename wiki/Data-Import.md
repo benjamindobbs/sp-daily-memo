@@ -56,8 +56,65 @@ Imports have dependencies. Always follow this sequence for a fresh setup:
 **What it does:**
 - Creates or updates camper records in `Campers`.
 - Sets: `FirstName`, `LastName`, `HomeGroupColor`, `CampLunch`, `ShirtSize`, `Age`.
-- Sets `BusRidesAM` and `BusRidesPM` from the `AM Bus` and `PM Bus` columns. A value beginning with "No" (e.g. "No AM Bus Selected") sets the flag to `0`; any other non-empty value sets it to `1`. If the column is absent, the existing flag is left unchanged.
+- Stores the raw `AM Bus` / `PM Bus` cell text in `BusStopAM` / `BusStopPM` (used by the Bus Route Audit).
+- Sets `BusRidesAM` / `BusRidesPM` and (for specialty campers) `BusRoute`. See the bus model below.
 - Does **not** set schedule data — that comes from the Master Camper Schedule (ACR-255) import.
+
+### Bus handling (the two-population model)
+
+The bus pipeline is split by camper type, because the two CampBrain reports cover different people:
+
+- **Main camp** (`HomeGroupColor` = Red / Carolina / Green / Navy) appears on **ACR-255**, which carries the true `Bus Number`. ACR-005 does **not** set `BusRoute` for them — it's left to ACR-255 (which also resolves the Bus 3-vs-4 split that a stop name can't).
+- **Specialty camp** (KinderPlace, Li'l Place, SPLIT, SPRC, Robotics) never appears on ACR-255, so their `BusRoute` is derived here from the ACR-005 stop name.
+
+**Ride flags (`BusRidesAM` / `BusRidesPM`)** — set from the per-direction `AM Bus` / `PM Bus` cell for everyone:
+
+| Cell value | Flag |
+|---|---|
+| Named stop (e.g. `Wolcott Park`) | `1` (rides) |
+| `No Bus N AM/PM` (explicit, names a route number) | `0` (does not ride this direction) |
+| `No AM/PM Bus Selected` — **main camp** | `1` (still rides; their seat comes from ACR-255) |
+| `No AM/PM Bus Selected` — **specialty** | `0` (no stop anywhere → not a rider) |
+| Empty / absent column | unchanged (COALESCE preserves) |
+
+The main-vs-specialty split on `No ... Bus Selected` is the key rule: a main-camp camper assigned Bus 4 in ACR-255 often shows `No Bus Selected` in ACR-005, but still rides.
+
+**Specialty route derivation** (`resolveSpecialtyRoute`):
+1. If either cell is `No Bus N ...`, the number `N` is the route (explicit, wins).
+2. Else map the stop name: Glastonbury/Wethersfield/Newington/Hartford → 1; Canton/Avon/Simsbury/Northwest Catholic → 2.
+3. Ambiguous stops are left `NULL` for the **Bus Route Audit**: `West Hartford` (Bus 2 or 5), `Wolcott Park` / `Bishops Corner` (Bus 3 or 4).
+4. No stop in either cell → `NULL` (not a rider).
+
+---
+
+## Bus Attendance Reports (ACR-132 AM / ACR-133 PM)
+
+**Routes:** `POST /upload-bus-am` (ACR-132) · `POST /upload-bus-pm` (ACR-133)
+**Reports:** ACR-132 (AM Bus Attendance) · ACR-133 (PM Bus Attendance)
+
+These are an alternative, **unambiguous** source for bus data. Unlike ACR-005/255, each report groups every camper under an explicit `Bus N (Color) - ...` section with the stop, so the route number and per-direction ride flag are read directly — no stop-name guessing, no audit. The existing ACR-005/255 bus logic is left in place; these routes are additive and write the same `BusRoute` / `BusRidesAM` / `BusRidesPM` columns, so whichever import runs last wins.
+
+**Parser (`parseBusAttendanceReport`)** walks the report and tracks two pieces of state:
+
+| Report section | Route | Ride flag (that direction) |
+|---|---|---|
+| Top `No Bus` / `Unknown` group | none (left unchanged) | `0` |
+| `Bus N (Color) - ...` → a stop sub-header | `N` | `1` |
+| `No Bus N AM/PM` sub-group (on bus N, skips this direction) | `N` | `0` |
+
+So a camper riding Bus 2 in the AM but not PM appears under `Bus 2 → Northwest Catholic` in ACR-132 (route 2, rides) and under `No Bus 2 PM` in ACR-133 (route 2, doesn't ride). Both reports agree on the route.
+
+**Application:** update-only by name (campers must already exist). The route is written only when the report knows it (so a top-`No Bus` camper keeps any existing route); the direction's ride flag is always written. AM report → `BusRidesAM`; PM report → `BusRidesPM`.
+
+> These reports make the [Bus Route Audit](#bus-route-audit) unnecessary, because West Hartford (2/5) and Wolcott Park/Bishops Corner (3/4) riders are listed under their actual `Bus N` section. The audit remains for the ACR-005-derived path.
+
+---
+
+## Bus Route Audit
+
+**Route:** `GET /bus-audit` · `POST /bus-audit/set`
+
+Specialty campers whose ACR-005 stop can't pin a single route land here with `BusRoute = NULL`. The page has two sections — **West Hartford (Bus 2 / 5)** and **Wolcott Park / Bishops Corner (Bus 3 / 4)** — each listing the camper, program, and AM/PM stop with a dropdown to assign the route. Saving sets `BusRoute`, after which the camper drops off the list and appears on the correct bus attendance sheet. A fresh ACR-005 import re-derives routes, so any ambiguous riders must be re-audited after a re-import.
 
 ---
 
@@ -70,7 +127,7 @@ Imports have dependencies. Always follow this sequence for a fresh setup:
 
 **What it does:**
 - Looks up each camper by name in `Campers` (must already exist from ACR-005 import).
-- Updates: `Grade`, `BusRoute`, `ExtendedHours`.
+- Updates: `Grade`, `BusRoute`, `ExtendedHours`. Only main-camp campers appear on this report, so this is where main camp gets its authoritative route number (including the Bus 3-vs-4 distinction). Specialty campers aren't in ACR-255, so their ACR-005-derived `BusRoute` is untouched.
 - Writes activity assignments to `Schedules` (`PersonType='Camper'`), one row per period per camper (clock blocks 1–6).
 
 **Period mapping:** Red/Carolina group ordinal periods are remapped to clock blocks during import (ordinal 3→block 4, 4→5, 5→6). Green/Navy ordinals already equal clock blocks.
@@ -197,6 +254,7 @@ Notable migrations in order:
 | `CounselorScheduleBackups` created | Snapshot backup table. |
 | `PdfDocuments` created | PDF files stored as BLOBs in the database instead of the filesystem, so they survive server restarts. Any PDFs already in `uploads/` are migrated in automatically on first boot. |
 | `DirectorNotes.category` added | **[migrated]** — Adds tab-based categorization. Values: `director`, `camper`, `staff`, `timesheet`. Existing notes default to `director`. |
-| `Campers.BusRidesAM` / `BusRidesPM` added | **[migrated]** — Per-direction bus ride flags. Default `1` (rides). ACR-005 import sets these from the `AM Bus` / `PM Bus` columns: a value starting with "No" sets the flag to `0`. |
+| `Campers.BusRidesAM` / `BusRidesPM` added | **[migrated]** — Per-direction bus ride flags. Default `1` (rides). Set from the ACR-005 `AM Bus` / `PM Bus` columns (see the bus model in the ACR-005 section). |
+| `Campers.BusStopAM` / `BusStopPM` added | **[migrated]** — Raw ACR-005 stop text, retained so the Bus Route Audit can resolve ambiguous stops (West Hartford 2/5, Wolcott Park / Bishops Corner 3/4). |
 | `AppConfig` created | Key/value store for persistent server config (currently VAPID keys for web push). Auto-generates VAPID keys on first startup. |
 | `PushSubscriptions` created | Stores web push subscriptions for counselor attendance nudge notifications. One row per browser endpoint. |
