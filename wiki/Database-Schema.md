@@ -11,8 +11,9 @@ Primary record for every enrolled camper.
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
 | `CamperID` | INTEGER | PK, AUTOINCREMENT | |
-| `FirstName` | TEXT | NOT NULL | |
+| `FirstName` | TEXT | NOT NULL | Legal first name — populated from CSV imports |
 | `LastName` | TEXT | NOT NULL | |
+| `PreferredName` | TEXT | | **[migrated]** — nickname/preferred name; set manually via camper profile. Displayed in place of `FirstName` throughout the app when set. |
 | `Age` | INTEGER | | Populated from ACR-005 import |
 | `Grade` | INTEGER | | **[migrated]** — same source; copied from `Age` on migration |
 | `HomeGroupColor` | TEXT | | `Red`, `Carolina`, `Green`, `Navy`, `LilPlace`, `KinderPlace`, `SPLIT`, `SPRC`, `Swim` |

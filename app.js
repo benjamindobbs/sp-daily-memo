@@ -851,6 +851,11 @@ try {
 } catch(e) { console.error('[migration] Campers.BusRidesAM/PM/Stops:', e.message); }
 
 try {
+    const camperNameCols = db.prepare("PRAGMA table_info(Campers)").all().map(c => c.name);
+    if (!camperNameCols.includes('PreferredName')) db.exec("ALTER TABLE Campers ADD COLUMN PreferredName TEXT");
+} catch(e) { console.error('[migration] Campers.PreferredName:', e.message); }
+
+try {
     const cwaCols = db.prepare("PRAGMA table_info(CounselorWeekAttributes)").all().map(c => c.name);
     if (!cwaCols.includes('SpecialtyGroup')) db.exec("ALTER TABLE CounselorWeekAttributes ADD COLUMN SpecialtyGroup TEXT");
 } catch(e) { console.error('[migration] CounselorWeekAttributes.SpecialtyGroup:', e.message); }
@@ -1914,8 +1919,9 @@ app.get('/camper/:id', (req, res) => {
 
 app.post('/camper/:id/update', (req, res) => {
     try {
-        const { homeGroupCounselorID, busRoute, busRidesAM, busRidesPM, extendedHours, campLunch } = req.body;
+        const { homeGroupCounselorID, busRoute, busRidesAM, busRidesPM, extendedHours, campLunch, preferredName } = req.body;
         const cleanRoute = busRoute ? busRoute.trim() : null;
+        const cleanPreferred = (preferredName || '').trim() || null;
         db.prepare(`
             UPDATE Campers
             SET HomeGroupCounselorID = ?,
@@ -1923,7 +1929,8 @@ app.post('/camper/:id/update', (req, res) => {
                 BusRidesAM           = ?,
                 BusRidesPM           = ?,
                 ExtendedHours        = ?,
-                CampLunch            = ?
+                CampLunch            = ?,
+                PreferredName        = ?
             WHERE CamperID = ?
         `).run(
             homeGroupCounselorID ? parseInt(homeGroupCounselorID) : null,
@@ -1932,6 +1939,7 @@ app.post('/camper/:id/update', (req, res) => {
             cleanRoute ? (busRidesPM === '1' ? 1 : 0) : 0,
             extendedHours || null,
             campLunch || 'No',
+            cleanPreferred,
             req.params.id
         );
         res.redirect(`/camper/${req.params.id}?message=Saved`);
@@ -5864,7 +5872,7 @@ app.get('/reports/attendance-rosters', (_req, res) => {
             };
         }
         const campers = db.prepare(`
-            SELECT ca.CamperID, ca.FirstName, ca.LastName
+            SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.PreferredName
             FROM Campers ca
             JOIN Schedules s ON s.PersonID = ca.CamperID AND s.PersonType = 'Camper'
             WHERE s.PeriodNumber = ? AND s.ActivityName = ? COLLATE NOCASE
@@ -5897,7 +5905,7 @@ app.get('/reports/attendance-rosters', (_req, res) => {
                co.FirstName AS CounselorFirst, co.LastName AS CounselorLast,
                COALESCE(cwa.HomeGroupColor, co.HomeGroupColor) AS HomeGroupColor,
                ca.CamperID, ca.FirstName AS CamperFirst, ca.LastName AS CamperLast,
-               ca.HomeGroupColor AS CamperColor
+               ca.PreferredName AS CamperPreferred, ca.HomeGroupColor AS CamperColor
         FROM CamperHomeGroups chg
         JOIN Counselors co ON co.CounselorID = chg.CounselorID
         LEFT JOIN CounselorWeekAttributes cwa
@@ -5922,6 +5930,7 @@ app.get('/reports/attendance-rosters', (_req, res) => {
             CamperID: r.CamperID,
             FirstName: r.CamperFirst,
             LastName: r.CamperLast,
+            PreferredName: r.CamperPreferred,
             HomeGroupColor: r.CamperColor
         });
     });
@@ -5929,7 +5938,7 @@ app.get('/reports/attendance-rosters', (_req, res) => {
 
     // ── Bus rosters ──────────────────────────────────────────────────────────
     const busRows = db.prepare(`
-        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.HomeGroupColor, ca.BusRoute,
+        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.PreferredName, ca.HomeGroupColor, ca.BusRoute,
                ca.BusRidesAM, ca.BusRidesPM
         FROM Campers ca
         WHERE ca.BusRoute IS NOT NULL AND TRIM(ca.BusRoute) != '' AND LOWER(TRIM(ca.BusRoute)) != 'null'
@@ -5948,7 +5957,7 @@ app.get('/reports/attendance-rosters', (_req, res) => {
 
     // ── Extended care rosters ────────────────────────────────────────────────
     const extRows = db.prepare(`
-        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.HomeGroupColor, ca.ExtendedHours
+        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.PreferredName, ca.HomeGroupColor, ca.ExtendedHours
         FROM Campers ca
         WHERE ca.ExtendedHours IN ('AM', 'Both', 'PM')
         ORDER BY ca.HomeGroupColor, ca.LastName, ca.FirstName
@@ -5991,7 +6000,7 @@ app.get('/reports/attendance-rosters', (_req, res) => {
 
 app.get('/reports/name-cards', (_req, res) => {
     const rows = db.prepare(`
-        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.HomeGroupColor,
+        SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.PreferredName, ca.HomeGroupColor,
                s.PeriodNumber, s.ActivityName
         FROM Campers ca
         JOIN Schedules s ON s.PersonID = ca.CamperID AND s.PersonType = 'Camper'
@@ -6005,6 +6014,7 @@ app.get('/reports/name-cards', (_req, res) => {
                 CamperID: r.CamperID,
                 FirstName: r.FirstName,
                 LastName: r.LastName,
+                PreferredName: r.PreferredName,
                 HomeGroupColor: r.HomeGroupColor || '',
                 classes: []
             };

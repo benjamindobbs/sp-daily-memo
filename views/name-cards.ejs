@@ -114,8 +114,8 @@
 
     <div class="card-grid" id="cardGrid">
         <% campers.forEach(camper => { %>
-        <div class="name-card" data-group="<%= camper.HomeGroupColor %>" data-name="<%= (camper.FirstName + ' ' + camper.LastName).toLowerCase() %>">
-            <div class="card-name"><%= camper.FirstName %> <%= camper.LastName %></div>
+        <div class="name-card" data-group="<%= camper.HomeGroupColor %>" data-name="<%= ((camper.PreferredName || camper.FirstName) + ' ' + camper.LastName).toLowerCase() %>">
+            <div class="card-name"><%= camper.PreferredName || camper.FirstName %> <%= camper.LastName %></div>
             <div class="card-classes">
                 <% camper.classes.forEach(cls => { %>
                     <%= cls %><br>

@@ -42,7 +42,10 @@
             <a href="/search" class="back-link">&#8592; Camper Lookup</a>
             <span class="pipe-sep">|</span>
             <div>
-                <h1 style="margin:0;"><%= camper.FirstName %> <%= camper.LastName %></h1>
+                <h1 style="margin:0;"><%= camper.PreferredName || camper.FirstName %> <%= camper.LastName %></h1>
+                <% if (camper.PreferredName) { %>
+                <p class="text-muted" style="margin:0; font-size:0.85rem;">Legal name: <%= camper.FirstName %> <%= camper.LastName %></p>
+                <% } %>
                 <p class="text-muted" style="margin:2px 0 0;">
                     Grade <%= camper.Grade || '—' %> &nbsp;·&nbsp;
                     <span class="tag <%= camper.HomeGroupColor %>"><%= camper.HomeGroupColor %></span>
@@ -64,6 +67,15 @@
                 <div class="card">
                     <h3 style="margin:0 0 20px;">Camper Details</h3>
                     <form action="/camper/<%= camper.CamperID %>/update" method="POST">
+
+                        <div class="info-row">
+                            <span class="info-label">Preferred Name</span>
+                        </div>
+                        <div style="margin-bottom: 16px;">
+                            <input type="text" name="preferredName" value="<%= camper.PreferredName || '' %>"
+                                placeholder="Leave blank to use legal first name"
+                                style="width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.9rem; box-sizing:border-box;">
+                        </div>
 
                         <div class="info-row">
                             <span class="info-label">Home Counselor</span>

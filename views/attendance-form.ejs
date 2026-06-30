@@ -120,10 +120,10 @@
                 <div id="rosterList">
                 <% roster.forEach(function(c) { %>
                 <% if (c.isSplit) { %>
-                    <div class="camper-row" data-camperid="<%= c.CamperID %>" data-name="<%= (c.FirstName+' '+c.LastName).toLowerCase() %>" data-status="split-readonly" data-split="true">
+                    <div class="camper-row" data-camperid="<%= c.CamperID %>" data-name="<%= ((c.PreferredName||c.FirstName)+' '+c.LastName).toLowerCase() %>" data-status="split-readonly" data-split="true">
                         <span class="tag SPLIT" style="font-size:0.65rem; padding:1px 7px; flex-shrink:0;">SPLIT</span>
                         <span class="camper-name">
-                            <% if (c.fieldTripActive) { %>&#128652; <% } %><%= c.FirstName %> <%= c.LastName %>
+                            <% if (c.fieldTripActive) { %>&#128652; <% } %><%= c.PreferredName || c.FirstName %> <%= c.LastName %>
                         </span>
                         <div class="camper-badges">
                             <span style="font-size:0.72rem; color:var(--text-muted); font-style:italic;">via Specialty AM</span>
@@ -139,9 +139,9 @@
                         </div>
                     </div>
                 <% } else { %>
-                    <div class="camper-row" data-camperid="<%= c.CamperID %>" data-name="<%= (c.FirstName+' '+c.LastName).toLowerCase() %>" data-status="<%= c.currentStatus || '' %>">
+                    <div class="camper-row" data-camperid="<%= c.CamperID %>" data-name="<%= ((c.PreferredName||c.FirstName)+' '+c.LastName).toLowerCase() %>" data-status="<%= c.currentStatus || '' %>">
                         <span class="tag <%= c.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px; flex-shrink:0;"><%= c.HomeGroupColor %></span>
-                        <span class="camper-name"><%= c.FirstName %> <%= c.LastName %></span>
+                        <span class="camper-name"><%= c.PreferredName || c.FirstName %> <%= c.LastName %></span>
                         <% if (c.BusRoute && (((sessionType === 'homegroup_am' || sessionType === 'specialty_am') && c.BusRidesAM) || ((sessionType === 'homegroup_pm' || sessionType === 'specialty_pm') && c.BusRidesPM))) { %>
                         <% const busDisplay = String(parseFloat(c.BusRoute) % 1 === 0 ? Math.trunc(parseFloat(c.BusRoute)) : c.BusRoute); %>
                         <span style="font-size:0.7rem; font-weight:600; background:#dbeafe; color:#1e40af; border-radius:4px; padding:1px 7px; white-space:nowrap;">&#128652; Bus <%= busDisplay %></span>
@@ -157,7 +157,7 @@
                             <% if (c.seenEarlier) { %><span class="badge-seen-earlier">&#10003; Seen Earlier</span><% } %>
                             <% if (c.scheduledPickup) { %>
                                 <button class="badge-pickup"
-                                    onclick="openPickup(<%- JSON.stringify(fmtPickupTime(c.scheduledPickup.pickupTime)) %>,<%- JSON.stringify(c.scheduledPickup.notes || '') %>,'<%= c.FirstName %> <%= c.LastName %>',<%- JSON.stringify(c.scheduledPickup.periodNumber || null) %>,<%- JSON.stringify(c.scheduledPickup.activityName || null) %>)"
+                                    onclick="openPickup(<%- JSON.stringify(fmtPickupTime(c.scheduledPickup.pickupTime)) %>,<%- JSON.stringify(c.scheduledPickup.notes || '') %>,'<%= c.PreferredName || c.FirstName %> <%= c.LastName %>',<%- JSON.stringify(c.scheduledPickup.periodNumber || null) %>,<%- JSON.stringify(c.scheduledPickup.activityName || null) %>)"
                                     style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;padding:1px 7px;font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;">
                                     &#128663; Pickup <%= fmtPickupTime(c.scheduledPickup.pickupTime) %><% if (c.scheduledPickup.periodNumber) { %> &middot; P<%= c.scheduledPickup.periodNumber %><% } %>
                                 </button>
@@ -169,7 +169,7 @@
                             <button class="btn-absent <%= (c.currentStatus === 'absent' || c.currentStatus === 'nurse') ? 'active' : '' %>"
                                     onclick="mark(<%= c.CamperID %>, this, 'absent')">Absent</button>
                             <% if (!c.dismissed) { %>
-                                <button class="btn-dismiss" onclick="openDismiss(<%= c.CamperID %>, '<%= c.FirstName %> <%= c.LastName %>')">Dismiss</button>
+                                <button class="btn-dismiss" onclick="openDismiss(<%= c.CamperID %>, '<%= c.PreferredName || c.FirstName %> <%= c.LastName %>')">Dismiss</button>
                             <% } %>
                         </div>
                     </div>

@@ -225,7 +225,7 @@ let extPMRendered = false;
                 <% if (period.campers.length === 0) { %>
                     <tr><td colspan="6" class="empty-state">No campers enrolled</td></tr>
                 <% } else { period.campers.forEach(camper => { %>
-                    <tr><td><%= camper.LastName %>, <%= camper.FirstName %></td><td></td><td></td><td></td><td></td><td></td></tr>
+                    <tr><td><%= camper.LastName %>, <%= camper.PreferredName || camper.FirstName %></td><td></td><td></td><td></td><td></td><td></td></tr>
                 <% }); } %>
             </tbody>
         </table>
@@ -255,7 +255,7 @@ let extPMRendered = false;
                 <% if (hg.campers.length === 0) { %>
                     <tr><td colspan="6" class="empty-state">No campers assigned</td></tr>
                 <% } else { hg.campers.forEach(camper => { %>
-                    <tr><td><%= camper.LastName %>, <%= camper.FirstName %></td><td></td><td></td><td></td><td></td><td></td></tr>
+                    <tr><td><%= camper.LastName %>, <%= camper.PreferredName || camper.FirstName %></td><td></td><td></td><td></td><td></td><td></td></tr>
                 <% }); } %>
             </tbody>
         </table>
@@ -286,7 +286,7 @@ let extPMRendered = false;
             <tbody>
                 <% campers.forEach(camper => { %>
                 <tr>
-                    <td><%= camper.LastName %>, <%= camper.FirstName %></td>
+                    <td><%= camper.LastName %>, <%= camper.PreferredName || camper.FirstName %></td>
                     <td><%= camper.HomeGroupColor %></td>
                     <td></td><td></td><td></td><td></td><td></td>
                 </tr>
@@ -318,7 +318,7 @@ let extPMRendered = false;
             <tbody>
                 <% extAM.forEach(camper => { %>
                 <tr>
-                    <td><%= camper.LastName %>, <%= camper.FirstName %></td>
+                    <td><%= camper.LastName %>, <%= camper.PreferredName || camper.FirstName %></td>
                     <td><%= camper.HomeGroupColor %></td>
                     <td></td><td></td><td></td><td></td><td></td>
                 </tr>
@@ -350,7 +350,7 @@ let extPMRendered = false;
             <tbody>
                 <% extPM.forEach(camper => { %>
                 <tr>
-                    <td><%= camper.LastName %>, <%= camper.FirstName %></td>
+                    <td><%= camper.LastName %>, <%= camper.PreferredName || camper.FirstName %></td>
                     <td><%= camper.HomeGroupColor %></td>
                     <td></td><td></td><td></td><td></td><td></td>
                 </tr>
@@ -383,7 +383,7 @@ let extPMRendered = false;
         <tbody>
             <% campers.forEach(camper => { %>
             <tr>
-                <td><%= camper.LastName %>, <%= camper.FirstName %></td>
+                <td><%= camper.LastName %>, <%= camper.PreferredName || camper.FirstName %></td>
                 <td><%= camper.HomeGroupColor %></td>
                 <td></td><td></td><td></td><td></td><td></td>
             </tr>
@@ -406,7 +406,7 @@ let extPMRendered = false;
         <thead><tr><th style="width:40%;">Camper Name</th><th>Group</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr></thead>
         <tbody>
             <% extAM.forEach(camper => { %>
-            <tr><td><%= camper.LastName %>, <%= camper.FirstName %></td><td><%= camper.HomeGroupColor %></td><td></td><td></td><td></td><td></td><td></td></tr>
+            <tr><td><%= camper.LastName %>, <%= camper.PreferredName || camper.FirstName %></td><td><%= camper.HomeGroupColor %></td><td></td><td></td><td></td><td></td><td></td></tr>
             <% }) %>
         </tbody>
     </table>
@@ -425,7 +425,7 @@ let extPMRendered = false;
         <thead><tr><th style="width:40%;">Camper Name</th><th>Group</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th></tr></thead>
         <tbody>
             <% extPM.forEach(camper => { %>
-            <tr><td><%= camper.LastName %>, <%= camper.FirstName %></td><td><%= camper.HomeGroupColor %></td><td></td><td></td><td></td><td></td><td></td></tr>
+            <tr><td><%= camper.LastName %>, <%= camper.PreferredName || camper.FirstName %></td><td><%= camper.HomeGroupColor %></td><td></td><td></td><td></td><td></td><td></td></tr>
             <% }) %>
         </tbody>
     </table>
