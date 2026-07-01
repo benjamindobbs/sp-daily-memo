@@ -146,16 +146,18 @@ function computeClassAttStats(clockBlock, side, today) {
 function computeExtAttStats(session, today) {
     const aw = getActiveWeek();
     const col = session === 'am' ? "('AM','Both')" : "('PM','Both')";
-    const extTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col}`).get(aw)?.n || 0;
+    // Li'l Place and KinderPlace are picked up from a separate site for PM — exclude from completion check
+    const lpkp = session === 'pm' ? "AND HomeGroupColor NOT IN ('LilPlace','KinderPlace')" : '';
+    const extTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col} ${lpkp}`).get(aw)?.n || 0;
     if (extTotal === 0) return { total: 1, submitted: 1 };
     const handled = db.prepare(`
         SELECT COUNT(*) as n FROM (
             SELECT CamperID FROM Attendance
             WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col})
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col} ${lpkp})
             UNION
             SELECT CamperID FROM EarlyDismissals WHERE Date=?
-              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col})
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col} ${lpkp})
         )
     `).get(today, `extended_${session}`, aw, today, aw)?.n || 0;
     return { total: 1, submitted: handled >= extTotal ? 1 : 0 };
@@ -165,6 +167,8 @@ function computeBusAttStats(session, today) {
     const aw = getActiveWeek();
     const ridesCol = session === 'pm' ? 'BusRidesPM' : 'BusRidesAM';
     const sessionType = `bus_${session}`;
+    // Li'l Place and KinderPlace board PM buses from a separate site — exclude from completion check
+    const lpkp = session === 'pm' ? "AND HomeGroupColor NOT IN ('LilPlace','KinderPlace')" : '';
     const routes = db.prepare(`
         SELECT DISTINCT BusRoute FROM CamperWeekData
         WHERE WeekNumber=? AND BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null' AND ${ridesCol} = 1
@@ -173,15 +177,15 @@ function computeBusAttStats(session, today) {
     const total = routes.length;
     if (total === 0) return { total: 0, submitted: 0 };
 
-    const checkTotal   = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1`);
+    const checkTotal   = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1 ${lpkp}`);
     const checkHandled = db.prepare(`
         SELECT COUNT(*) as n FROM (
             SELECT CamperID FROM Attendance
             WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1)
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1 ${lpkp})
             UNION
             SELECT CamperID FROM EarlyDismissals WHERE Date=?
-              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1)
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1 ${lpkp})
         )
     `);
 
@@ -3763,10 +3767,10 @@ app.get('/attendance', (req, res) => {
             SELECT COUNT(*) as n FROM (
                 SELECT CamperID FROM Attendance
                 WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND BusRidesPM=1)
+                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND BusRidesPM=1 AND HomeGroupColor NOT IN ('LilPlace','KinderPlace'))
                 UNION
                 SELECT CamperID FROM EarlyDismissals WHERE Date=?
-                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND BusRidesPM=1)
+                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND BusRidesPM=1 AND HomeGroupColor NOT IN ('LilPlace','KinderPlace'))
             )
         `)
     };
@@ -3775,7 +3779,8 @@ app.get('/attendance', (req, res) => {
         for (const session of ['am', 'pm']) {
             const ridesCol = session === 'pm' ? 'BusRidesPM' : 'BusRidesAM';
             const sessionType = `bus_${session}`;
-            const busTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1`).get(aw, route)?.n || 0;
+            const lpkp = session === 'pm' ? "AND HomeGroupColor NOT IN ('LilPlace','KinderPlace')" : '';
+            const busTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1 ${lpkp}`).get(aw, route)?.n || 0;
             const handled = checkBusHandled[session].get(date, sessionType, aw, route, date, aw, route)?.n || 0;
             const displayRoute = String(parseFloat(route) % 1 === 0 ? Math.trunc(parseFloat(route)) : route);
             busSessions.push({
@@ -3793,16 +3798,18 @@ app.get('/attendance', (req, res) => {
     for (const session of ['am', 'pm']) {
         const sessionType = `extended_${session}`;
         const col = session === 'am' ? "('AM','Both')" : "('PM','Both')";
-        const extTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col}`).get(aw)?.n || 0;
+        // Li'l Place and KinderPlace are picked up from a separate site for PM — exclude from completion check
+        const lpkp = session === 'pm' ? "AND HomeGroupColor NOT IN ('LilPlace','KinderPlace')" : '';
+        const extTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col} ${lpkp}`).get(aw)?.n || 0;
         if (extTotal > 0) {
             const handled = db.prepare(`
                 SELECT COUNT(*) as n FROM (
                     SELECT CamperID FROM Attendance
                     WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-                      AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col})
+                      AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col} ${lpkp})
                     UNION
                     SELECT CamperID FROM EarlyDismissals WHERE Date=?
-                      AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col})
+                      AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col} ${lpkp})
                 )
             `).get(date, sessionType, aw, date, aw)?.n || 0;
             extSessions.push({
