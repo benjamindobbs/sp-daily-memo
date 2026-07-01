@@ -6604,6 +6604,22 @@ setInterval(() => {
     const estMins = getESTMins();
     const today   = getTodayEST();
 
+    // Only send notifications on camp days
+    const [_ny, _nm, _nd] = today.split('-').map(Number);
+    const _dow = new Date(Date.UTC(_ny, _nm - 1, _nd)).getUTCDay(); // 0=Sun, 6=Sat
+    if (_dow === 0 || _dow === 6) return; // weekends
+    if (today === '2026-07-03') return;   // no camp on 7/3
+    const _w1 = db.prepare("SELECT startDate FROM Sessions WHERE weekNumber=1 LIMIT 1").get();
+    const _w6 = db.prepare("SELECT startDate FROM Sessions WHERE weekNumber=6 LIMIT 1").get();
+    if (!_w1?.startDate) return; // sessions not configured yet
+    const _campStart = _w1.startDate; // 'YYYY-MM-DD'
+    const _campEnd = (() => {
+        if (!_w6?.startDate) return _campStart;
+        const [y, m, d] = _w6.startDate.split('-').map(Number);
+        return new Date(Date.UTC(y, m - 1, d + 4)).toISOString().slice(0, 10); // Friday of W6
+    })();
+    if (today < _campStart || today > _campEnd) return;
+
     // Prune stale date keys
     for (const [date] of _pushNudgedToday) {
         if (date !== today) _pushNudgedToday.delete(date);
