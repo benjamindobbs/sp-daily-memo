@@ -1172,7 +1172,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS AlertTargets (
     PRIMARY KEY (AlertID, CounselorID)
 )`);
 const SYSTEM_ALERT_GROUPS = [
-    'All Counselors', 'All Unit Leaders', 'All Admin',
+    'All Staff', 'All Counselors', 'All Unit Leaders', 'All Admin',
     'All AM Sports', 'All PM Sports', 'All AM Enrichment', 'All PM Enrichment',
 ];
 const seedGroup = db.prepare("INSERT OR IGNORE INTO AlertGroups (name, isSystem) VALUES (?, 1)");
@@ -5568,6 +5568,8 @@ app.post('/api/push-unsubscribe', (req, res) => {
 function resolveAlertCounselorIds(group) {
     const aw = getActiveWeek();
     const name = group.name;
+    if (name === 'All Staff')
+        return db.prepare("SELECT CounselorID FROM Counselors").all().map(r => r.CounselorID);
     if (name === 'All Counselors')
         return db.prepare("SELECT CounselorID FROM Counselors WHERE StaffRole IN ('Counselor','Swim Counselor')").all().map(r => r.CounselorID);
     if (name === 'All Unit Leaders')
