@@ -39,8 +39,15 @@
 
     <div class="container-xl">
         <header style="margin-bottom: 24px;">
-            <h1>Master Schedule</h1>
-            <p style="color: var(--text-muted); margin: 0;">All classes by period. Click a class name to view its full roster.</p>
+            <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;">
+                <h1 style="margin:0;">Master Schedule</h1>
+                <% if (isPrepping) { %>
+                <span style="background:#fef3c7; color:#92400e; font-size:0.78rem; font-weight:700; padding:3px 10px; border-radius:20px; border:1px solid #fde68a;">&#9998; Prep &mdash; <%= weekLabel %></span>
+                <% } else { %>
+                <span style="background:#dcfce7; color:#166534; font-size:0.78rem; font-weight:700; padding:3px 10px; border-radius:20px; border:1px solid #bbf7d0;">&#9679; <%= weekLabel %></span>
+                <% } %>
+            </div>
+            <p style="color: var(--text-muted); margin: 4px 0 0;">All classes by period. Click a class name to view its full roster.</p>
         </header>
 
         <div class="filter-bar">

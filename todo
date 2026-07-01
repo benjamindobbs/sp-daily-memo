@@ -1,12 +1,5 @@
 Only send notifications during active weeks (Week days only, ending on the Friday after the W6 start date). One exception, no camp on Friday 7/3
 
-Add hide button to photo of the day winner
-Photo of the day day photo should fill width of card (not including margin on card)
-
-When in the master schedule, denote which week you are viewing for. If a week is set to prep, the master schedule should reflect the prepping week.
-
-For the Add Camper, and Create Blank Class functions on the settings page, add another value to set the week associated to the camper or class. 
-
 Add the SummerPlace header to nametags, session (week) as footer (Session N format). Resize nametags to correct size (tbd)
 
 Do not count Li'l Place or KinderPlace campers in the PM extended hours or bus routes in check to determine if attendance sheet is finished (for counter on admin panel and within the attendances view)

@@ -1768,7 +1768,11 @@ app.get('/master-schedule', (req, res) => {
             schedule.push({ periodNumber, periodLabel: String(periodNumber), classes: periodMap.get(periodNumber) });
         }
 
-        res.render('master-schedule', { schedule });
+        const session = db.prepare('SELECT label FROM Sessions WHERE weekNumber=?').get(aw);
+        const weekLabel = session?.label ?? `Week ${aw}`;
+        const isPrepping = isAdmin && (getPrepTargetWeek() === aw);
+
+        res.render('master-schedule', { schedule, weekLabel, isPrepping });
     } catch (err) {
         console.error(err);
         res.status(500).send('Error loading Master Schedule: ' + err.message);
@@ -2194,8 +2198,9 @@ app.post('/create-camper', (req, res) => {
     const campLunch     = (req.body.campLunch     || 'No').trim();
     const shirtSize     = (req.body.shirtSize     || '').trim() || null;
 
+    const weekNumber = parseInt(req.body.weekNumber) || getActiveWeek();
+
     try {
-        const aw = getActiveWeek();
         const result = db.prepare(`
             INSERT INTO Campers (FirstName, LastName, Grade, Age, ShirtSize)
             VALUES (?, ?, ?, ?, ?)
@@ -2205,7 +2210,7 @@ app.post('/create-camper', (req, res) => {
         db.prepare(`
             INSERT OR REPLACE INTO CamperWeekData (CamperID, WeekNumber, HomeGroupColor, BusRoute, ExtendedHours, CampLunch)
             VALUES (?, ?, ?, ?, ?, ?)
-        `).run(newId, aw, homeGroupColor, busRoute, extendedHours, campLunch);
+        `).run(newId, weekNumber, homeGroupColor, busRoute, extendedHours, campLunch);
 
         res.redirect(`/assign-camper-schedule/${newId}`);
     } catch (err) {
@@ -2224,12 +2229,12 @@ app.post('/create-blank-class', (req, res) => {
         return res.redirect('/settings?message=Class+name,+period,+and+side+are+required');
     }
 
-    const aw = getActiveWeek();
+    const weekNumber = parseInt(req.body.weekNumber) || getActiveWeek();
     try {
         db.prepare(`INSERT OR IGNORE INTO Activities (Name, SideOfCamp, MaxCapacity) VALUES (?, ?, 20)`)
             .run(activityName, sideOfCamp);
         db.prepare(`INSERT OR IGNORE INTO WeeklyOfferings (ActivityName, PeriodNumber, SideOfCamp, WeekNumber, PreliminaryEnrollment) VALUES (?, ?, ?, ?, 0)`)
-            .run(activityName, periodNumber, sideOfCamp, aw);
+            .run(activityName, periodNumber, sideOfCamp, weekNumber);
         res.redirect('/settings?message=Blank+class+created');
     } catch (err) {
         console.error(err);
