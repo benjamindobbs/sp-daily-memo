@@ -9,11 +9,11 @@ How the multi-week design works and what "active week" means for the system.
 Six rows, one per camp week, seeded at startup:
 
 ```sql
-weekNumber  label     startDate  isActive  isReleased
-1           Week 1    ...        0 or 1    0 or 1
-2           Week 2    ...        0         0
+weekNumber  label     startDate  isActive  isReleased  isPrepTarget
+1           Week 1    ...        0 or 1    0 or 1      0
+2           Week 2    ...        0         0           0 or 1
 ...
-6           Week 6    ...        0         0
+6           Week 6    ...        0         0           0
 ```
 
 - `weekNumber` — immutable PK (1–6).
@@ -21,6 +21,32 @@ weekNumber  label     startDate  isActive  isReleased
 - `startDate` — ISO date string; used for display and date math.
 - `isActive` — exactly one row should be `1` at a time. All scheduling, attendance, and offering tools operate against the active week.
 - `isReleased` — `1` = staff can see the counselor schedule for that week from their profile. A week can be released without being active (e.g. release future weeks early).
+- `isPrepTarget` — `1` = this week is the current upload/prep target. At most one row is `1` at a time. When set, CSV imports (`/upload-campers`) and schedule-prep views (`/master-schedule`, `/audit`) target this week instead of the active week. Added via migration.
+
+---
+
+## Prep Target Week
+
+An optional "prep target" week lets admins import and prepare a future week's roster while the current week remains active. At most one week has `isPrepTarget=1`.
+
+```js
+function getPrepTargetWeek() {
+    return db.prepare("SELECT weekNumber FROM Sessions WHERE isPrepTarget=1 LIMIT 1")
+             .get()?.weekNumber ?? null;
+}
+```
+
+Routes that use the prep target (falling back to the active week if none is set):
+
+```js
+const targetWeek = getPrepTargetWeek() || getActiveWeek();
+```
+
+- `GET /master-schedule` — renders the schedule for the prep target week
+- `GET /audit` — audits the prep target week
+- `POST /upload-campers` — imports camper roster into the prep target week
+
+**Toggling:** `POST /set-prep-week` accepts `{ weekNumber }`. It clears `isPrepTarget` on all rows, then sets it on the given week. Sending the same week number again unsets it (toggle behavior). Managed from the Settings page ("Set Prep" / "Unset Prep" buttons in Session Management).
 
 ---
 
@@ -87,6 +113,8 @@ These tables store data per week. Switching the active week does not delete or o
 | `WeeklyOfferings` | `WeekNumber` column |
 | `CounselorScheduleAssignments` | `WeekNumber` column |
 | `CamperHomeGroups` | `(CamperID, WeekNumber)` |
+| `CamperWeekData` | `(CamperID, WeekNumber)` — camper attributes per week (color, shirt, home group, etc.) |
+| `Schedules` | `WeekNumber` column added via migration — scopes camper period assignments per week (camper rows only; counselor/instructor rows still lack WeekNumber) |
 
 ---
 

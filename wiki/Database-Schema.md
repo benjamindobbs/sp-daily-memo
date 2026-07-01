@@ -116,6 +116,7 @@ Period assignments for campers and instructors.
 | `PeriodNumber` | INTEGER | NOT NULL | Clock block 1–6 |
 | `ActivityName` | TEXT | NOT NULL | |
 | `Location` | TEXT | | |
+| `WeekNumber` | INTEGER | | **[migrated]** — scopes camper rows (`PersonType='Camper'`) per week. Backfilled to the active week for existing rows on migration. Used by all camper schedule queries to filter to the correct week. |
 
 **Period numbers** are clock blocks, not ordinal positions. Red/Carolina campers have blocks 4–6 for their enrichment periods; Green/Navy have blocks 1–3. See [Scheduling System](./Scheduling-System.md).
 
@@ -132,6 +133,7 @@ One row per camp week (6 total). Controls the active week for all tools.
 | `startDate` | TEXT | | ISO date string |
 | `isActive` | INTEGER | NOT NULL, DEFAULT `0` | Only one row should be `1` at a time |
 | `isReleased` | INTEGER | NOT NULL, DEFAULT `0` | `1` = counselor schedule visible to staff |
+| `isPrepTarget` | INTEGER | DEFAULT `0` | **[migrated]** — `1` = this week is the upload target for ACR-005 and instructor imports. At most one row should be `1`; toggled via `POST /set-prep-week`. When set, the Master Schedule, Audit Roster, and exports also reflect this week. |
 
 ---
 
@@ -148,6 +150,7 @@ Week-specific scheduling attributes for each counselor. The scheduler always rea
 | `BusRoute` | TEXT | | |
 | `ExtendedHours` | TEXT | | |
 | `SpecialtyGroup` | TEXT | **[migrated]** | Used for SPLIT/specialty counselor grouping |
+| `isWorkingThisWeek` | INTEGER | DEFAULT `1` | **[migrated]** — `0` = counselor is not present this week; excluded from all scheduler dropdowns and auto-assignment passes. Defaults to `1` (working). Set via the **Working** checkbox in the Counselor Scheduling page. |
 
 ---
 
@@ -549,3 +552,15 @@ Audit log of every sent Instant Alert.
 | `sentBy` | TEXT | `adminName` cookie value at time of send |
 | `sentAt` | DATETIME | |
 | `deliveryCount` | INTEGER | Number of push subscription endpoints the message was dispatched to |
+| `showAdminBanner` | INTEGER | `1` = also show a persistent banner on the admin hub for all admins currently logged in |
+
+---
+
+## AlertTargets
+
+Junction table recording which individual counselors were targeted by each alert. Used to route the admin hub banner only to the counselors the alert was sent to.
+
+| Column | Type | Notes |
+|---|---|---|
+| `AlertID` | INTEGER PK | FK → `AlertLog.AlertID` ON DELETE CASCADE |
+| `CounselorID` | INTEGER PK | FK → `Counselors.CounselorID` ON DELETE CASCADE |

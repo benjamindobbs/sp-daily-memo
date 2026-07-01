@@ -33,7 +33,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 
 | Method | Path | Admin only | Description |
 |---|---|:---:|---|
-| GET | `/master-schedule` | | All classes by period. Filterable by period, side, group. |
+| GET | `/master-schedule` | | All classes by period. Filterable by period, side, group. Uses the prep target week if one is set, otherwise the active week. |
 | GET | `/class-roster/:period/:activity` | | Camper list for one class/period |
 | POST | `/update-class-location` | ✓ | Update location on a class roster |
 | GET | `/search` | | Camper search by name |
@@ -45,7 +45,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/update-staff-period` | ✓ | Add/update one period on an instructor's weekly schedule |
 | POST | `/remove-staff-period` | ✓ | Remove one period from an instructor's weekly schedule |
 | GET | `/camper/:id` | | Individual camper profile |
-| POST | `/camper/:id/update` | ✓ | Edit camper fields: `homeGroupCounselorID`, `busRoute`, `busRidesAM` (checkbox → `1`/`0`), `busRidesPM` (checkbox → `1`/`0`), `extendedHours`, `campLunch`. If `busRoute` is cleared, both ride flags are forced to `0`. |
+| POST | `/camper/:id/update` | ✓ | Edit camper fields: `preferredName`, `homeGroupCounselorID`, `busRoute`, `busRidesAM` (checkbox → `1`/`0`), `busRidesPM` (checkbox → `1`/`0`), `extendedHours`, `campLunch`. If `busRoute` is cleared, both ride flags are forced to `0`. |
 | POST | `/camper/:id/delete` | ✓ | Remove a camper from the roster |
 | GET | `/faculty-summer` | | Full-summer instructor schedule view |
 
@@ -72,8 +72,8 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/restore-counselor-backup/:id` | ✓ | Restore a backup to the live tables |
 | POST | `/delete-counselor-backup/:id` | ✓ | Delete a backup |
 | POST | `/auto-assign-homegroups` | ✓ | Proportionally assign homegroup colors to all counselors (preserves counselors with existing roster assignments) |
-| POST | `/sync-homegroup-colors` | ✓ | Sync scheduler homegroup colors from `CamperHomeGroups` roster — only updates counselors who already have campers assigned; others untouched |
-| POST | `/save-counselor-group-assignments` | ✓ | Save home group color assignments for counselors |
+| POST | `/sync-homegroup-colors` | ✓ | Sync scheduler homegroup colors from `CamperHomeGroups` roster — only updates `HomeGroupColor` in `CounselorWeekAttributes`; does not touch `ScheduleType` or any other field |
+| POST | `/save-counselor-group-assignments` | ✓ | Save home group color, schedule type, specialty group, and `isWorkingThisWeek` flag for counselors |
 | GET | `/homegroup-assignment` | ✓ | Home group assignment manager |
 | POST | `/homegroup-assignment/save` | ✓ | Save camper → counselor home group assignments |
 | POST | `/homegroup-assignment/mirror` | ✓ | Copy one week's home group assignments to another |
@@ -81,7 +81,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/save-split-assignments` | ✓ | Save SPLIT period assignments |
 | POST | `/split-field-trip/mark` | ✓ | Flag today as a SPLIT field trip |
 | POST | `/split-field-trip/clear` | ✓ | Remove today's SPLIT field trip flag |
-| GET | `/audit` | ✓ | Audit page — flags scheduling issues |
+| GET | `/audit` | ✓ | Audit page — flags scheduling issues. Uses the prep target week if one is set, otherwise the active week. |
 | GET | `/counselor-week-assignments/:week` | ✓ | Ajax: get all assignments for a given week |
 
 ---
@@ -103,6 +103,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 |---|---|:---:|---|
 | GET | `/api/vapid-public-key` | | Returns the server's VAPID public key for push subscription setup |
 | POST | `/api/push-subscribe` | | Register or update a browser push subscription for the current counselor (reads `selectedCounselor` cookie) |
+| POST | `/api/push-unsubscribe` | | Remove the push subscription for the current counselor |
 | GET | `/api/attendance-nudge` | | Polled by the client; returns `{ notify: true, classes: [...] }` if the current counselor has unsubmitted class attendance 15+ min into an active period |
 
 ---
@@ -198,6 +199,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | GET | `/settings` | ✓ | Settings page |
 | POST | `/set-active-week` | ✓ | Set the active week |
 | POST | `/set-released-week` | ✓ | Toggle released status for a week |
+| POST | `/set-prep-week` | ✓ | Toggle the prep target week (`isPrepTarget`). Accepts `weekNumber`. Clears all other rows first; clicking the same week again unsets it. |
 | POST | `/update-session-label` | ✓ | Edit week label and start date |
 | POST | `/clear-counselor-week` | ✓ | Clear assignments for a week |
 | POST | `/clear-counselor-schedule` | ✓ | Clear the full counselor schedule |
@@ -214,7 +216,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/update-activity` | ✓ | Update activity fields |
 | POST | `/add-activity-period-group` | ✓ | Add a per-period group override for an activity |
 | POST | `/delete-activity-period-group` | ✓ | Remove a per-period group override |
-| POST | `/upload-campers` | ✓ | CSV import for camper roster (ACR-005). Sets color, shirt, lunch, and home group — does not touch bus data |
+| POST | `/upload-campers` | ✓ | CSV import for camper roster (ACR-005). Sets color, shirt, lunch, and home group — does not touch bus data. Targets the prep target week if set, otherwise the active week. |
 | POST | `/upload-campers-schedule` | ✓ | CSV import for master schedule (ACR-255). Sets grade, extended hours, and class schedule — does not touch bus data |
 | POST | `/upload-bus-am` | ✓ | CSV import of ACR-132 (AM Bus Attendance). Sets `BusRoute` + `BusRidesAM` per camper from the report's bus sections |
 | POST | `/upload-bus-pm` | ✓ | CSV import of ACR-133 (PM Bus Attendance). Sets `BusRoute` + `BusRidesPM` |
