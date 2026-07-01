@@ -979,6 +979,14 @@ try {
     }
 } catch(e) { console.error('[migration] isPrepTarget:', e.message); }
 
+// Migration: add isWorkingThisWeek column to CounselorWeekAttributes
+try {
+    const cwaCols = db.prepare("PRAGMA table_info(CounselorWeekAttributes)").all().map(c => c.name);
+    if (!cwaCols.includes('isWorkingThisWeek')) {
+        db.exec("ALTER TABLE CounselorWeekAttributes ADD COLUMN isWorkingThisWeek INTEGER DEFAULT 1");
+    }
+} catch(e) { console.error('[migration] isWorkingThisWeek:', e.message); }
+
 // Migration: add WeekNumber to Schedules (used for camper rows to scope per-week)
 try {
     db.prepare("SELECT WeekNumber FROM Schedules LIMIT 1").get();
@@ -1444,7 +1452,7 @@ app.post('/hub-content/:id', (req, res) => {
 // --- DASHBOARD ---
 app.get('/admin', (req, res) => {
     const aw = getActiveWeek();
-    const camperTotal = db.prepare("SELECT COUNT(*) AS count FROM Campers").get().count;
+    const camperTotal = db.prepare("SELECT COUNT(*) AS count FROM CamperWeekData WHERE WeekNumber=?").get(aw).count;
     const activityCount = db.prepare(
         "SELECT COUNT(DISTINCT ActivityName) AS count FROM WeeklyOfferings WHERE WeekNumber=?"
     ).get(aw).count;
@@ -1513,7 +1521,7 @@ app.get('/admin', (req, res) => {
 
 // --- AUDIT ROSTER ---
 app.get('/audit', (req, res) => {
-    const activeWeek = getActiveWeek();
+    const activeWeek = getPrepTargetWeek() || getActiveWeek();
     const activeSession = db.prepare('SELECT * FROM Sessions WHERE weekNumber=?').get(activeWeek);
     const alertMessage = req.query.message || null;
 
@@ -1665,7 +1673,7 @@ app.post('/merge-class', (req, res) => {
 // --- MASTER SCHEDULE ---
 app.get('/master-schedule', (req, res) => {
     try {
-        const aw = getActiveWeek();
+        const aw = getPrepTargetWeek() || getActiveWeek();
         const classes = db.prepare(`
             SELECT DISTINCT
                 s.PeriodNumber  AS periodNumber,
@@ -4765,7 +4773,8 @@ app.get('/counselor-scheduling', (req, res) => {
                COALESCE(cwa.BusRoute,       c.BusRoute)       AS BusRoute,
                COALESCE(cwa.ScheduleType,   c.ScheduleType)   AS ScheduleType,
                COALESCE(cwa.ExtendedHours,  c.ExtendedHours)  AS ExtendedHours,
-               cwa.SpecialtyGroup
+               cwa.SpecialtyGroup,
+               COALESCE(cwa.isWorkingThisWeek, 1)             AS isWorkingThisWeek
         FROM Counselors c
         LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
         WHERE c.StaffRole IN ('Counselor', 'Swim Counselor')
@@ -5034,14 +5043,15 @@ app.post('/save-counselor-group-assignments', (req, res) => {
     if (!Array.isArray(counselors)) return res.status(400).json({ error: 'Invalid payload' });
     const week = parseInt(weekNumber) || getActiveWeek();
     const upsert = db.prepare(`
-        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours, SpecialtyGroup)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours, SpecialtyGroup, isWorkingThisWeek)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET
-            HomeGroupColor = excluded.HomeGroupColor,
-            ScheduleType   = excluded.ScheduleType,
-            BusRoute       = excluded.BusRoute,
-            ExtendedHours  = excluded.ExtendedHours,
-            SpecialtyGroup = excluded.SpecialtyGroup
+            HomeGroupColor    = excluded.HomeGroupColor,
+            ScheduleType      = excluded.ScheduleType,
+            BusRoute          = excluded.BusRoute,
+            ExtendedHours     = excluded.ExtendedHours,
+            SpecialtyGroup    = excluded.SpecialtyGroup,
+            isWorkingThisWeek = excluded.isWorkingThisWeek
     `);
     db.transaction(list => {
         for (const c of list) {
@@ -5049,11 +5059,12 @@ app.post('/save-counselor-group-assignments', (req, res) => {
             upsert.run(
                 c.counselorID,
                 week,
-                c.homeGroupColor || null,
-                c.scheduleType   || null,
-                c.busRoute       || null,
-                c.extendedHours  || null,
-                c.specialtyGroup || null
+                c.homeGroupColor      || null,
+                c.scheduleType        || null,
+                c.busRoute            || null,
+                c.extendedHours       || null,
+                c.specialtyGroup      || null,
+                c.isWorkingThisWeek   != null ? (c.isWorkingThisWeek ? 1 : 0) : 1
             );
         }
     })(counselors);
@@ -5364,7 +5375,7 @@ app.get('/export-staff-schedule', (_req, res) => {
 });
 
 app.get('/export-master-schedule', (_req, res) => {
-    const aw = getActiveWeek();
+    const aw = getPrepTargetWeek() || getActiveWeek();
     const rows = db.prepare(`
         SELECT
             s.PeriodNumber,

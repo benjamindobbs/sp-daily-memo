@@ -440,6 +440,7 @@
                             <th>Bus Route</th>
                             <th>Schedule</th>
                             <th>Extended Hours</th>
+                            <th>Working</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -473,6 +474,9 @@
                                     <option value="<%= opt %>"<%= c.ExtendedHours === opt ? ' selected' : '' %>><%= opt %></option>
                                     <% }); %>
                                 </select>
+                            </td>
+                            <td style="text-align:center;">
+                                <input type="checkbox" class="cg-working" data-cid="<%= c.CounselorID %>"<%= c.isWorkingThisWeek !== 0 ? ' checked' : '' %>>
                             </td>
                         </tr>
                         <% }); %>
@@ -513,6 +517,7 @@
                             <th>Bus Route</th>
                             <th>Schedule</th>
                             <th>Extended Hours</th>
+                            <th>Working</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -521,7 +526,7 @@
                             if (!members || members.length === 0) return;
                         %>
                         <tr class="type-group-header">
-                            <td colspan="5"><%= specialtyLabels[grpKey] || grpKey %></td>
+                            <td colspan="6"><%= specialtyLabels[grpKey] || grpKey %></td>
                         </tr>
                         <% members.forEach(c => { %>
                         <tr data-cid="<%= c.CounselorID %>" data-specialty-color="<%= c.HomeGroupColor %>">
@@ -554,6 +559,9 @@
                                     <option value="<%= opt %>"<%= c.ExtendedHours === opt ? ' selected' : '' %>><%= opt %></option>
                                     <% }); %>
                                 </select>
+                            </td>
+                            <td style="text-align:center;">
+                                <input type="checkbox" class="cg-working cg-specialty-working" data-cid="<%= c.CounselorID %>"<%= c.isWorkingThisWeek !== 0 ? ' checked' : '' %>>
                             </td>
                         </tr>
                         <% }); %>
@@ -917,14 +925,21 @@
         // Returns MAIN_COUNSELORS plus specialty counselors who have a ScheduleType set in the DOM.
         // Called at point-of-use so it reflects the current dropdown state.
         function getAssignablePool() {
+            const isWorking = cid => {
+                const cb = document.querySelector(`.cg-working[data-cid="${cid}"]:not(.cg-specialty-working)`)
+                        || document.querySelector(`.cg-working[data-cid="${cid}"]`);
+                return cb ? cb.checked : true;
+            };
             const mainIds = new Set(MAIN_COUNSELORS.map(c => c.CounselorID));
-            const extra   = SPECIALTY_COUNSELORS.filter(c => {
+            const mainWorking = MAIN_COUNSELORS.filter(c => isWorking(c.CounselorID));
+            const extra = SPECIALTY_COUNSELORS.filter(c => {
                 if (mainIds.has(c.CounselorID)) return false; // already in MAIN (dual-assigned)
+                if (!isWorking(c.CounselorID)) return false;
                 const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                 const sched = sel ? sel.value : (c.ScheduleType || '');
                 return !!sched;
             });
-            return extra.length ? [...MAIN_COUNSELORS, ...extra] : MAIN_COUNSELORS;
+            return extra.length ? [...mainWorking, ...extra] : mainWorking;
         }
 
         // ── Availability counter chip ────────────────────────────────────────────
@@ -1097,12 +1112,13 @@
                 const row = sel.closest('tr');
                 savedCids.add(cid);
                 counselors.push({
-                    counselorID:    cid,
-                    homeGroupColor: sel.value || null,
-                    busRoute:       document.querySelector(`.cg-bus-input[data-cid="${cid}"]:not(.cg-specialty-bus)`)?.value.trim() || null,
-                    scheduleType:   document.querySelector(`.cg-schedule[data-cid="${cid}"]:not(.cg-specialty-schedule)`)?.value || null,
-                    extendedHours:  document.querySelector(`.cg-extended[data-cid="${cid}"]:not(.cg-specialty-extended)`)?.value || null,
-                    specialtyGroup: row ? (row.dataset.specialtyGroup || null) : null,
+                    counselorID:       cid,
+                    homeGroupColor:    sel.value || null,
+                    busRoute:          document.querySelector(`.cg-bus-input[data-cid="${cid}"]:not(.cg-specialty-bus)`)?.value.trim() || null,
+                    scheduleType:      document.querySelector(`.cg-schedule[data-cid="${cid}"]:not(.cg-specialty-schedule)`)?.value || null,
+                    extendedHours:     document.querySelector(`.cg-extended[data-cid="${cid}"]:not(.cg-specialty-extended)`)?.value || null,
+                    specialtyGroup:    row ? (row.dataset.specialtyGroup || null) : null,
+                    isWorkingThisWeek: document.querySelector(`.cg-working[data-cid="${cid}"]:not(.cg-specialty-working)`)?.checked ? 1 : 0,
                 });
             });
 
@@ -1113,12 +1129,13 @@
                 if (!cid || savedCids.has(cid)) return;
                 savedCids.add(cid);
                 counselors.push({
-                    counselorID:    cid,
-                    homeGroupColor: row.dataset.specialtyColor || null,
-                    busRoute:       row.querySelector(`.cg-specialty-bus`)?.value.trim() || null,
-                    scheduleType:   row.querySelector(`.cg-specialty-schedule`)?.value || null,
-                    extendedHours:  row.querySelector(`.cg-specialty-extended`)?.value || null,
-                    specialtyGroup: null,
+                    counselorID:       cid,
+                    homeGroupColor:    row.dataset.specialtyColor || null,
+                    busRoute:          row.querySelector(`.cg-specialty-bus`)?.value.trim() || null,
+                    scheduleType:      row.querySelector(`.cg-specialty-schedule`)?.value || null,
+                    extendedHours:     row.querySelector(`.cg-specialty-extended`)?.value || null,
+                    specialtyGroup:    null,
+                    isWorkingThisWeek: row.querySelector(`.cg-specialty-working`)?.checked ? 1 : 0,
                 });
             });
 

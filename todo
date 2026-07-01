@@ -1,6 +1,1 @@
-Run this in your terminal (with the server stopped):
-
-
-sqlite3 "c:\Users\Scene Shop\Documents\Github\sp-daily-memo\camp_manager.db" "DELETE FROM CamperWeekData WHERE WeekNumber = 1;"
-
-Then re-upload the Week 1 ACR-005 targeting Week 1 in settings. With the backfill fix in place, future restarts won't re-pollute Week 1 from the Campers table.
+Audit roster should also show data for the prepping week
