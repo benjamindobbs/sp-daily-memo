@@ -6047,9 +6047,9 @@ app.post('/mirror-sports-location', (req, res) => {
     if (fromWeek < 1 || fromWeek > 6 || toWeek < 1 || toWeek > 6) {
         return res.redirect(`/counselor-scheduling?week=${toWeek}&message=Invalid+week`);
     }
-    const sources = db.prepare("SELECT ActivityName, Location FROM WeeklyOfferings WHERE WeekNumber=? AND SideOfCamp='Sports' AND Location IS NOT NULL").all(fromWeek);
-    const upd = db.prepare("UPDATE WeeklyOfferings SET Location=? WHERE WeekNumber=? AND ActivityName=? AND SideOfCamp='Sports'");
-    db.transaction(() => { for (const s of sources) upd.run(s.Location, toWeek, s.ActivityName); })();
+    const sources = db.prepare("SELECT PeriodNumber, ActivityName, Location FROM WeeklyOfferings WHERE WeekNumber=? AND SideOfCamp='Sports' AND Location IS NOT NULL").all(fromWeek);
+    const upd = db.prepare("UPDATE WeeklyOfferings SET Location=? WHERE WeekNumber=? AND PeriodNumber=? AND ActivityName=? AND SideOfCamp='Sports'");
+    db.transaction(() => { for (const s of sources) upd.run(s.Location, toWeek, s.PeriodNumber, s.ActivityName); })();
     res.redirect(`/counselor-scheduling?week=${toWeek}&message=Mirrored+location+for+${sources.length}+Sports+class${sources.length !== 1 ? 'es' : ''}+from+Week+${fromWeek}`);
 });
 

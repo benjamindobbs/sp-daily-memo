@@ -1253,14 +1253,15 @@
 
             const staffMap = {};
             staffRows.forEach(r => {
-                if (!staffMap[r.ActivityName]) staffMap[r.ActivityName] = [];
-                staffMap[r.ActivityName].push(r.PersonID);
+                const key = `${r.PeriodNumber}|${r.ActivityName}`;
+                if (!staffMap[key]) staffMap[key] = [];
+                staffMap[key].push(r.PersonID);
             });
 
             const validStaffIds = new Set(STAFF_MEMBERS.map(s => s.StaffID));
             let mirrored = 0;
             OFFERINGS.forEach((act, idx) => {
-                const prev = staffMap[act.ActivityName];
+                const prev = staffMap[`${act.PeriodNumber}|${act.ActivityName}`];
                 if (!prev || prev.length === 0) return;
                 const candidates = prev.filter(id => validStaffIds.has(id));
                 if (candidates.length === 0) return;
