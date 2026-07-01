@@ -357,7 +357,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups', '/sync-homegroup-colors',
     '/hub-content', '/director-notes',
     '/set-active-week', '/set-released-week', '/set-prep-week', '/update-session-label',
-    '/clear-counselor-week', '/counselor-week-assignments', '/clear-counselor-schedule', '/clear-counselor-homegroups',
+    '/clear-counselor-week', '/counselor-week-assignments', '/api/week-staff-assignments', '/mirror-sports-location', '/clear-counselor-schedule', '/clear-counselor-homegroups',
     '/audit', '/merge-class', '/set-activity-side', '/delete-counselor',
     '/update-staff-info', '/update-staff-period', '/remove-staff-period',
     '/homegroup-assignment', '/counselor-preferences-summary',
@@ -6032,6 +6032,25 @@ app.get('/counselor-week-assignments/:week', (req, res) => {
     if (w < 1 || w > 6) return res.status(400).json({ error: 'Invalid week' });
     const rows = db.prepare('SELECT CounselorID, PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE WeekNumber=?').all(w);
     res.json(rows);
+});
+
+app.get('/api/week-staff-assignments/:week', (req, res) => {
+    const w = parseInt(req.params.week);
+    if (w < 1 || w > 6) return res.status(400).json({ error: 'Invalid week' });
+    const rows = db.prepare("SELECT PersonID, PeriodNumber, ActivityName FROM CounselorScheduleAssignments WHERE PersonType='Instructor' AND WeekNumber=?").all(w);
+    res.json(rows);
+});
+
+app.post('/mirror-sports-location', (req, res) => {
+    const fromWeek = parseInt(req.body.fromWeek);
+    const toWeek   = parseInt(req.body.toWeek);
+    if (fromWeek < 1 || fromWeek > 6 || toWeek < 1 || toWeek > 6) {
+        return res.redirect(`/counselor-scheduling?week=${toWeek}&message=Invalid+week`);
+    }
+    const sources = db.prepare("SELECT ActivityName, Location FROM WeeklyOfferings WHERE WeekNumber=? AND SideOfCamp='Sports' AND Location IS NOT NULL").all(fromWeek);
+    const upd = db.prepare("UPDATE WeeklyOfferings SET Location=? WHERE WeekNumber=? AND ActivityName=? AND SideOfCamp='Sports'");
+    db.transaction(() => { for (const s of sources) upd.run(s.Location, toWeek, s.ActivityName); })();
+    res.redirect(`/counselor-scheduling?week=${toWeek}&message=Mirrored+location+for+${sources.length}+Sports+class${sources.length !== 1 ? 'es' : ''}+from+Week+${fromWeek}`);
 });
 
 // --- HOMEGROUP ASSIGNMENT TOOL ---
