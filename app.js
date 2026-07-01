@@ -4765,7 +4765,7 @@ app.post('/dismissals/update', (req, res) => {
 // --- Counselor Scheduling Tool ---
 app.get('/counselor-scheduling', (req, res) => {
     const sessions   = db.prepare('SELECT * FROM Sessions ORDER BY weekNumber').all();
-    const planWeek   = Math.min(6, Math.max(1, parseInt(req.query.week) || getActiveWeek()));
+    const planWeek   = Math.min(6, Math.max(1, parseInt(req.query.week) || getPrepTargetWeek() || getActiveWeek()));
     const alertMessage = req.query.message || null;
 
     // Offerings filtered to planning week, with per-week capacity/location overrides
