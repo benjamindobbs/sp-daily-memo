@@ -5020,18 +5020,16 @@ app.post('/sync-homegroup-colors', (req, res) => {
         return res.redirect(`/counselor-scheduling?week=${week}&message=No+homegroup+roster+data+found+for+this+week`);
     }
 
-    const scheduleFor = color => (['Red','Carolina'].includes(color) ? 'AM Enrichment / PM Sports' : 'AM Sports / PM Enrichment');
     const upsert = db.prepare(`
-        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
-        VALUES (?, ?, ?, ?, NULL, NULL)
+        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor)
+        VALUES (?, ?, ?)
         ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET
-            HomeGroupColor = excluded.HomeGroupColor,
-            ScheduleType   = excluded.ScheduleType
+            HomeGroupColor = excluded.HomeGroupColor
     `);
 
     db.transaction(() => {
         for (const r of pinnedRows) {
-            upsert.run(r.CounselorID, week, r.HomeGroupColor, scheduleFor(r.HomeGroupColor));
+            upsert.run(r.CounselorID, week, r.HomeGroupColor);
         }
     })();
 
