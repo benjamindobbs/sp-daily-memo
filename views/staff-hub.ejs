@@ -209,15 +209,6 @@
         </script>
         <% } %>
 
-        <% if (announcement) { %>
-        <div class="card" style="margin-top:20px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <h3 style="margin:0;">Announcements</h3>
-            </div>
-            <div class="hub-rich-content"><%- announcement %></div>
-        </div>
-        <% } %>
-
         <%/* ── Today's Activity Feed ── */%>
         <% const hasActivity = todayPickups.length > 0 || todayLateArrivals.length > 0 || todayEarlyDismissals.length > 0 || todayScheduleChanges.length > 0; %>
         <% if (hasActivity) { %>
@@ -282,6 +273,15 @@
                 <% }); %>
             </div>
             <% } %>
+        </div>
+        <% } %>
+
+        <% if (announcement) { %>
+        <div class="card" style="margin-top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;">Announcements</h3>
+            </div>
+            <div class="hub-rich-content"><%- announcement %></div>
         </div>
         <% } %>
 
