@@ -1673,7 +1673,8 @@ app.post('/merge-class', (req, res) => {
 // --- MASTER SCHEDULE ---
 app.get('/master-schedule', (req, res) => {
     try {
-        const aw = getPrepTargetWeek() || getActiveWeek();
+        const isAdmin = req.cookies.adminAuth === 'true';
+        const aw = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
         const classes = db.prepare(`
             SELECT DISTINCT
                 s.PeriodNumber  AS periodNumber,
