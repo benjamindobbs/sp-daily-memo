@@ -1,6 +1,11 @@
-Add the SummerPlace header to nametags, session (week) as footer (Session N format). Resize nametags to correct size (tbd)
-Schedule dimissals for non-active week campers.
 Add Today's Memo and Attendance at a glance cards to staff hub for all users
 Add an additional section in the late arrivals view to check dismissed campers back in
 Change the late arrival function on the attendance at a glance card to immediately remove the arrived camper from the absent list entirely. Also change behavior so dismissed campers do not appear on the attendance at a glance. Attendance at a glance will now only show absent campers and two new sections for a list of campers in the nurse and with noell (From Nurse and Case Log)
 Add edit function to admin notes (only editable by the original poster). Allow ability to edit text and change the tab it was posted in.
+In camper profile add linkout on class names that brings you to class-roster view
+Add Dismiss button on camper profile for quick access
+
+Future tasks, ignore below:
+If Dance and Cheer appear in the same period, merge them into a single class 
+Add the SummerPlace header to nametags, session (week) as footer (Session N format). Resize nametags to correct size (tbd)
+Schedule dimissals for non-active week campers.

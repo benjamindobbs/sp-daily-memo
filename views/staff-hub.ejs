@@ -114,7 +114,7 @@
                 <button id="potdToggle" onclick="togglePotd()" class="btn btn-small" style="font-size:0.72rem; padding:3px 10px;">Hide</button>
             </div>
             <div id="potdBody">
-                <img src="<%= winnerToShow.imageUrl %>" alt="Photo by <%= winnerToShow.counselorName %>"
+                <img src="<%= thumbUrl(winnerToShow.imageUrl, 800) %>" alt="Photo by <%= winnerToShow.counselorName %>"
                      style="width:100%; border-radius:8px; object-fit:cover; display:block;">
                 <div style="margin-top:10px; display:flex; align-items:baseline; gap:10px;">
                     <span style="font-size:1.1rem; font-weight:700;"><%= winnerToShow.counselorName.split(' ')[0] %></span>
