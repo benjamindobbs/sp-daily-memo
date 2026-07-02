@@ -260,6 +260,8 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/photo-day` | | Upload a photo |
 | GET | `/photo-gallery` | | Browse photos; staff can vote |
 | POST | `/photo-vote/:id` | | Cast or remove a vote |
+| GET | `/photo-gallery/all` | ✓ | All photos across all dates; sortable by `?sort=date` (default) or `?sort=likes` |
+| GET | `/photo-download` | ✓ | Download photos by ID: `?ids=1,2,3`. Single photo → image file; multiple → `camp-photos.zip` fetched from Cloudinary |
 
 ---
 

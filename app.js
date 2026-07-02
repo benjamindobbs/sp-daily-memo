@@ -4,8 +4,11 @@ const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+const http = require('http');
 const cookieParser = require('cookie-parser');
 const cloudinary = require('cloudinary').v2;
+const archiver = require('archiver');
 
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -369,6 +372,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/reports', '/upload-pdf',
     '/create-staff', '/create-camper', '/assign-camper-schedule', '/get-new-camper-options', '/assign-camper-class',
     '/alerts', '/api/alerts',
+    '/photo-gallery/all', '/photo-download',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -5963,6 +5967,70 @@ app.post('/photo-vote/:id', (req, res) => {
     db.prepare("INSERT INTO PhotoVotes (photoId, voterName, voteDate) VALUES (?, ?, ?)").run(id, voterName, today);
     const votes = db.prepare("SELECT COUNT(*) as n FROM PhotoVotes WHERE photoId=?").get(id).n;
     res.json({ ok: true, votes, voterVoteCount: todayCount + 1, voteLimit, remaining: voteLimit - todayCount - 1 });
+});
+
+app.get('/photo-gallery/all', (req, res) => {
+    const sort = req.query.sort || 'date';
+    const orderBy = sort === 'likes'
+        ? 'votes DESC, p.date DESC, p.submittedAt ASC'
+        : 'p.date DESC, votes DESC, p.submittedAt ASC';
+    const photos = db.prepare(`
+        SELECT p.id, p.counselorName, p.imageUrl, p.date, COUNT(v.id) as votes
+        FROM PhotoSubmissions p
+        LEFT JOIN PhotoVotes v ON v.photoId = p.id
+        GROUP BY p.id
+        ORDER BY ${orderBy}
+    `).all();
+    res.render('photo-gallery-all', { photos, sort });
+});
+
+app.get('/photo-download', async (req, res) => {
+    const ids = (req.query.ids || '').split(',').map(Number).filter(Boolean);
+    if (!ids.length) return res.status(400).send('No photos selected');
+    const idPlaceholders = ids.map(() => '?').join(',');
+    const photos = db.prepare(
+        `SELECT id, counselorName, imageUrl, date FROM PhotoSubmissions WHERE id IN (${idPlaceholders})`
+    ).all(...ids);
+    if (!photos.length) return res.status(404).send('Photos not found');
+
+    const fetchImgStream = (url) => new Promise((resolve, reject) => {
+        const fetcher = url.startsWith('https') ? https : http;
+        fetcher.get(url, resolve).on('error', reject);
+    });
+
+    const safeName = (s) => s.replace(/[^a-z0-9_\-]/gi, '-').replace(/-+/g, '-');
+
+    if (photos.length === 1) {
+        const p = photos[0];
+        const ext = (p.imageUrl.match(/\.([a-z0-9]+)(?:\?|$)/i) || [])[1] || 'jpg';
+        const filename = `${p.date}-${safeName(p.counselorName)}.${ext}`;
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Type', `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+        try {
+            const imgStream = await fetchImgStream(p.imageUrl);
+            imgStream.pipe(res);
+        } catch (e) {
+            res.status(502).send('Failed to fetch image');
+        }
+        return;
+    }
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="camp-photos.zip"');
+    const archive = archiver('zip', { zlib: { level: 5 } });
+    archive.on('error', err => { if (!res.headersSent) res.status(500).send('Zip error'); });
+    archive.pipe(res);
+    for (const p of photos) {
+        try {
+            const ext = (p.imageUrl.match(/\.([a-z0-9]+)(?:\?|$)/i) || [])[1] || 'jpg';
+            const filename = `${p.date}-${safeName(p.counselorName)}-${p.id}.${ext}`;
+            const imgStream = await fetchImgStream(p.imageUrl);
+            archive.append(imgStream, { name: filename });
+        } catch (e) {
+            // skip photos that fail to fetch
+        }
+    }
+    archive.finalize();
 });
 
 // --- SESSION MANAGEMENT ---
