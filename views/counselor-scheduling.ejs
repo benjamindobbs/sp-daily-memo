@@ -368,6 +368,12 @@
                 </select>
                 <button class="btn btn-small" style="background:#f1f5f9; color:var(--text);" onclick="mirrorWeek('Sports')">&#9917; Mirror Sports</button>
                 <button class="btn btn-small" style="background:#f1f5f9; color:var(--text);" onclick="mirrorWeek('Enrichment')">&#127912; Mirror Enrichment</button>
+                <button class="btn btn-small" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0;" onclick="mirrorStaffOnly()">&#128101; Mirror UL/SL</button>
+                <form id="mirrorLocationForm" action="/mirror-sports-location" method="POST" style="display:contents;">
+                    <input type="hidden" name="toWeek" value="<%= planWeek %>">
+                    <input type="hidden" id="mirrorLocationFromWeek" name="fromWeek" value="">
+                    <button type="button" class="btn btn-small" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;" onclick="submitMirrorLocation()">&#128205; Mirror Locations (Sports)</button>
+                </form>
                 <span id="mirrorStatus" style="font-size:0.82rem; color:var(--text-muted);"></span>
             </div>
             <% } %>
@@ -1229,6 +1235,57 @@
             updateAllCounters();
             updateGroupCounters();
             statusEl.textContent = `Mirrored ${mirrored} ${side} class${mirrored !== 1 ? 'es' : ''} from ${SESSIONS.find(s => s.weekNumber === fromWeek)?.label ?? `Week ${fromWeek}`}.`;
+        }
+
+        async function mirrorStaffOnly() {
+            const fromWeek = parseInt(document.getElementById('mirrorSourceWeek').value);
+            const statusEl = document.getElementById('mirrorStatus');
+            statusEl.textContent = 'Loading…';
+
+            let staffRows;
+            try {
+                const resp = await fetch(`/api/week-staff-assignments/${fromWeek}`);
+                staffRows = await resp.json();
+            } catch {
+                statusEl.textContent = 'Error fetching source week.';
+                return;
+            }
+
+            const staffMap = {};
+            staffRows.forEach(r => {
+                const key = `${r.PeriodNumber}|${r.ActivityName}`;
+                if (!staffMap[key]) staffMap[key] = [];
+                staffMap[key].push(r.PersonID);
+            });
+
+            const validStaffIds = new Set(STAFF_MEMBERS.map(s => s.StaffID));
+            let mirrored = 0;
+            OFFERINGS.forEach((act, idx) => {
+                const prev = staffMap[`${act.PeriodNumber}|${act.ActivityName}`];
+                if (!prev || prev.length === 0) return;
+                const candidates = prev.filter(id => validStaffIds.has(id));
+                if (candidates.length === 0) return;
+                state[idx].staff = [...candidates];
+                const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                if (card) {
+                    const sInput = card.querySelector('[data-count-type="staff"]');
+                    if (sInput) sInput.value = candidates.length;
+                }
+                mirrored++;
+            });
+
+            renderAllFromState();
+            updateAllCounters();
+            updateGroupCounters();
+            const fromLabel = SESSIONS.find(s => s.weekNumber === fromWeek)?.label ?? `Week ${fromWeek}`;
+            statusEl.textContent = `Mirrored UL/SL for ${mirrored} class${mirrored !== 1 ? 'es' : ''} from ${fromLabel}.`;
+        }
+
+        function submitMirrorLocation() {
+            const fromWeek = document.getElementById('mirrorSourceWeek').value;
+            if (!confirm(`Copy Sports locations from Week ${fromWeek} to Week ${PLAN_WEEK}? This saves immediately to the database.`)) return;
+            document.getElementById('mirrorLocationFromWeek').value = fromWeek;
+            document.getElementById('mirrorLocationForm').submit();
         }
 
         function autoAssignHomeGroups() {

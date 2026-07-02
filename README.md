@@ -51,9 +51,9 @@ All imports happen on the **Settings** page (`/settings`).
 |---|---|---|
 | Activities | `Name`, `SideOfCamp`, `MaxCapacity`, `AllowedGroups` | `AllowedGroups`: `Red`, `Carolina`, `Red-Carolina`, `Green-Navy`, or blank for all |
 | All Staff | `Name` (Last, First), `Positions`, `Camp` | Handles all roles. Home group color is set in the Schedule Builder, not here. |
-| Camper Roster (ACR-005) | ACR-005 export from camp management | Creates/updates: name, color group, lunch, shirt size. Must run **after** staff import. **In CB:** Select All Seasons → add Session filter → select relevant weeks for all specialty camps and main camp → Run report as CSV. |
+| Camper Roster (ACR-005) | ACR-005 export from camp management | Creates/updates: name, color group, lunch, shirt size. Must run **after** staff import. **In CB:** Select All Seasons → add Session filter → select relevant weeks for all specialty camps and main camp → Run report as CSV. If a **Prep Target** week is set in Session Management, the upload goes to that week instead of the active week. |
 | Master Camper Schedule (ACR-255) | ACR-255 export from camp management | Enriches existing campers with: grade, bus route, extended hours, activity schedule. Must run **after** camper roster import. **In CB:** Select All Seasons → add Session filter → select all SP W[X] - Period sessions (Periods 1–5) → Run report as CSV. |
-| Instructor Schedules | `FirstName`, `LastName`, `P1`–`P6`, `L1`–`L6` | Locations (`L1`–`L6`) are optional. Unknown names are auto-created as Instructors. Uploads to the **active week**. |
+| Instructor Schedules | `FirstName`, `LastName`, `P1`–`P6`, `L1`–`L6` | Locations (`L1`–`L6`) are optional. Unknown names are auto-created as Instructors. Uploads to the **Prep Target** week if one is set, otherwise to the active week. |
 
 #### Bus routes & the Bus Route Audit
 
@@ -106,6 +106,7 @@ The **Active Week** is the session all scheduling, attendance, and reporting too
 |---|---|
 | **Set Active** | Makes this the current working week for all tools |
 | **Release / Unrelease** | Toggles staff visibility of the week's counselor schedule |
+| **Set Prep / Unset Prep** | Marks this week as the upload target for future ACR-005 and instructor imports. Only one week can be a prep target at a time; clicking again unsets it. The Master Schedule, Audit Roster, and CSV export also reflect this week when a prep target is set. |
 | **Save** (floppy icon) | Saves the week label and start date |
 | **Clear** | Removes all counselor scheduling data for that week |
 | **Sync** | Rebuilds weekly offerings from the imported camper schedule data |
@@ -147,12 +148,13 @@ The Schedule Builder is at `/counselor-scheduling`.
 
 1. Upload or Sync **Weekly Offerings** to populate the offerings list
 2. Set **Schedule Types** for counselors using the dropdowns in the counselor grid
-3. Click **Full Auto Build** to run the greedy assignment algorithm across all offerings
-4. Optionally use **Rebuild Side** (Sports or Enrichment) to re-roll only one side
-5. **Lock** individual offerings before a partial rebuild to preserve their assignments
-6. Click **Fill Extras** to run a second pass and place any remaining unassigned counselors
-7. **Save** to commit all assignments to the database
-8. **Backup** to create a named snapshot before making major changes
+3. Use the **Working** checkbox on each counselor row to mark who is present this week. Counselors unchecked are excluded from all dropdowns and auto-assignment passes.
+4. Click **Full Auto Build** to run the greedy assignment algorithm across all offerings
+5. Optionally use **Rebuild Side** (Sports or Enrichment) to re-roll only one side
+6. **Lock** individual offerings before a partial rebuild to preserve their assignments
+7. Click **Fill Extras** to run a second pass and place any remaining unassigned counselors
+8. **Save** to commit all assignments to the database
+9. **Backup** to create a named snapshot before making major changes
 
 #### Backups
 
@@ -177,6 +179,7 @@ All profile editing requires **admin view**. Staff view shows the same pages rea
 1. Go to **Camper Lookup** (`/search`) and search by name
 2. Click the camper's name to open their profile (`/camper/:id`)
 3. The left column in admin view shows an editable **Camper Details** form with:
+   - Preferred Name (optional nickname — shown in place of first name throughout the app when set)
    - Home Counselor (dropdown, grouped by color)
    - Bus Route (text field) + **Rides AM Bus** / **Rides PM Bus** checkboxes — controls which direction bus sheets the camper appears on; clearing the route field automatically zeros both flags
    - Extended Hours (No / AM Only / PM Only / AM + PM)
@@ -261,7 +264,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 
 | Page | URL | Description |
 |---|---|---|
-| Swap Tool | `/swap-tool` | Move a camper from one class to another. Shows capacity and waitlist status for all available options. |
+| Swap Tool | `/swap-tool` | Move a camper from one class to another. Shows capacity and waitlist status for all available options. Displays a count of how many swaps have been made for the selected camper during the current week. |
 | Schedule History | `/schedule-history` | Log of recent swap and assignment changes. Admin can archive entries. |
 | Waitlist / Promotions | `/promotions` | Lists campers eligible to be promoted off the waitlist into an open spot. Promote individually, all at once, or force-promote into an over-capacity class. |
 | Counselor Scheduling | `/counselor-scheduling` | Full counselor assignment builder — see [Counselor Scheduling](#counselor-scheduling) above. |
@@ -334,6 +337,7 @@ All at `/settings`.
 | Attendance Nudge Notifications | — | Push notifications sent to subscribed counselors reminding them to submit attendance 15+ minutes into a class period. Staff subscribe via the **Enable notifications** button in My Preferences. One notification per class per day; no notification if attendance is already submitted. See [Staff: Setting Up Notifications](#staff-setting-up-notifications). |
 | Instant Alerts | `/alerts` | Send a push notification to a named group or individual counselor. Seven built-in system groups are available (All Counselors, All Unit Leaders, All Admin, and the four AM/PM Sports/Enrichment splits). Admins can also create custom named groups with a hand-picked member list. Alerts sent to **All Admin** additionally display a red banner at the top of the admin hub for any admin currently logged in, regardless of whether they have push notifications enabled. All sent alerts are logged with recipient group, sender, timestamp, and delivery count. |
 | Photo Gallery | `/photo-gallery` | Browse uploaded photos; staff can vote |
+| All Photos (Admin) | `/photo-gallery/all` | Admin-only view of every submitted photo across all dates. Sort by date or by likes. Select one or multiple photos and download — single photos download directly, multiple photos download as a `.zip` file. |
 | Export Counselor Schedule | `/export-counselor-schedule` | Download current counselor assignments as CSV |
 | Export Staff Schedule | `/export-staff-schedule` | Download instructor/unit leader assignments as CSV |
 | Export Master Schedule | `/export-master-schedule` | Download the full class-by-period master schedule as CSV |

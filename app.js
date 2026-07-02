@@ -4,8 +4,11 @@ const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+const http = require('http');
 const cookieParser = require('cookie-parser');
 const cloudinary = require('cloudinary').v2;
+const archiver = require('archiver');
 
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -146,16 +149,18 @@ function computeClassAttStats(clockBlock, side, today) {
 function computeExtAttStats(session, today) {
     const aw = getActiveWeek();
     const col = session === 'am' ? "('AM','Both')" : "('PM','Both')";
-    const extTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col}`).get(aw)?.n || 0;
+    // Li'l Place and KinderPlace are picked up from a separate site for PM — exclude from completion check
+    const lpkp = session === 'pm' ? "AND HomeGroupColor NOT IN ('LilPlace','KinderPlace')" : '';
+    const extTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col} ${lpkp}`).get(aw)?.n || 0;
     if (extTotal === 0) return { total: 1, submitted: 1 };
     const handled = db.prepare(`
         SELECT COUNT(*) as n FROM (
             SELECT CamperID FROM Attendance
             WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col})
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col} ${lpkp})
             UNION
             SELECT CamperID FROM EarlyDismissals WHERE Date=?
-              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col})
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col} ${lpkp})
         )
     `).get(today, `extended_${session}`, aw, today, aw)?.n || 0;
     return { total: 1, submitted: handled >= extTotal ? 1 : 0 };
@@ -165,6 +170,8 @@ function computeBusAttStats(session, today) {
     const aw = getActiveWeek();
     const ridesCol = session === 'pm' ? 'BusRidesPM' : 'BusRidesAM';
     const sessionType = `bus_${session}`;
+    // Li'l Place and KinderPlace board PM buses from a separate site — exclude from completion check
+    const lpkp = session === 'pm' ? "AND HomeGroupColor NOT IN ('LilPlace','KinderPlace')" : '';
     const routes = db.prepare(`
         SELECT DISTINCT BusRoute FROM CamperWeekData
         WHERE WeekNumber=? AND BusRoute IS NOT NULL AND BusRoute != '' AND LOWER(CAST(BusRoute AS TEXT)) != 'null' AND ${ridesCol} = 1
@@ -173,15 +180,15 @@ function computeBusAttStats(session, today) {
     const total = routes.length;
     if (total === 0) return { total: 0, submitted: 0 };
 
-    const checkTotal   = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1`);
+    const checkTotal   = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1 ${lpkp}`);
     const checkHandled = db.prepare(`
         SELECT COUNT(*) as n FROM (
             SELECT CamperID FROM Attendance
             WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1)
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1 ${lpkp})
             UNION
             SELECT CamperID FROM EarlyDismissals WHERE Date=?
-              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1)
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1 ${lpkp})
         )
     `);
 
@@ -353,7 +360,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups', '/sync-homegroup-colors',
     '/hub-content', '/director-notes',
     '/set-active-week', '/set-released-week', '/set-prep-week', '/update-session-label',
-    '/clear-counselor-week', '/counselor-week-assignments', '/clear-counselor-schedule', '/clear-counselor-homegroups',
+    '/clear-counselor-week', '/counselor-week-assignments', '/api/week-staff-assignments', '/mirror-sports-location', '/clear-counselor-schedule', '/clear-counselor-homegroups',
     '/audit', '/merge-class', '/set-activity-side', '/delete-counselor',
     '/update-staff-info', '/update-staff-period', '/remove-staff-period',
     '/homegroup-assignment', '/counselor-preferences-summary',
@@ -365,6 +372,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/reports', '/upload-pdf',
     '/create-staff', '/create-camper', '/assign-camper-schedule', '/get-new-camper-options', '/assign-camper-class',
     '/alerts', '/api/alerts',
+    '/photo-gallery/all', '/photo-download',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -1168,7 +1176,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS AlertTargets (
     PRIMARY KEY (AlertID, CounselorID)
 )`);
 const SYSTEM_ALERT_GROUPS = [
-    'All Counselors', 'All Unit Leaders', 'All Admin',
+    'All Staff', 'All Counselors', 'All Unit Leaders', 'All Admin',
     'All AM Sports', 'All PM Sports', 'All AM Enrichment', 'All PM Enrichment',
 ];
 const seedGroup = db.prepare("INSERT OR IGNORE INTO AlertGroups (name, isSystem) VALUES (?, 1)");
@@ -1673,7 +1681,8 @@ app.post('/merge-class', (req, res) => {
 // --- MASTER SCHEDULE ---
 app.get('/master-schedule', (req, res) => {
     try {
-        const aw = getPrepTargetWeek() || getActiveWeek();
+        const isAdmin = req.cookies.adminAuth === 'true';
+        const aw = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
         const classes = db.prepare(`
             SELECT DISTINCT
                 s.PeriodNumber  AS periodNumber,
@@ -1767,7 +1776,11 @@ app.get('/master-schedule', (req, res) => {
             schedule.push({ periodNumber, periodLabel: String(periodNumber), classes: periodMap.get(periodNumber) });
         }
 
-        res.render('master-schedule', { schedule });
+        const session = db.prepare('SELECT label FROM Sessions WHERE weekNumber=?').get(aw);
+        const weekLabel = session?.label ?? `Week ${aw}`;
+        const isPrepping = isAdmin && (getPrepTargetWeek() === aw);
+
+        res.render('master-schedule', { schedule, weekLabel, isPrepping });
     } catch (err) {
         console.error(err);
         res.status(500).send('Error loading Master Schedule: ' + err.message);
@@ -2193,8 +2206,9 @@ app.post('/create-camper', (req, res) => {
     const campLunch     = (req.body.campLunch     || 'No').trim();
     const shirtSize     = (req.body.shirtSize     || '').trim() || null;
 
+    const weekNumber = parseInt(req.body.weekNumber) || getActiveWeek();
+
     try {
-        const aw = getActiveWeek();
         const result = db.prepare(`
             INSERT INTO Campers (FirstName, LastName, Grade, Age, ShirtSize)
             VALUES (?, ?, ?, ?, ?)
@@ -2204,7 +2218,7 @@ app.post('/create-camper', (req, res) => {
         db.prepare(`
             INSERT OR REPLACE INTO CamperWeekData (CamperID, WeekNumber, HomeGroupColor, BusRoute, ExtendedHours, CampLunch)
             VALUES (?, ?, ?, ?, ?, ?)
-        `).run(newId, aw, homeGroupColor, busRoute, extendedHours, campLunch);
+        `).run(newId, weekNumber, homeGroupColor, busRoute, extendedHours, campLunch);
 
         res.redirect(`/assign-camper-schedule/${newId}`);
     } catch (err) {
@@ -2223,12 +2237,12 @@ app.post('/create-blank-class', (req, res) => {
         return res.redirect('/settings?message=Class+name,+period,+and+side+are+required');
     }
 
-    const aw = getActiveWeek();
+    const weekNumber = parseInt(req.body.weekNumber) || getActiveWeek();
     try {
         db.prepare(`INSERT OR IGNORE INTO Activities (Name, SideOfCamp, MaxCapacity) VALUES (?, ?, 20)`)
             .run(activityName, sideOfCamp);
         db.prepare(`INSERT OR IGNORE INTO WeeklyOfferings (ActivityName, PeriodNumber, SideOfCamp, WeekNumber, PreliminaryEnrollment) VALUES (?, ?, ?, ?, 0)`)
-            .run(activityName, periodNumber, sideOfCamp, aw);
+            .run(activityName, periodNumber, sideOfCamp, weekNumber);
         res.redirect('/settings?message=Blank+class+created');
     } catch (err) {
         console.error(err);
@@ -3757,10 +3771,10 @@ app.get('/attendance', (req, res) => {
             SELECT COUNT(*) as n FROM (
                 SELECT CamperID FROM Attendance
                 WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND BusRidesPM=1)
+                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND BusRidesPM=1 AND HomeGroupColor NOT IN ('LilPlace','KinderPlace'))
                 UNION
                 SELECT CamperID FROM EarlyDismissals WHERE Date=?
-                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND BusRidesPM=1)
+                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND BusRidesPM=1 AND HomeGroupColor NOT IN ('LilPlace','KinderPlace'))
             )
         `)
     };
@@ -3769,7 +3783,8 @@ app.get('/attendance', (req, res) => {
         for (const session of ['am', 'pm']) {
             const ridesCol = session === 'pm' ? 'BusRidesPM' : 'BusRidesAM';
             const sessionType = `bus_${session}`;
-            const busTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1`).get(aw, route)?.n || 0;
+            const lpkp = session === 'pm' ? "AND HomeGroupColor NOT IN ('LilPlace','KinderPlace')" : '';
+            const busTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND BusRoute=? AND ${ridesCol}=1 ${lpkp}`).get(aw, route)?.n || 0;
             const handled = checkBusHandled[session].get(date, sessionType, aw, route, date, aw, route)?.n || 0;
             const displayRoute = String(parseFloat(route) % 1 === 0 ? Math.trunc(parseFloat(route)) : route);
             busSessions.push({
@@ -3787,16 +3802,18 @@ app.get('/attendance', (req, res) => {
     for (const session of ['am', 'pm']) {
         const sessionType = `extended_${session}`;
         const col = session === 'am' ? "('AM','Both')" : "('PM','Both')";
-        const extTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col}`).get(aw)?.n || 0;
+        // Li'l Place and KinderPlace are picked up from a separate site for PM — exclude from completion check
+        const lpkp = session === 'pm' ? "AND HomeGroupColor NOT IN ('LilPlace','KinderPlace')" : '';
+        const extTotal = db.prepare(`SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col} ${lpkp}`).get(aw)?.n || 0;
         if (extTotal > 0) {
             const handled = db.prepare(`
                 SELECT COUNT(*) as n FROM (
                     SELECT CamperID FROM Attendance
                     WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-                      AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col})
+                      AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col} ${lpkp})
                     UNION
                     SELECT CamperID FROM EarlyDismissals WHERE Date=?
-                      AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col})
+                      AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND ExtendedHours IN ${col} ${lpkp})
                 )
             `).get(date, sessionType, aw, date, aw)?.n || 0;
             extSessions.push({
@@ -4752,7 +4769,7 @@ app.post('/dismissals/update', (req, res) => {
 // --- Counselor Scheduling Tool ---
 app.get('/counselor-scheduling', (req, res) => {
     const sessions   = db.prepare('SELECT * FROM Sessions ORDER BY weekNumber').all();
-    const planWeek   = Math.min(6, Math.max(1, parseInt(req.query.week) || getActiveWeek()));
+    const planWeek   = Math.min(6, Math.max(1, parseInt(req.query.week) || getPrepTargetWeek() || getActiveWeek()));
     const alertMessage = req.query.message || null;
 
     // Offerings filtered to planning week, with per-week capacity/location overrides
@@ -5555,6 +5572,8 @@ app.post('/api/push-unsubscribe', (req, res) => {
 function resolveAlertCounselorIds(group) {
     const aw = getActiveWeek();
     const name = group.name;
+    if (name === 'All Staff')
+        return db.prepare("SELECT CounselorID FROM Counselors").all().map(r => r.CounselorID);
     if (name === 'All Counselors')
         return db.prepare("SELECT CounselorID FROM Counselors WHERE StaffRole IN ('Counselor','Swim Counselor')").all().map(r => r.CounselorID);
     if (name === 'All Unit Leaders')
@@ -5950,6 +5969,70 @@ app.post('/photo-vote/:id', (req, res) => {
     res.json({ ok: true, votes, voterVoteCount: todayCount + 1, voteLimit, remaining: voteLimit - todayCount - 1 });
 });
 
+app.get('/photo-gallery/all', (req, res) => {
+    const sort = req.query.sort || 'date';
+    const orderBy = sort === 'likes'
+        ? 'votes DESC, p.date DESC, p.submittedAt ASC'
+        : 'p.date DESC, votes DESC, p.submittedAt ASC';
+    const photos = db.prepare(`
+        SELECT p.id, p.counselorName, p.imageUrl, p.date, COUNT(v.id) as votes
+        FROM PhotoSubmissions p
+        LEFT JOIN PhotoVotes v ON v.photoId = p.id
+        GROUP BY p.id
+        ORDER BY ${orderBy}
+    `).all();
+    res.render('photo-gallery-all', { photos, sort });
+});
+
+app.get('/photo-download', async (req, res) => {
+    const ids = (req.query.ids || '').split(',').map(Number).filter(Boolean);
+    if (!ids.length) return res.status(400).send('No photos selected');
+    const idPlaceholders = ids.map(() => '?').join(',');
+    const photos = db.prepare(
+        `SELECT id, counselorName, imageUrl, date FROM PhotoSubmissions WHERE id IN (${idPlaceholders})`
+    ).all(...ids);
+    if (!photos.length) return res.status(404).send('Photos not found');
+
+    const fetchImgStream = (url) => new Promise((resolve, reject) => {
+        const fetcher = url.startsWith('https') ? https : http;
+        fetcher.get(url, resolve).on('error', reject);
+    });
+
+    const safeName = (s) => s.replace(/[^a-z0-9_\-]/gi, '-').replace(/-+/g, '-');
+
+    if (photos.length === 1) {
+        const p = photos[0];
+        const ext = (p.imageUrl.match(/\.([a-z0-9]+)(?:\?|$)/i) || [])[1] || 'jpg';
+        const filename = `${p.date}-${safeName(p.counselorName)}.${ext}`;
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Type', `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+        try {
+            const imgStream = await fetchImgStream(p.imageUrl);
+            imgStream.pipe(res);
+        } catch (e) {
+            res.status(502).send('Failed to fetch image');
+        }
+        return;
+    }
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="camp-photos.zip"');
+    const archive = archiver('zip', { zlib: { level: 5 } });
+    archive.on('error', err => { if (!res.headersSent) res.status(500).send('Zip error'); });
+    archive.pipe(res);
+    for (const p of photos) {
+        try {
+            const ext = (p.imageUrl.match(/\.([a-z0-9]+)(?:\?|$)/i) || [])[1] || 'jpg';
+            const filename = `${p.date}-${safeName(p.counselorName)}-${p.id}.${ext}`;
+            const imgStream = await fetchImgStream(p.imageUrl);
+            archive.append(imgStream, { name: filename });
+        } catch (e) {
+            // skip photos that fail to fetch
+        }
+    }
+    archive.finalize();
+});
+
 // --- SESSION MANAGEMENT ---
 app.post('/set-active-week', (req, res) => {
     const w = parseInt(req.body.weekNumber);
@@ -6017,6 +6100,25 @@ app.get('/counselor-week-assignments/:week', (req, res) => {
     if (w < 1 || w > 6) return res.status(400).json({ error: 'Invalid week' });
     const rows = db.prepare('SELECT CounselorID, PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE WeekNumber=?').all(w);
     res.json(rows);
+});
+
+app.get('/api/week-staff-assignments/:week', (req, res) => {
+    const w = parseInt(req.params.week);
+    if (w < 1 || w > 6) return res.status(400).json({ error: 'Invalid week' });
+    const rows = db.prepare("SELECT PersonID, PeriodNumber, ActivityName FROM CounselorScheduleAssignments WHERE PersonType='Instructor' AND WeekNumber=?").all(w);
+    res.json(rows);
+});
+
+app.post('/mirror-sports-location', (req, res) => {
+    const fromWeek = parseInt(req.body.fromWeek);
+    const toWeek   = parseInt(req.body.toWeek);
+    if (fromWeek < 1 || fromWeek > 6 || toWeek < 1 || toWeek > 6) {
+        return res.redirect(`/counselor-scheduling?week=${toWeek}&message=Invalid+week`);
+    }
+    const sources = db.prepare("SELECT PeriodNumber, ActivityName, Location FROM WeeklyOfferings WHERE WeekNumber=? AND SideOfCamp='Sports' AND Location IS NOT NULL").all(fromWeek);
+    const upd = db.prepare("UPDATE WeeklyOfferings SET Location=? WHERE WeekNumber=? AND PeriodNumber=? AND ActivityName=? AND SideOfCamp='Sports'");
+    db.transaction(() => { for (const s of sources) upd.run(s.Location, toWeek, s.PeriodNumber, s.ActivityName); })();
+    res.redirect(`/counselor-scheduling?week=${toWeek}&message=Mirrored+location+for+${sources.length}+Sports+class${sources.length !== 1 ? 'es' : ''}+from+Week+${fromWeek}`);
 });
 
 // --- HOMEGROUP ASSIGNMENT TOOL ---
@@ -6590,6 +6692,22 @@ function _pushNotifiableBlock(schedule, estMins) {
 setInterval(() => {
     const estMins = getESTMins();
     const today   = getTodayEST();
+
+    // Only send notifications on camp days
+    const [_ny, _nm, _nd] = today.split('-').map(Number);
+    const _dow = new Date(Date.UTC(_ny, _nm - 1, _nd)).getUTCDay(); // 0=Sun, 6=Sat
+    if (_dow === 0 || _dow === 6) return; // weekends
+    if (today === '2026-07-03') return;   // no camp on 7/3
+    const _w1 = db.prepare("SELECT startDate FROM Sessions WHERE weekNumber=1 LIMIT 1").get();
+    const _w6 = db.prepare("SELECT startDate FROM Sessions WHERE weekNumber=6 LIMIT 1").get();
+    if (!_w1?.startDate) return; // sessions not configured yet
+    const _campStart = _w1.startDate; // 'YYYY-MM-DD'
+    const _campEnd = (() => {
+        if (!_w6?.startDate) return _campStart;
+        const [y, m, d] = _w6.startDate.split('-').map(Number);
+        return new Date(Date.UTC(y, m - 1, d + 4)).toISOString().slice(0, 10); // Friday of W6
+    })();
+    if (today < _campStart || today > _campEnd) return;
 
     // Prune stale date keys
     for (const [date] of _pushNudgedToday) {
