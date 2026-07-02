@@ -5998,44 +5998,51 @@ app.get('/photo-download', async (req, res) => {
     ).all(...ids);
     if (!photos.length) return res.status(404).send('Photos not found');
 
-    const fetchImgStream = (url) => new Promise((resolve, reject) => {
-        const fetcher = url.startsWith('https') ? https : http;
-        fetcher.get(url, resolve).on('error', reject);
-    });
-
     const safeName = (s) => s.replace(/[^a-z0-9_\-]/gi, '-').replace(/-+/g, '-');
 
-    if (photos.length === 1) {
-        const p = photos[0];
-        const ext = (p.imageUrl.match(/\.([a-z0-9]+)(?:\?|$)/i) || [])[1] || 'jpg';
-        const filename = `${p.date}-${safeName(p.counselorName)}.${ext}`;
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.setHeader('Content-Type', `image/${ext === 'jpg' ? 'jpeg' : ext}`);
-        try {
-            const imgStream = await fetchImgStream(p.imageUrl);
-            imgStream.pipe(res);
-        } catch (e) {
-            res.status(502).send('Failed to fetch image');
-        }
-        return;
-    }
+    const fetchBuf = (url) => new Promise((resolve, reject) => {
+        const fetcher = url.startsWith('https') ? https : http;
+        fetcher.get(url, (imgRes) => {
+            const chunks = [];
+            imgRes.on('data', c => chunks.push(c));
+            imgRes.on('end', () => resolve(Buffer.concat(chunks)));
+            imgRes.on('error', reject);
+        }).on('error', reject);
+    });
 
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', 'attachment; filename="camp-photos.zip"');
-    const archive = archiver('zip', { zlib: { level: 5 } });
-    archive.on('error', err => { if (!res.headersSent) res.status(500).send('Zip error'); });
-    archive.pipe(res);
-    for (const p of photos) {
-        try {
-            const ext = (p.imageUrl.match(/\.([a-z0-9]+)(?:\?|$)/i) || [])[1] || 'jpg';
-            const filename = `${p.date}-${safeName(p.counselorName)}-${p.id}.${ext}`;
-            const imgStream = await fetchImgStream(p.imageUrl);
-            archive.append(imgStream, { name: filename });
-        } catch (e) {
-            // skip photos that fail to fetch
+    const getExt = (url) => (url.match(/\.([a-z0-9]+)(?:\?|$)/i) || [])[1] || 'jpg';
+
+    try {
+        if (photos.length === 1) {
+            const p = photos[0];
+            const ext = getExt(p.imageUrl);
+            const buf = await fetchBuf(p.imageUrl);
+            res.setHeader('Content-Disposition', `attachment; filename="${p.date}-${safeName(p.counselorName)}.${ext}"`);
+            res.setHeader('Content-Type', `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+            return res.end(buf);
         }
+
+        // Fetch all images as buffers before writing any response headers,
+        // so a mid-stream error can't corrupt the HTTP response.
+        const entries = (await Promise.all(photos.map(async (p) => {
+            try {
+                const buf = await fetchBuf(p.imageUrl);
+                const ext = getExt(p.imageUrl);
+                return { name: `${p.date}-${safeName(p.counselorName)}-${p.id}.${ext}`, buf };
+            } catch { return null; }
+        }))).filter(Boolean);
+
+        if (!entries.length) return res.status(502).send('Failed to fetch images');
+
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', 'attachment; filename="camp-photos.zip"');
+        const archive = archiver('zip', { zlib: { level: 5 } });
+        archive.pipe(res);
+        for (const e of entries) archive.append(e.buf, { name: e.name });
+        await archive.finalize();
+    } catch (e) {
+        if (!res.headersSent) res.status(500).send('Download failed');
     }
-    archive.finalize();
 });
 
 // --- SESSION MANAGEMENT ---
