@@ -177,7 +177,7 @@
         <div class="photo-grid" id="photo-grid">
             <% photos.forEach(p => { %>
             <div class="photo-card" id="card-<%= p.id %>" data-id="<%= p.id %>" onclick="toggleSelect(this)">
-                <img src="<%= p.imageUrl %>" alt="Photo by <%= p.counselorName %>" loading="lazy">
+                <img src="<%= thumbUrl(p.imageUrl, 500) %>" alt="Photo by <%= p.counselorName %>" loading="lazy">
                 <div class="check-overlay"></div>
                 <div class="date-badge"><%= p.date %></div>
                 <div class="card-footer">

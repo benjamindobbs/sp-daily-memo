@@ -340,6 +340,11 @@ app.use((req, res, next) => {
         const h12 = h % 12 || 12;
         return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
     };
+    // Returns a resized Cloudinary URL for display; full-size URL is preserved for downloads.
+    res.locals.thumbUrl = (url, width = 600) => {
+        if (!url || !url.includes('res.cloudinary.com')) return url;
+        return url.replace('/upload/', `/upload/w_${width},c_limit,q_auto,f_auto/`);
+    };
     next();
 });
 

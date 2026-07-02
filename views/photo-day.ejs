@@ -109,7 +109,7 @@
         <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; margin-top:14px;">
             <% submissions.forEach(s => { %>
             <div class="card" style="padding:12px;">
-                <img src="<%= s.imageUrl %>" alt="Photo by <%= s.counselorName %>"
+                <img src="<%= thumbUrl(s.imageUrl, 500) %>" alt="Photo by <%= s.counselorName %>"
                      style="width:100%; border-radius:8px; object-fit:cover; aspect-ratio:4/3;">
                 <p style="margin:8px 0 0; font-size:0.85rem; font-weight:600; color:var(--text-muted);"><%= s.counselorName %></p>
             </div>
