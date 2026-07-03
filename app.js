@@ -29,6 +29,13 @@ const HOME_GROUP_LABELS = {
 };
 const SPECIALTY_CAMP_COLORS = ['LilPlace', 'KinderPlace', 'SPLIT', 'SPRC', 'Swim'];
 
+// Activities that share a room/instructor and display as one merged class.
+// Each inner array is a merge group; first entry is the canonical link target.
+const MERGED_ACTIVITIES = [['Dance', 'Cheer']];
+function getMergeGroup(activityName) {
+    return MERGED_ACTIVITIES.find(g => g.includes(activityName)) || null;
+}
+
 // Period flip schedules — all times EST (UTC-5), 24-hour format.
 // clockBlock = universal time-block number (1-6 matching Sports period numbering).
 // Block 3 = Sports only (Green/Navy). Block 4 = S4 (Red/Carolina) + E3 (Green/Navy).
@@ -1811,8 +1818,46 @@ app.get('/master-schedule', (req, res) => {
             };
         });
 
-        const periodMap = new Map();
+        // Collapse merge groups (e.g. Dance + Cheer in same period) into one row
+        const absorbedKeys = new Set();
+        const mergedEnriched = [];
         for (const cls of enriched) {
+            const key = `${cls.periodNumber}:${cls.activityName}`;
+            if (absorbedKeys.has(key)) continue;
+            const group = getMergeGroup(cls.activityName);
+            if (group) {
+                const others = group.filter(n => n !== cls.activityName);
+                const peers  = others.map(n => enriched.find(e => e.periodNumber === cls.periodNumber && e.activityName === n)).filter(Boolean);
+                if (peers.length === others.length) {
+                    peers.forEach(p => absorbedKeys.add(`${p.periodNumber}:${p.activityName}`));
+                    const all = [cls, ...peers];
+                    const seenS = new Set(), seenC = new Set();
+                    const uStaff = [], uCounselors = [];
+                    for (const e of all) {
+                        for (const s of e.staff)      { if (!seenS.has(s.CounselorID)) { seenS.add(s.CounselorID); uStaff.push(s); } }
+                        for (const c of e.counselors) { if (!seenC.has(c.CounselorID)) { seenC.add(c.CounselorID); uCounselors.push(c); } }
+                    }
+                    mergedEnriched.push({
+                        ...cls,
+                        activityName: group.join(' & '),
+                        mergedNames:  group.slice(),
+                        enrolled:     all.reduce((s, e) => s + e.enrolled, 0),
+                        maxCapacity:  all.every(e => e.maxCapacity) ? all.reduce((s, e) => s + e.maxCapacity, 0) : null,
+                        colorGroups:  [...new Set(all.flatMap(e => e.colorGroups))],
+                        staff:        uStaff,
+                        counselors:   uCounselors,
+                        busPresent:   all.some(e => e.busPresent),
+                        extGroups:    [...new Set(all.flatMap(e => e.extGroups))],
+                        location:     all.map(e => e.location).find(Boolean) || null,
+                    });
+                    continue;
+                }
+            }
+            mergedEnriched.push(cls);
+        }
+
+        const periodMap = new Map();
+        for (const cls of mergedEnriched) {
             if (!periodMap.has(cls.periodNumber)) periodMap.set(cls.periodNumber, []);
             periodMap.get(cls.periodNumber).push(cls);
         }
@@ -1836,64 +1881,92 @@ app.get('/master-schedule', (req, res) => {
 // --- CLASS ROSTER ---
 app.get('/class-roster/:period/:activity', (req, res) => {
     try {
-        const period = parseInt(req.params.period);
-        const activityName = req.params.activity;
+        const period      = parseInt(req.params.period);
+        const rawActivity = req.params.activity;
+        const isAdmin    = req.cookies.adminAuth === 'true';
+        const activeWeek = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
 
-        const activity = db.prepare('SELECT * FROM Activities WHERE Name = ?').get(activityName);
+        // If this activity is in a merge group and all members exist this period, show merged view
+        const group = getMergeGroup(rawActivity);
+        let mergedNames = null;
+        if (group) {
+            const allPresent = group.every(n =>
+                db.prepare('SELECT 1 FROM Schedules WHERE PersonType=\'Camper\' AND ActivityName=? AND PeriodNumber=? AND WeekNumber=? LIMIT 1')
+                  .get(n, period, activeWeek)
+            );
+            if (allPresent) mergedNames = group;
+        }
 
-        const activeWeek = getActiveWeek();
+        const displayName = mergedNames ? mergedNames.join(' & ') : rawActivity;
+        const queryNames  = mergedNames || [rawActivity];
+        const ph          = queryNames.map(() => '?').join(',');
+
+        const activity = db.prepare('SELECT * FROM Activities WHERE Name = ?').get(queryNames[0]);
+
         const campers = db.prepare(`
             SELECT c.CamperID, c.FirstName, c.LastName, c.Grade,
                    cwd.HomeGroupColor, cwd.BusRoute, cwd.ExtendedHours,
-                   n.CounselorID, n.FirstName AS CounselorFirstName, n.LastName AS CounselorLastName
+                   n.CounselorID, n.FirstName AS CounselorFirstName, n.LastName AS CounselorLastName,
+                   s.ActivityName AS EnrolledActivity
             FROM Campers c
             JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper' AND s.WeekNumber = ?
             LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
             LEFT JOIN CamperHomeGroups chg ON chg.CamperID = c.CamperID AND chg.WeekNumber = ?
             LEFT JOIN Counselors n ON n.CounselorID = COALESCE(chg.CounselorID, c.HomeGroupCounselorID)
-            WHERE s.PeriodNumber = ? AND s.ActivityName = ?
+            WHERE s.PeriodNumber = ? AND s.ActivityName IN (${ph})
             ORDER BY cwd.HomeGroupColor, c.LastName
-        `).all(activeWeek, activeWeek, activeWeek, period, activityName);
+        `).all(activeWeek, activeWeek, activeWeek, period, ...queryNames);
 
         const colorGroups = [...new Set(campers.map(c => c.HomeGroupColor).filter(Boolean))];
 
-        // Period is now a clock block (1-6); no translation needed.
         const locRow = db.prepare(`
             SELECT Location FROM Schedules
-            WHERE PersonType = 'Instructor' AND ActivityName = ? AND PeriodNumber = ?
+            WHERE PersonType = 'Instructor' AND ActivityName IN (${ph}) AND PeriodNumber = ?
               AND Location IS NOT NULL AND Location != ''
             UNION
             SELECT Location FROM StaffWeekSchedules
-            WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
+            WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName IN (${ph})
               AND Location IS NOT NULL AND Location != ''
             UNION
             SELECT Location FROM Activities
-            WHERE Name = ? COLLATE NOCASE
+            WHERE Name IN (${ph})
               AND Location IS NOT NULL AND Location != ''
             LIMIT 1
-        `).get(activityName, period, activeWeek, period, activityName, activityName);
+        `).get(...queryNames, period, activeWeek, period, ...queryNames, ...queryNames);
 
         const staff = db.prepare(`
             SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
             FROM Counselors st JOIN Schedules s ON st.CounselorID = s.PersonID AND s.PersonType = 'Instructor'
-            WHERE s.PeriodNumber = ? AND s.ActivityName = ?
-        `).all(period, activityName);
+            WHERE s.PeriodNumber = ? AND s.ActivityName IN (${ph})
+            UNION
+            SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
+            FROM Counselors st JOIN StaffWeekSchedules sws ON sws.StaffID = st.CounselorID
+            WHERE sws.WeekNumber = ? AND sws.PeriodNumber = ? AND sws.ActivityName IN (${ph})
+            UNION
+            SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
+            FROM Counselors st JOIN CounselorScheduleAssignments csa ON csa.PersonID = st.CounselorID
+            WHERE csa.WeekNumber = ? AND csa.PeriodNumber = ? AND csa.ActivityName IN (${ph})
+              AND csa.PersonType IN ('Instructor', 'Staff')
+        `).all(period, ...queryNames, activeWeek, period, ...queryNames, activeWeek, period, ...queryNames);
 
         const counselors = db.prepare(`
-            SELECT c.CounselorID, c.FirstName, c.LastName,
+            SELECT DISTINCT c.CounselorID, c.FirstName, c.LastName,
                    COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
             FROM Counselors c
-            JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID AND cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ? COLLATE NOCASE
+            JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID
+              AND cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName IN (${ph})
             LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
             ORDER BY HomeGroupColor, c.LastName
-        `).all(activeWeek, period, activityName, activeWeek);
+        `).all(activeWeek, period, ...queryNames, activeWeek);
 
         res.render('class-roster', {
-            periodNumber: period,
-            activityName,
-            sideOfCamp:  activity ? activity.SideOfCamp  : null,
-            maxCapacity: activity ? activity.MaxCapacity : null,
-            location:    locRow   ? locRow.Location      : null,
+            periodNumber:         period,
+            activityName:         displayName,
+            locationActivityName: queryNames[0],
+            mergedNames,
+            sideOfCamp:           activity ? activity.SideOfCamp  : null,
+            maxCapacity:          activity ? activity.MaxCapacity : null,
+            location:             locRow   ? locRow.Location      : null,
             campers,
             colorGroups,
             staff,

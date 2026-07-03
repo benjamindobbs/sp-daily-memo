@@ -61,7 +61,7 @@
                             <span class="info-label">&#128205; Location</span>
                             <% if (viewMode === 'admin') { %>
                             <form action="/update-class-location" method="POST" style="display:flex; gap:5px; align-items:center; margin:0;">
-                                <input type="hidden" name="activityName" value="<%= activityName %>">
+                                <input type="hidden" name="activityName" value="<%= locationActivityName %>">
                                 <input type="hidden" name="periodNumber" value="<%= periodNumber %>">
                                 <input type="text" name="location" value="<%= location || '' %>" placeholder="Add location…"
                                     style="width:130px; padding:3px 7px; border:1px solid #cbd5e1; border-radius:5px; font-size:0.82rem; font-family:inherit;">
@@ -113,12 +113,15 @@
                     <% if (campers.length > 0) { %>
                     <div class="table-scroll">
                     <table class="roster-table">
-                        <thead><tr><th>Camper</th><th>Grade</th><th>Group</th><th>Home Counselor</th></tr></thead>
+                        <thead><tr><th>Camper</th><th>Grade</th><% if (mergedNames) { %><th>Class</th><% } %><th>Group</th><th>Home Counselor</th></tr></thead>
                         <tbody id="rosterBody">
                             <% campers.forEach(function(c) { %>
                             <tr class="roster-row" data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>">
                                 <td><a class="camper-name-link" href="/search?name=<%= encodeURIComponent(c.FirstName + ' ' + c.LastName) %>"><%= c.FirstName %> <%= c.LastName %></a></td>
                                 <td style="color: var(--text-muted);"><%= c.Grade || '—' %></td>
+                                <% if (mergedNames) { %>
+                                <td style="color: var(--text-muted); font-size: 0.82rem;"><%= c.EnrolledActivity %></td>
+                                <% } %>
                                 <td><span class="tag <%= c.HomeGroupColor %>"><%= c.HomeGroupColor %></span></td>
                                 <td>
                                     <% if (c.CounselorID) { %>
