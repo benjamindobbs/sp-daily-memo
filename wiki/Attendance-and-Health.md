@@ -67,6 +67,7 @@ One row per camper per day. `UNIQUE (Date, CamperID)` prevents duplicate dismiss
 | Route | Action |
 |---|---|
 | `POST /attendance/early-dismissal` | Create a new dismissal record for today |
+| `POST /attendance/dismissal-undo` | Remove today's dismissal record for a camper (Back In) |
 | `GET /dismissals` | View and manage today's pending dismissals |
 | `POST /dismissals/schedule` | Add a scheduled pickup (writes `ScheduledPickups`) |
 | `POST /dismissals/cancel` | Cancel a scheduled pickup |
@@ -163,6 +164,10 @@ Arrived rows are automatically hidden by a client-side timer once the period the
 | 4:05 PM | 4:05 PM (end of camp day) |
 
 The empty state ("No late arrivals") is shown automatically once all rows are either hidden or absent rows have been cleared.
+
+### Back In (undo early dismissal)
+
+The late arrivals page also shows any camper who has been given an early dismissal today. A **Back In** button appears next to each dismissed camper; pressing it calls `POST /attendance/dismissal-undo`, which deletes their `EarlyDismissals` record and removes the 🚗 Dismissed badge from attendance sheets.
 
 ---
 

@@ -34,6 +34,26 @@ This means "period 3" is the last AM enrichment period for Red/Carolina and the 
 
 ---
 
+## Activity Merging (`MERGED_ACTIVITIES`)
+
+Some activities share a room and instructor and should appear as one class on display views. The `MERGED_ACTIVITIES` constant in `app.js` declares these groups:
+
+```js
+const MERGED_ACTIVITIES = [['Dance', 'Cheerleading']];
+```
+
+**How it works (display layer only — no database changes):**
+
+- **Master Schedule** — after the `enriched` array is built from the DB, a post-processing pass detects when all activities in a merge group appear in the same period. They are collapsed into one row with a combined name (e.g. "Dance & Cheerleading"), summed enrollment, and unioned staff/counselors.
+- **Class Roster** — the route detects the merge at query time. Camper and staff queries use `IN (...)` to pull both activities. A "Class" sub-column shows each camper's actual enrolled activity.
+- **Counselor Scheduling** — `WeeklyOfferings` are post-processed the same way before being sent to the template. Assignments saved through the merged card are written to **both** component activity names in `CounselorWeekSchedules` and `CounselorScheduleAssignments`.
+
+The merge only fires when **all** activities in the group exist in the **same period** for the current week. If they are in different periods (or only one is offered), they display separately as normal.
+
+To add a new merge group, add a new inner array to `MERGED_ACTIVITIES`. The first entry in the array is used as the URL target for class roster links.
+
+---
+
 ## Activities
 
 `Activities` is the master list. Each activity has:

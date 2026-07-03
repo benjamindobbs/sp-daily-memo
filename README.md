@@ -240,8 +240,8 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 
 | Page | URL | Admin Only | Description |
 |---|---|:---:|---|
-| Admin Hub | `/admin` | ✓ | Dashboard: director notes, announcements, camper/staff counts, links to all admin tools |
-| Staff Hub | `/staff` | | Counselor-facing dashboard: daily schedule, home group roster, attendance links. Auto-refreshes silently every 15 minutes. |
+| Admin Hub | `/admin` | ✓ | Dashboard: director notes, announcements, camper/staff counts, links to all admin tools. Admins can edit their own notes inline using the pencil button next to each note. |
+| Staff Hub | `/staff` | | Counselor-facing dashboard: daily schedule, home group roster, attendance links. Auto-refreshes silently every 15 minutes. **Attendance at a Glance** (absent campers, nurse check-ins, active case log entries) and **Today's Memo** are always visible to all staff including Unit Leaders. |
 
 ---
 
@@ -250,9 +250,9 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | Page | URL | Description |
 |---|---|---|
 | Master Schedule | `/master-schedule` | All classes by period. Filter by period, side, and color group. Click a class name to open its roster. Instructor, Unit Leader, and Sports Leader names are clickable links to their staff profile for all users. |
-| Class Roster | `/class-roster/:period/:activity` | Full camper list for one class period. Admin can update the location. |
+| Class Roster | `/class-roster/:period/:activity` | Full camper list for one class period. Admin can update the location. In prep mode, shows data for the prep target week. If Dance and Cheerleading share a period, they appear merged as "Dance & Cheerleading" with a Class column showing each camper's actual enrollment. |
 | Camper Lookup | `/search` | Search campers by name. Shows full schedule, bus route, and extended hours. |
-| Camper Profile | `/camper/:id` | Full detail for one camper: schedule, contacts, notes. Admin can edit all fields or delete the record. |
+| Camper Profile | `/camper/:id` | Full detail for one camper: schedule, contacts, notes. Admin can edit all fields or delete the record. Schedule entries link directly to class rosters. A **Quick Dismiss** card on the profile lets admin log an early dismissal without going through the attendance or dismissals page. |
 | Staff Directory | `/counselor-directory` | All staff listed by role. Admin mode links to individual profile pages. |
 | Staff Profile | `/counselor-profile/:id` | Individual staff detail: schedule, home group roster, contact info. Admin can edit all profile fields. |
 | Full Summer (Instructors) | `/faculty-summer` | Week-by-week instructor schedule view. Upload or clear assignments per week. |
@@ -267,7 +267,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | Swap Tool | `/swap-tool` | Move a camper from one class to another. Shows capacity and waitlist status for all available options. Displays a count of how many swaps have been made for the selected camper during the current week. |
 | Schedule History | `/schedule-history` | Log of recent swap and assignment changes. Admin can archive entries. |
 | Waitlist / Promotions | `/promotions` | Lists campers eligible to be promoted off the waitlist into an open spot. Promote individually, all at once, or force-promote into an over-capacity class. |
-| Counselor Scheduling | `/counselor-scheduling` | Full counselor assignment builder — see [Counselor Scheduling](#counselor-scheduling) above. |
+| Counselor Scheduling | `/counselor-scheduling` | Full counselor assignment builder — see [Counselor Scheduling](#counselor-scheduling) above. If Dance and Cheerleading are offered in the same period, they appear as a single merged "Dance & Cheerleading" card; assignments save to both activities. |
 | Counselor Schedule Backups | `/counselor-schedule-backups` | Named snapshots of saved counselor assignments. Restore or delete from here. |
 | Home Group Assignment | `/homegroup-assignment` | Assign counselors to color-group home groups by week. Can mirror assignments from one week to another. |
 | SPLIT Scheduling | `/split-scheduling` | Dedicated view for managing SPLIT camper period assignments (periods 1, 2, 4, 5, 6). |
@@ -286,7 +286,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | Specialty Attendance | `/attendance/specialty/:color/:session` | Attendance for specialty programs (LilPlace, KinderPlace, etc.). |
 | Bus Attendance | `/attendance/bus/:route/:session` | Riders grouped by bus route. |
 | Extended Care | `/attendance/extended/:session` | AM and PM extended hours roster. |
-| Late Arrivals | `/attendance/late-arrivals` | Check in campers who arrive after the normal start time. |
+| Late Arrivals | `/attendance/late-arrivals` | Check in campers who arrive after the normal start time. Includes a **Back In** button to undo an early dismissal if a dismissed camper returns. |
 | Dismissal Archive | `/attendance/dismissal-archive` | Historical log of early dismissal records. |
 
 ---
