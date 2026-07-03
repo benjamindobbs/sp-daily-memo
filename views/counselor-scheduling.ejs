@@ -661,11 +661,18 @@
         // ── Restore saved assignments on load ────────────────────────────────────
         function initState() {
             OFFERINGS.forEach((act, idx) => {
-                const key = `${act.PeriodNumber}|${act.ActivityName}`;
-                if (EXISTING[key]) {
-                    state[idx].counselors = [...EXISTING[key].counselors];
-                    state[idx].staff      = [...EXISTING[key].staff];
+                const keys = act.mergedNames
+                    ? act.mergedNames.map(n => `${act.PeriodNumber}|${n}`)
+                    : [`${act.PeriodNumber}|${act.ActivityName}`];
+                const counselorSet = new Set(), staffSet = new Set();
+                for (const key of keys) {
+                    if (EXISTING[key]) {
+                        EXISTING[key].counselors.forEach(id => counselorSet.add(id));
+                        EXISTING[key].staff.forEach(id => staffSet.add(id));
+                    }
                 }
+                state[idx].counselors = [...counselorSet];
+                state[idx].staff      = [...staffSet];
             });
         }
 
@@ -1011,13 +1018,18 @@
 
             const assignments = [];
             OFFERINGS.forEach((act, idx) => {
+                const names = act.mergedNames || [act.ActivityName];
                 state[idx].counselors.forEach(id => {
-                    if (id) assignments.push({ periodNumber: act.PeriodNumber, activityName: act.ActivityName, personID: id, personType: 'Counselor' });
+                    if (id) names.forEach(name => {
+                        assignments.push({ periodNumber: act.PeriodNumber, activityName: name, personID: id, personType: 'Counselor' });
+                    });
                 });
                 // Staff only assigned to sports activities
                 if (act.SideOfCamp === 'Sports') {
                     state[idx].staff.forEach(id => {
-                        if (id) assignments.push({ periodNumber: act.PeriodNumber, activityName: act.ActivityName, personID: id, personType: 'Instructor' });
+                        if (id) names.forEach(name => {
+                            assignments.push({ periodNumber: act.PeriodNumber, activityName: name, personID: id, personType: 'Instructor' });
+                        });
                     });
                 }
             });

@@ -4899,7 +4899,7 @@ app.get('/counselor-scheduling', (req, res) => {
     const alertMessage = req.query.message || null;
 
     // Offerings filtered to planning week, with per-week capacity/location overrides
-    const offerings = db.prepare(`
+    let offerings = db.prepare(`
         SELECT wo.*, COALESCE(wo.MaxCapacity, a.MaxCapacity) AS EffectiveCapacity,
                COALESCE(wo.Location, a.Location) AS EffectiveLocation
         FROM WeeklyOfferings wo
@@ -4907,6 +4907,33 @@ app.get('/counselor-scheduling', (req, res) => {
         WHERE wo.WeekNumber = ?
         ORDER BY wo.SideOfCamp, wo.ActivityName
     `).all(planWeek);
+
+    // Merge offerings that belong to the same MERGED_ACTIVITIES group in the same period
+    {
+        const absorbed = new Set();
+        const merged = [];
+        for (const off of offerings) {
+            const key = `${off.PeriodNumber}:${off.ActivityName}`;
+            if (absorbed.has(key)) continue;
+            const group = getMergeGroup(off.ActivityName);
+            if (group) {
+                const others = group.filter(n => n !== off.ActivityName);
+                const peers  = others.map(n => offerings.find(o => o.PeriodNumber === off.PeriodNumber && o.ActivityName === n)).filter(Boolean);
+                if (peers.length === others.length) {
+                    peers.forEach(p => absorbed.add(`${p.PeriodNumber}:${p.ActivityName}`));
+                    merged.push({
+                        ...off,
+                        ActivityName:           group.join(' & '),
+                        mergedNames:            group.slice(),
+                        PreliminaryEnrollment:  [off, ...peers].reduce((s, o) => s + (o.PreliminaryEnrollment || 0), 0),
+                    });
+                    continue;
+                }
+            }
+            merged.push(off);
+        }
+        offerings = merged;
+    }
 
     // Counselors with week-specific attributes (fall back to Counselors table)
     // Only Counselor and Swim Counselor roles — not Instructors, Unit Leaders, etc.
