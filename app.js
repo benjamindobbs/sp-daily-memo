@@ -6149,13 +6149,24 @@ app.get('/photo-download', async (req, res) => {
     const safeName = (s) => s.replace(/[^a-z0-9_\-]/gi, '-').replace(/-+/g, '-');
 
     const fetchBuf = (url) => new Promise((resolve, reject) => {
-        const fetcher = url.startsWith('https') ? https : http;
-        fetcher.get(url, (imgRes) => {
-            const chunks = [];
-            imgRes.on('data', c => chunks.push(c));
-            imgRes.on('end', () => resolve(Buffer.concat(chunks)));
-            imgRes.on('error', reject);
-        }).on('error', reject);
+        const doGet = (targetUrl) => {
+            const fetcher = targetUrl.startsWith('https') ? https : http;
+            fetcher.get(targetUrl, (imgRes) => {
+                if ((imgRes.statusCode === 301 || imgRes.statusCode === 302) && imgRes.headers.location) {
+                    imgRes.resume();
+                    return doGet(imgRes.headers.location);
+                }
+                if (imgRes.statusCode !== 200) {
+                    imgRes.resume();
+                    return reject(new Error(`HTTP ${imgRes.statusCode} fetching ${targetUrl}`));
+                }
+                const chunks = [];
+                imgRes.on('data', c => chunks.push(c));
+                imgRes.on('end', () => resolve(Buffer.concat(chunks)));
+                imgRes.on('error', reject);
+            }).on('error', reject);
+        };
+        doGet(url);
     });
 
     const getExt = (url) => (url.match(/\.([a-z0-9]+)(?:\?|$)/i) || [])[1] || 'jpg';
