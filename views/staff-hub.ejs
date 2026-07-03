@@ -141,10 +141,6 @@
         </script>
         <% } %>
 
-        <%
-        const anyAbsent = Object.values(absentByGroup).some(arr => arr.length > 0);
-        %>
-        <% if (anyAbsent) { %>
         <div class="card" style="margin-top:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                 <h4 style="margin:0; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">Attendance at a Glance</h4>
@@ -153,42 +149,62 @@
             <div id="attGlanceGrid">
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
                 <% ['Navy','Green','Carolina','Red'].forEach(function(color) { %>
-                <div style="background:#f8fafc; border-radius:8px; padding:10px 14px;">
+                <div style="background:#f8fafc; border-radius:8px; padding:10px 14px;" id="group-<%= color %>">
                     <div style="font-size:0.75rem; font-weight:600; margin-bottom:6px;"><span class="tag <%= color %>"><%= color %></span></div>
                     <% (absentByGroup[color] || []).forEach(function(cam) { %>
-                        <% if (cam.Status === 'late') { %>
-                        <div style="font-size:0.82rem; padding:2px 0; color:var(--text-muted); text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
-                        <% } else if (cam.Status === 'dismissed') { %>
-                        <div style="font-size:0.82rem; padding:2px 0; color:#b45309; text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
-                        <% } else if (cam.Status === 'nurse') { %>
-                        <div style="font-size:0.82rem; padding:2px 0; color:#991b1b;">&#128137; <%= cam.FirstName %> <%= cam.LastName %></div>
-                        <% } else { %>
-                        <div style="font-size:0.82rem; padding:2px 0;"><%= cam.FirstName %> <%= cam.LastName %></div>
-                        <% } %>
+                    <div style="display:flex; align-items:center; justify-content:space-between; padding:2px 0;" id="absent-<%= cam.CamperID %>">
+                        <span style="font-size:0.82rem;"><%= cam.FirstName %> <%= cam.LastName %></span>
+                        <button onclick="hubCheckIn(<%= cam.CamperID %>, '<%= today %>')"
+                            style="font-size:0.7rem; padding:1px 7px; border:1px solid #86efac; background:#dcfce7; color:#15803d; border-radius:10px; cursor:pointer; flex-shrink:0; margin-left:6px;">
+                            &#10003; In
+                        </button>
+                    </div>
                     <% }); %>
                     <% if (!(absentByGroup[color] || []).length) { %><div style="font-size:0.78rem; color:var(--text-muted); font-style:italic;">None absent</div><% } %>
                 </div>
                 <% }); %>
             </div>
-            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px;">
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:10px;">
                 <% [['SPLIT','SPLIT'],['KinderPlace','Kinder Place'],['LilPlace',"Li'l Place"],['SPRC','SPRC']].forEach(function(pair) { %>
                 <div style="background:#f8fafc; border-radius:8px; padding:10px 14px;">
                     <div style="font-size:0.75rem; font-weight:600; margin-bottom:6px;"><span class="tag <%= pair[0] %>" style="font-size:0.65rem;"><%= pair[1] %></span></div>
                     <% (absentByGroup[pair[0]] || []).forEach(function(cam) { %>
-                        <% if (cam.Status === 'late') { %>
-                        <div style="font-size:0.82rem; padding:2px 0; color:var(--text-muted); text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
-                        <% } else if (cam.Status === 'dismissed') { %>
-                        <div style="font-size:0.82rem; padding:2px 0; color:#b45309; text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
-                        <% } else if (cam.Status === 'nurse') { %>
-                        <div style="font-size:0.82rem; padding:2px 0; color:#991b1b;">&#128137; <%= cam.FirstName %> <%= cam.LastName %></div>
-                        <% } else { %>
-                        <div style="font-size:0.82rem; padding:2px 0;"><%= cam.FirstName %> <%= cam.LastName %></div>
-                        <% } %>
+                    <div style="display:flex; align-items:center; justify-content:space-between; padding:2px 0;" id="absent-<%= cam.CamperID %>">
+                        <span style="font-size:0.82rem;"><%= cam.FirstName %> <%= cam.LastName %></span>
+                        <button onclick="hubCheckIn(<%= cam.CamperID %>, '<%= today %>')"
+                            style="font-size:0.7rem; padding:1px 7px; border:1px solid #86efac; background:#dcfce7; color:#15803d; border-radius:10px; cursor:pointer; flex-shrink:0; margin-left:6px;">
+                            &#10003; In
+                        </button>
+                    </div>
                     <% }); %>
                     <% if (!(absentByGroup[pair[0]] || []).length) { %><div style="font-size:0.78rem; color:var(--text-muted); font-style:italic;">None</div><% } %>
                 </div>
                 <% }); %>
             </div>
+            <% if (nurseNow.length > 0) { %>
+            <div style="background:#fef2f2; border:1px solid #fca5a5; border-radius:8px; padding:10px 14px; margin-bottom:10px;">
+                <div style="font-size:0.75rem; font-weight:700; color:#991b1b; margin-bottom:6px;">&#128137; In Nurse (<%= nurseNow.length %>)</div>
+                <% nurseNow.forEach(function(cam) { %>
+                <div style="font-size:0.82rem; padding:2px 0; display:flex; align-items:center; gap:6px;">
+                    <span class="tag <%= cam.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 5px;"><%= cam.HomeGroupColor %></span>
+                    <%= cam.FirstName %> <%= cam.LastName %>
+                    <% if (cam.Notes) { %><span style="color:var(--text-muted); font-size:0.75rem;">&mdash; <%= cam.Notes %></span><% } %>
+                </div>
+                <% }); %>
+            </div>
+            <% } %>
+            <% if (caseNow.length > 0) { %>
+            <div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:10px 14px; margin-bottom:10px;">
+                <div style="font-size:0.75rem; font-weight:700; color:#92400e; margin-bottom:6px;">&#128196; With Noell (<%= caseNow.length %>)</div>
+                <% caseNow.forEach(function(cam) { %>
+                <div style="font-size:0.82rem; padding:2px 0; display:flex; align-items:center; gap:6px;">
+                    <span class="tag <%= cam.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 5px;"><%= cam.HomeGroupColor %></span>
+                    <%= cam.FirstName %> <%= cam.LastName %>
+                    <% if (cam.Notes) { %><span style="color:var(--text-muted); font-size:0.75rem;">&mdash; <%= cam.Notes %></span><% } %>
+                </div>
+                <% }); %>
+            </div>
+            <% } %>
             </div><%/* end attGlanceGrid */%>
         </div>
         <script>
@@ -206,14 +222,26 @@
             btn.textContent = hiding ? 'Show' : 'Hide';
             localStorage.setItem('attGlanceHidden', hiding ? '1' : '0');
         }
+        async function hubCheckIn(camperId, date) {
+            const el = document.getElementById('absent-' + camperId);
+            if (!el) return;
+            try {
+                const r = await fetch('/attendance/check-in', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ camperId, date })
+                });
+                if (r.ok || r.redirected) el.remove();
+            } catch(e) { /* silent */ }
+        }
         </script>
-        <% } %>
 
         <%/* ── Today's Activity Feed ── */%>
-        <% const hasActivity = todayPickups.length > 0 || todayLateArrivals.length > 0 || todayEarlyDismissals.length > 0 || todayScheduleChanges.length > 0; %>
-        <% if (hasActivity) { %>
         <div class="card" style="margin-top:20px;">
             <h3 style="margin:0 0 16px;">Today's Memo</h3>
+            <% if (!todayPickups.length && !todayLateArrivals.length && !todayEarlyDismissals.length && !todayScheduleChanges.length) { %>
+            <p style="color:var(--text-muted); font-size:0.875rem; margin:0;">No pickups, late arrivals, dismissals, or schedule changes today.</p>
+            <% } %>
 
             <% if (todayPickups.length > 0) { %>
             <div style="margin-bottom:16px;">
@@ -274,7 +302,6 @@
             </div>
             <% } %>
         </div>
-        <% } %>
 
         <% if (announcement) { %>
         <div class="card" style="margin-top:20px;">

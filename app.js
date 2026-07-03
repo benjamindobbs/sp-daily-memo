@@ -203,25 +203,31 @@ function computeBusAttStats(session, today) {
 
 function getAbsentByGroup(today, camperIdSet) {
     const aw = getActiveWeek();
+    // Only genuinely absent campers — late/dismissed/nurse are handled by separate sections.
+    const lateIds = new Set(
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType IN ('homegroup_am','specialty_am') AND Status='late'")
+            .all(today).map(r => r.CamperID)
+    );
+    const dismissedIds = new Set(
+        db.prepare("SELECT CamperID FROM EarlyDismissals WHERE Date=?").all(today).map(r => r.CamperID)
+    );
+    const nurseIds = new Set(
+        db.prepare("SELECT CamperID FROM NurseLog WHERE Date=? AND CheckOutTime IS NULL").all(today).map(r => r.CamperID)
+    );
+    const caseIds = new Set(
+        db.prepare("SELECT CamperID FROM CaseLog WHERE Date=? AND CheckOutTime IS NULL AND Dismissed=0").all(today).map(r => r.CamperID)
+    );
     const attRows = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, a.Status
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor
         FROM Attendance a
         JOIN Campers c ON c.CamperID = a.CamperID
         LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
-        WHERE a.Date = ? AND a.SessionType IN ('homegroup_am', 'specialty_am') AND a.Status IN ('absent', 'late', 'nurse')
-    `).all(aw, today);
-    const dismissalRows = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, 'dismissed' AS Status
-        FROM EarlyDismissals ed
-        JOIN Campers c ON c.CamperID = ed.CamperID
-        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
-        WHERE ed.Date = ?
-    `).all(aw, today);
-    const byId = new Map();
-    for (const r of attRows) byId.set(r.CamperID, r);
-    for (const r of dismissalRows) byId.set(r.CamperID, r); // dismissed overwrites absent/late
-    const all = [...byId.values()];
-    const filtered = camperIdSet ? all.filter(r => camperIdSet.has(r.CamperID)) : all;
+        WHERE a.Date = ? AND a.SessionType IN ('homegroup_am', 'specialty_am') AND a.Status = 'absent'
+    `).all(aw, today).filter(r =>
+        !lateIds.has(r.CamperID) && !dismissedIds.has(r.CamperID) &&
+        !nurseIds.has(r.CamperID) && !caseIds.has(r.CamperID)
+    );
+    const filtered = camperIdSet ? attRows.filter(r => camperIdSet.has(r.CamperID)) : attRows;
     filtered.sort((a, b) =>
         (a.HomeGroupColor || '').localeCompare(b.HomeGroupColor || '') ||
         a.LastName.localeCompare(b.LastName)
@@ -363,7 +369,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/save-counselor-assignments', '/backup-counselor-assignments', '/counselor-schedule-backups', '/restore-counselor-backup', '/delete-counselor-backup',
     '/export-counselor-schedule', '/export-staff-schedule',
     '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups', '/sync-homegroup-colors',
-    '/hub-content', '/director-notes',
+    '/hub-content', '/director-notes', '/director-notes/edit',
     '/set-active-week', '/set-released-week', '/set-prep-week', '/update-session-label',
     '/clear-counselor-week', '/counselor-week-assignments', '/api/week-staff-assignments', '/mirror-sports-location', '/clear-counselor-schedule', '/clear-counselor-homegroups',
     '/audit', '/merge-class', '/set-activity-side', '/delete-counselor',
@@ -1309,8 +1315,9 @@ app.get('/logout', (_req, res) => {
 
 app.get('/staff', (req, res) => {
     const cid = parseInt(req.cookies.selectedCounselor) || null;
-    const cRow = cid ? db.prepare('SELECT FirstName, LastName FROM Counselors WHERE CounselorID = ?').get(cid) : null;
+    const cRow = cid ? db.prepare('SELECT FirstName, LastName, StaffRole FROM Counselors WHERE CounselorID = ?').get(cid) : null;
     const selectedCounselorName = cRow ? `${cRow.FirstName} ${cRow.LastName}` : null;
+    const isHomeCounselor = ['Counselor', 'Swim Counselor'].includes(cRow?.StaffRole);
     const announcement = db.prepare("SELECT content FROM HubContent WHERE id='announcement'").get()?.content || '';
     const released = getReleasedWeek();
     const releasedSchedule = (released && cid)
@@ -1339,9 +1346,10 @@ app.get('/staff', (req, res) => {
         : null;
     const aw = getActiveWeek();
 
-    // Build counselor roster camper ID set for filtering (if a counselor is selected)
+    // Build counselor roster camper ID set for filtering (home-group counselors only).
+    // ULs, Directors, and Instructors see all camp data unfiltered.
     let rosterCamperIds = null;
-    if (cid) {
+    if (cid && isHomeCounselor) {
         const homeGroupIds = db.prepare(
             `SELECT CamperID FROM CamperHomeGroups WHERE CounselorID = ? AND WeekNumber = ?`
         ).all(cid, aw).map(r => r.CamperID);
@@ -1423,10 +1431,29 @@ app.get('/staff', (req, res) => {
 
     const absentByGroup = getAbsentByGroup(today, rosterCamperIds);
 
+    const nurseNow = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, nl.Notes, nl.CreatedAt
+        FROM NurseLog nl
+        JOIN Campers c ON c.CamperID = nl.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE nl.Date = ? AND nl.CheckOutTime IS NULL
+        ORDER BY nl.CreatedAt
+    `).all(getActiveWeek(), today);
+
+    const caseNow = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, cl.Notes, cl.CreatedAt
+        FROM CaseLog cl
+        JOIN Campers c ON c.CamperID = cl.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE cl.Date = ? AND cl.CheckOutTime IS NULL AND cl.Dismissed = 0
+        ORDER BY cl.CreatedAt
+    `).all(getActiveWeek(), today);
+
     res.render('staff-hub', {
         selectedCounselorName, announcement, releasedSchedule, releasedSessionLabel,
         yesterdayWinner, todayWinner, photoPhase,
-        todayPickups, todayLateArrivals, todayEarlyDismissals, todayScheduleChanges, today, absentByGroup
+        todayPickups, todayLateArrivals, todayEarlyDismissals, todayScheduleChanges, today,
+        absentByGroup, nurseNow, caseNow
     });
 });
 
@@ -1451,6 +1478,20 @@ app.post('/director-notes', (req, res) => {
 
 app.post('/director-notes/delete/:id', (req, res) => {
     db.prepare("DELETE FROM DirectorNotes WHERE id = ?").run(req.params.id);
+    res.redirect('/admin');
+});
+
+app.post('/director-notes/edit/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const adminName = req.cookies.adminName;
+    if (!adminName) return res.redirect('/admin');
+    const note = db.prepare("SELECT author FROM DirectorNotes WHERE id=?").get(id);
+    if (!note || note.author !== adminName) return res.redirect('/admin');
+    const body = (req.body.body || '').trim();
+    if (!body) return res.redirect('/admin');
+    const VALID_CATS = new Set(['director', 'camper', 'staff', 'timesheet']);
+    const category = VALID_CATS.has(req.body.category) ? req.body.category : note.category || 'director';
+    db.prepare("UPDATE DirectorNotes SET body=?, category=? WHERE id=?").run(body, category, id);
     res.redirect('/admin');
 });
 
@@ -4407,6 +4448,13 @@ app.post('/attendance/early-dismissal', (req, res) => {
             MarkedBy = excluded.MarkedBy
     `).run(date, camperId, dismissalTime || null, notes || null, markedBy);
     res.redirect(returnTo || `/attendance?date=${date}`);
+});
+
+app.post('/attendance/dismissal-undo', (req, res) => {
+    const { date, camperId } = req.body;
+    if (!date || !camperId) return res.redirect('/attendance/late-arrivals');
+    db.prepare("DELETE FROM EarlyDismissals WHERE Date=? AND CamperID=?").run(date, parseInt(camperId));
+    res.redirect(`/attendance/late-arrivals?date=${date}`);
 });
 
 // --- DISMISSAL ARCHIVE ---

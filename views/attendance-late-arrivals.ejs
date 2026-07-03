@@ -182,6 +182,7 @@
                         <th>Time</th>
                         <th>Notes</th>
                         <th>Dismissed By</th>
+                        <th style="text-align:right;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -192,6 +193,14 @@
                         <td><%= d.DismissalTime || '—' %></td>
                         <td style="color:var(--text-muted); font-size:0.85rem;"><%= d.Notes || '' %></td>
                         <td style="font-size:0.85rem;"><%= d.MarkedBy || '—' %></td>
+                        <td style="text-align:right;">
+                            <form action="/attendance/dismissal-undo" method="POST" style="display:inline;"
+                                  onsubmit="return confirm('Check <%= d.FirstName %> <%= d.LastName %> back in?')">
+                                <input type="hidden" name="date" value="<%= date %>">
+                                <input type="hidden" name="camperId" value="<%= d.CamperID %>">
+                                <button type="submit" class="btn-checkin" style="background:#dcfce7; color:#15803d; border-color:#86efac;">&#8617; Back In</button>
+                            </form>
+                        </td>
                     </tr>
                     <% }); %>
                 </tbody>
