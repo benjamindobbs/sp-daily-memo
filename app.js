@@ -1439,12 +1439,12 @@ app.get('/staff', (req, res) => {
     const absentByGroup = getAbsentByGroup(today, rosterCamperIds);
 
     const nurseNow = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, nl.Notes, nl.CreatedAt
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, nl.Notes, nl.CheckInTime
         FROM NurseLog nl
         JOIN Campers c ON c.CamperID = nl.CamperID
         LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         WHERE nl.Date = ? AND nl.CheckOutTime IS NULL
-        ORDER BY nl.CreatedAt
+        ORDER BY nl.CheckInTime
     `).all(getActiveWeek(), today);
 
     const caseNow = db.prepare(`
@@ -6196,11 +6196,18 @@ app.get('/photo-download', async (req, res) => {
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', 'attachment; filename="camp-photos.zip"');
         const archive = archiver('zip', { zlib: { level: 5 } });
+        archive.on('error', err => {
+            console.error('[photo-download] archiver error:', err);
+            if (!res.headersSent) res.status(500).send('Download failed');
+            else res.destroy();
+        });
         archive.pipe(res);
         for (const e of entries) archive.append(e.buf, { name: e.name });
         await archive.finalize();
     } catch (e) {
+        console.error('[photo-download] error:', e);
         if (!res.headersSent) res.status(500).send('Download failed');
+        else res.destroy();
     }
 });
 
