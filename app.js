@@ -31,7 +31,7 @@ const SPECIALTY_CAMP_COLORS = ['LilPlace', 'KinderPlace', 'SPLIT', 'SPRC', 'Swim
 
 // Activities that share a room/instructor and display as one merged class.
 // Each inner array is a merge group; first entry is the canonical link target.
-const MERGED_ACTIVITIES = [['Dance', 'Cheer']];
+const MERGED_ACTIVITIES = [['Dance', 'Cheerleading']];
 function getMergeGroup(activityName) {
     return MERGED_ACTIVITIES.find(g => g.includes(activityName)) || null;
 }
