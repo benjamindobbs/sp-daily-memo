@@ -1448,12 +1448,12 @@ app.get('/staff', (req, res) => {
     `).all(getActiveWeek(), today);
 
     const caseNow = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, cl.Notes, cl.CreatedAt
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, cl.Notes, cl.CheckInTime
         FROM CaseLog cl
         JOIN Campers c ON c.CamperID = cl.CamperID
         LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         WHERE cl.Date = ? AND cl.CheckOutTime IS NULL AND cl.Dismissed = 0
-        ORDER BY cl.CreatedAt
+        ORDER BY cl.CheckInTime
     `).all(getActiveWeek(), today);
 
     res.render('staff-hub', {
