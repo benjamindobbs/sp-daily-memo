@@ -391,6 +391,7 @@ Campers waiting to be placed into a full activity.
 | `RequestedActivity` | TEXT | |
 | `TimeOfDay` | TEXT | `AM` or `PM` |
 | `Timestamp` | DATETIME | |
+| `WeekNumber` | INTEGER | Week the request was made in. The Promotions page only shows entries where this matches the active week, so requests from a finished week stop appearing once the week rolls over. |
 
 ---
 

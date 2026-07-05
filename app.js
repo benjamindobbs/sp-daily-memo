@@ -916,6 +916,19 @@ try {
     if (!attCols.includes('MarkedBy')) db.exec("ALTER TABLE Attendance ADD COLUMN MarkedBy TEXT");
 } catch(e) { console.error('[migration] Attendance.MarkedBy:', e.message); }
 
+// Migration: scope Waitlists to the week they were created in, so entries from a
+// finished week stop appearing once the active week rolls over. Existing rows
+// (created before this column existed) are backfilled to the current active week
+// rather than left unscoped, since they represent real unresolved waitlist requests.
+try {
+    const wlCols = db.prepare("PRAGMA table_info(Waitlists)").all().map(c => c.name);
+    if (!wlCols.includes('WeekNumber')) {
+        db.exec("ALTER TABLE Waitlists ADD COLUMN WeekNumber INTEGER");
+        const curWeek = db.prepare("SELECT weekNumber FROM Sessions WHERE isActive=1 LIMIT 1").get()?.weekNumber ?? 1;
+        db.prepare("UPDATE Waitlists SET WeekNumber = ? WHERE WeekNumber IS NULL").run(curWeek);
+    }
+} catch(e) { console.error('[migration] Waitlists.WeekNumber:', e.message); }
+
 try {
     const edCols = db.prepare("PRAGMA table_info(EarlyDismissals)").all().map(c => c.name);
     if (!edCols.includes('MarkedBy')) db.exec("ALTER TABLE EarlyDismissals ADD COLUMN MarkedBy TEXT");
@@ -1548,7 +1561,8 @@ app.get('/admin', (req, res) => {
     const waitlistCount = db.prepare(`
         SELECT COUNT(*) as count FROM Waitlists w
         JOIN Activities a ON w.RequestedActivity = a.Name
-        WHERE (SELECT COUNT(*) FROM Schedules s
+        WHERE w.WeekNumber = ${aw}
+          AND (SELECT COUNT(*) FROM Schedules s
                WHERE s.ActivityName = a.Name AND s.PeriodNumber = w.PeriodNumber
                  AND s.PersonType = 'Camper' AND s.WeekNumber = ${aw}
                  AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ${aw} AND HomeGroupColor = 'SPLIT')
@@ -2517,9 +2531,9 @@ app.get('/assign-camper-class', (req, res) => {
 
     if (enrollment >= maxCap) {
         db.prepare(`
-            INSERT INTO Waitlists (CamperID, PeriodNumber, RequestedActivity)
-            VALUES (?, ?, ?)
-        `).run(camperId, period, activity);
+            INSERT INTO Waitlists (CamperID, PeriodNumber, RequestedActivity, WeekNumber)
+            VALUES (?, ?, ?, ?)
+        `).run(camperId, period, activity, tw);
         return res.redirect(`/assign-camper-schedule/${camperId}?message=Class+full+%E2%80%94+added+to+waitlist`);
     }
 
@@ -2650,7 +2664,7 @@ app.get('/promotions', (req, res) => {
         JOIN Campers c ON w.CamperID = c.CamperID
         LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ${aw}
         JOIN Activities a ON w.RequestedActivity = a.Name
-        WHERE CurrentEnrollment < a.MaxCapacity
+        WHERE w.WeekNumber = ${aw} AND CurrentEnrollment < a.MaxCapacity
         ORDER BY w.Timestamp ASC
     `).all();
     const waitlistQueue = db.prepare(`
@@ -2660,7 +2674,7 @@ app.get('/promotions', (req, res) => {
         JOIN Campers c ON w.CamperID = c.CamperID
         LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ${aw}
         JOIN Activities a ON w.RequestedActivity = a.Name
-        WHERE CurrentEnrollment >= a.MaxCapacity
+        WHERE w.WeekNumber = ${aw} AND CurrentEnrollment >= a.MaxCapacity
         ORDER BY w.Timestamp ASC
     `).all();
     res.render('promotions', { potentialPromotions, waitlistQueue, alertMessage: req.query.message || null });
@@ -2711,7 +2725,7 @@ app.post('/promote-all', (req, res) => {
            AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ${aw} AND HomeGroupColor = 'SPLIT')) as CurrentEnrollment
         FROM Waitlists w
         JOIN Activities a ON w.RequestedActivity = a.Name
-        WHERE CurrentEnrollment < a.MaxCapacity
+        WHERE w.WeekNumber = ${aw} AND CurrentEnrollment < a.MaxCapacity
         ORDER BY w.Timestamp ASC
     `).all();
 
@@ -2741,7 +2755,7 @@ app.post('/promote-all', (req, res) => {
 
 app.post('/remove-waitlist/:id', (req, res) => {
     db.prepare('DELETE FROM Waitlists WHERE WaitlistID = ?').run(req.params.id);
-    res.redirect('/promotions?message=Removed+from+waitlist');
+    res.redirect('/promotions?message=Promotion+denied');
 });
 
 // --- CSV IMPORTS (Consolidated) ---
@@ -3584,9 +3598,9 @@ app.get('/process-swap', (req, res) => {
     if (currentEnrollment.count >= activity.MaxCapacity) {
         // Activity is full — add to waitlist instead
         db.prepare(`
-            INSERT INTO Waitlists (CamperID, PeriodNumber, RequestedActivity)
-            VALUES (?, ?, ?)
-        `).run(camperId, period, newActivity);
+            INSERT INTO Waitlists (CamperID, PeriodNumber, RequestedActivity, WeekNumber)
+            VALUES (?, ?, ?, ?)
+        `).run(camperId, period, newActivity, aw);
     } else {
         // Capture current activity before overwriting it
         const currentSlot = db.prepare(`

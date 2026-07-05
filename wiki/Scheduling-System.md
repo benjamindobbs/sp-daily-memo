@@ -182,9 +182,11 @@ Covered periods: **1, 2, 4, 5, 6**. Periods 1 and 2 are Enrichment AM; period 4 
 
 ## Waitlist & Promotions
 
-When a swap is attempted into a full class, the camper is added to `Waitlists`. The `/promotions` page surfaces eligible campers (class has an open spot) and lets the admin promote one or all at once.
+When a swap is attempted into a full class, the camper is added to `Waitlists`, tagged with the active week (`WeekNumber`). The `/promotions` page surfaces eligible campers (class has an open spot) and lets the admin promote one or all at once. Both the "Ready for Promotion" and "Waitlist Queue" lists are scoped to the current active week, so entries from a prior week stop appearing once the week rolls over (they are not deleted, just no longer shown).
 
 A **Force Promote** button (`POST /force-promote-waitlist`) is also available on each waitlist card regardless of capacity. This bypasses the enrollment check and directly updates the camper's `Schedules` row to the requested activity. Use when the class is intentionally over-enrolled.
+
+A **Deny** button (`POST /remove-waitlist/:id`) is available on both the "Ready for Promotion" and "Waitlist Queue" cards to reject a request outright, deleting the `Waitlists` row without touching the camper's schedule.
 
 ---
 

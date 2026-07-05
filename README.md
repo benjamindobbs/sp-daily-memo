@@ -266,7 +266,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 |---|---|---|
 | Swap Tool | `/swap-tool` | Move a camper from one class to another. Shows capacity and waitlist status for all available options. Displays a count of how many swaps have been made for the selected camper during the current week. |
 | Schedule History | `/schedule-history` | Log of recent swap and assignment changes. Admin can archive entries. |
-| Waitlist / Promotions | `/promotions` | Lists campers eligible to be promoted off the waitlist into an open spot. Promote individually, all at once, or force-promote into an over-capacity class. |
+| Waitlist / Promotions | `/promotions` | Lists campers eligible to be promoted off the waitlist into an open spot. Promote individually, all at once, force-promote into an over-capacity class, or deny a request outright. Only shows requests made during the current active week — older requests stop appearing once the week rolls over. |
 | Counselor Scheduling | `/counselor-scheduling` | Full counselor assignment builder — see [Counselor Scheduling](#counselor-scheduling) above. If Dance and Cheerleading are offered in the same period, they appear as a single merged "Dance & Cheerleading" card; assignments save to both activities. |
 | Counselor Schedule Backups | `/counselor-schedule-backups` | Named snapshots of saved counselor assignments. Restore or delete from here. |
 | Home Group Assignment | `/homegroup-assignment` | Assign counselors to color-group home groups by week. Can mirror assignments from one week to another. |
