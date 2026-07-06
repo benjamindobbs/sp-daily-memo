@@ -237,7 +237,7 @@
     <script>
         const SESSION_TYPE  = '<%= sessionType %>';
         const PERIOD_NUMBER = <%= periodNumber %>;
-        const ACTIVITY_NAME = '<%= activityName.replace(/'/g, "\\'") %>';
+        const ACTIVITY_NAME = <%- JSON.stringify(activityName) %>;
         const DATE = '<%= date %>';
 
         function updateCounts() {
