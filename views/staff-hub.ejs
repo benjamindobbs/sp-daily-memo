@@ -231,7 +231,19 @@
         <%/* ── Today's Activity Feed ── */%>
         <div class="card" style="margin-top:20px;">
             <h3 style="margin:0 0 16px;">Today's Memo</h3>
-            <% if (!todayPickups.length && !todayLateArrivals.length && !todayEarlyDismissals.length && !todayScheduleChanges.length) { %>
+            <% if (rosterAbsent && rosterAbsent.length > 0) { %>
+            <div style="margin-bottom:16px;">
+                <div style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:8px;">&#10006; Absent from Your Group</div>
+                <% rosterAbsent.forEach(function(cam) { %>
+                <div style="display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-color);">
+                    <span class="tag <%= cam.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px; flex-shrink:0;"><%= cam.HomeGroupColor %></span>
+                    <span style="font-weight:500;"><%= cam.FirstName %> <%= cam.LastName %></span>
+                </div>
+                <% }); %>
+            </div>
+            <% } %>
+
+            <% if (!rosterAbsent && !todayPickups.length && !todayLateArrivals.length && !todayEarlyDismissals.length && !todayScheduleChanges.length) { %>
             <p style="color:var(--text-muted); font-size:0.875rem; margin:0;">No pickups, late arrivals, dismissals, or schedule changes today.</p>
             <% } %>
 

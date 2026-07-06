@@ -1508,7 +1508,10 @@ app.get('/staff', (req, res) => {
         ? allScheduleChanges.filter(c => rosterCamperIds.has(c.CamperID))
         : allScheduleChanges;
 
-    const absentByGroup = getAbsentByGroup(today, rosterCamperIds);
+    const absentByGroup = getAbsentByGroup(today); // unfiltered — Attendance at a Glance shows all camp
+    const rosterAbsent = rosterCamperIds
+        ? Object.values(absentByGroup).flat().filter(cam => cam.Status === 'absent' && rosterCamperIds.has(cam.CamperID))
+        : null; // null = no counselor selected; Today's Memo skips the section
 
     const nurseNow = db.prepare(`
         SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, nl.Notes, nl.CheckInTime
@@ -1532,7 +1535,7 @@ app.get('/staff', (req, res) => {
         selectedCounselorName, announcement, releasedSchedule, releasedSessionLabel,
         yesterdayWinner, todayWinner, photoPhase,
         todayPickups, todayLateArrivals, todayEarlyDismissals, todayScheduleChanges, today,
-        absentByGroup, nurseNow, caseNow
+        absentByGroup, rosterAbsent, nurseNow, caseNow
     });
 });
 
