@@ -152,13 +152,15 @@
                 <div style="background:#f8fafc; border-radius:8px; padding:10px 14px;" id="group-<%= color %>">
                     <div style="font-size:0.75rem; font-weight:600; margin-bottom:6px;"><span class="tag <%= color %>"><%= color %></span></div>
                     <% (absentByGroup[color] || []).forEach(function(cam) { %>
-                    <div style="display:flex; align-items:center; justify-content:space-between; padding:2px 0;" id="absent-<%= cam.CamperID %>">
-                        <span style="font-size:0.82rem;"><%= cam.FirstName %> <%= cam.LastName %></span>
-                        <button onclick="hubCheckIn(<%= cam.CamperID %>, '<%= today %>')"
-                            style="font-size:0.7rem; padding:1px 7px; border:1px solid #86efac; background:#dcfce7; color:#15803d; border-radius:10px; cursor:pointer; flex-shrink:0; margin-left:6px;">
-                            &#10003; In
-                        </button>
-                    </div>
+                        <% if (cam.Status === 'late') { %>
+                        <div style="font-size:0.82rem; padding:2px 0; color:var(--text-muted); text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } else if (cam.Status === 'dismissed') { %>
+                        <div style="font-size:0.82rem; padding:2px 0; color:#b45309; text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } else if (cam.Status === 'nurse') { %>
+                        <div style="font-size:0.82rem; padding:2px 0; color:#991b1b;">&#128137; <%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } else { %>
+                        <div style="font-size:0.82rem; padding:2px 0;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } %>
                     <% }); %>
                     <% if (!(absentByGroup[color] || []).length) { %><div style="font-size:0.78rem; color:var(--text-muted); font-style:italic;">None absent</div><% } %>
                 </div>
@@ -169,13 +171,15 @@
                 <div style="background:#f8fafc; border-radius:8px; padding:10px 14px;">
                     <div style="font-size:0.75rem; font-weight:600; margin-bottom:6px;"><span class="tag <%= pair[0] %>" style="font-size:0.65rem;"><%= pair[1] %></span></div>
                     <% (absentByGroup[pair[0]] || []).forEach(function(cam) { %>
-                    <div style="display:flex; align-items:center; justify-content:space-between; padding:2px 0;" id="absent-<%= cam.CamperID %>">
-                        <span style="font-size:0.82rem;"><%= cam.FirstName %> <%= cam.LastName %></span>
-                        <button onclick="hubCheckIn(<%= cam.CamperID %>, '<%= today %>')"
-                            style="font-size:0.7rem; padding:1px 7px; border:1px solid #86efac; background:#dcfce7; color:#15803d; border-radius:10px; cursor:pointer; flex-shrink:0; margin-left:6px;">
-                            &#10003; In
-                        </button>
-                    </div>
+                        <% if (cam.Status === 'late') { %>
+                        <div style="font-size:0.82rem; padding:2px 0; color:var(--text-muted); text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } else if (cam.Status === 'dismissed') { %>
+                        <div style="font-size:0.82rem; padding:2px 0; color:#b45309; text-decoration:line-through;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } else if (cam.Status === 'nurse') { %>
+                        <div style="font-size:0.82rem; padding:2px 0; color:#991b1b;">&#128137; <%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } else { %>
+                        <div style="font-size:0.82rem; padding:2px 0;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <% } %>
                     <% }); %>
                     <% if (!(absentByGroup[pair[0]] || []).length) { %><div style="font-size:0.78rem; color:var(--text-muted); font-style:italic;">None</div><% } %>
                 </div>
@@ -222,19 +226,7 @@
             btn.textContent = hiding ? 'Show' : 'Hide';
             localStorage.setItem('attGlanceHidden', hiding ? '1' : '0');
         }
-        async function hubCheckIn(camperId, date) {
-            const el = document.getElementById('absent-' + camperId);
-            if (!el) return;
-            try {
-                const r = await fetch('/attendance/check-in', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({ camperId, date })
-                });
-                if (r.ok || r.redirected) el.remove();
-            } catch(e) { /* silent */ }
-        }
-        </script>
+</script>
 
         <%/* ── Today's Activity Feed ── */%>
         <div class="card" style="margin-top:20px;">
