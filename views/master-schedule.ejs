@@ -106,7 +106,7 @@
 
                         <td class="mc-title">
                             <a class="activity-link"
-                               href="/class-roster/<%= period.periodNumber %>/<%= encodeURIComponent(cls.activityName) %>">
+                               href="/class-roster/<%= period.periodNumber %>/<%= encodeURIComponent(cls.mergedNames ? cls.mergedNames[0] : cls.activityName) %>">
                                 <%= cls.activityName %>
                             </a>
                         </td>

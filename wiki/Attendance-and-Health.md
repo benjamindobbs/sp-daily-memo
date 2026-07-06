@@ -54,6 +54,23 @@ Attendance rosters pull from multiple tables in one query to compute status badg
 | Row in `Attendance` with `present` from another roster | ✓ Seen Earlier |
 | Date in `SplitFieldTrip` | 🏕️ Field Trip |
 
+### Shirt Order Pills
+
+Shown only on the AM Home Group attendance sheet (`/attendance/homegroup/counselor/:counselorId/am` and `/attendance/homegroup/:color/am`), only when the viewed `date` falls on a Monday, and only for main-camp campers (`HomeGroupColor` in `Red`/`Carolina`/`Green`/`Navy`). Computed from `Campers.SessionCodes` (see [Data-Import](./Data-Import.md#camper-roster-acr-005)) — not stored, recalculated on every page load:
+
+- **Quantity** = number of `SPnn` codes in `SessionCodes`, `+1`, capped at `5` (max days in a camp week).
+- **Shirts Received** replaces the size/quantity pills when the camper's earliest registered week is before the current active week (i.e. they already picked up shirts during an earlier, completed week). Clicking the "Shirts Received" pill toggles it to show the size and quantity that were computed, for reference.
+
+### Lunch Pills
+
+Shown only on the Lunch Home Group attendance sheet (`/attendance/homegroup/counselor/:counselorId/lunch` and `/attendance/homegroup/:color/lunch`), for every color (not restricted to main camp). Reads `CamperWeekData.CampLunch` for the active week:
+
+| `CampLunch` | Badge |
+|---|---|
+| `Yes` | 🍱 Camp Lunch |
+| `Allergy` | ⚠️ Allergy Meal |
+| `No` (packed lunch) | *(no badge)* |
+
 ---
 
 ## Early Dismissals
@@ -67,6 +84,7 @@ One row per camper per day. `UNIQUE (Date, CamperID)` prevents duplicate dismiss
 | Route | Action |
 |---|---|
 | `POST /attendance/early-dismissal` | Create a new dismissal record for today |
+| `POST /attendance/dismissal-undo` | Remove today's dismissal record for a camper (Back In) |
 | `GET /dismissals` | View and manage today's pending dismissals |
 | `POST /dismissals/schedule` | Add a scheduled pickup (writes `ScheduledPickups`) |
 | `POST /dismissals/cancel` | Cancel a scheduled pickup |
@@ -163,6 +181,10 @@ Arrived rows are automatically hidden by a client-side timer once the period the
 | 4:05 PM | 4:05 PM (end of camp day) |
 
 The empty state ("No late arrivals") is shown automatically once all rows are either hidden or absent rows have been cleared.
+
+### Back In (undo early dismissal)
+
+The late arrivals page also shows any camper who has been given an early dismissal today. A **Back In** button appears next to each dismissed camper; pressing it calls `POST /attendance/dismissal-undo`, which deletes their `EarlyDismissals` record and removes the 🚗 Dismissed badge from attendance sheets.
 
 ---
 

@@ -326,6 +326,18 @@ body {
 .badge-absent-bus   { background: #dbeafe; color: #1e40af; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
 .badge-dismissed    { background: #fee2e2; color: #991b1b; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
 .badge-seen-earlier { background: #dcfce7; color: #166534; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+.badge-shirt-size, .badge-shirt-qty {
+    background: #ede9fe; color: #5b21b6; font-size: 0.68rem; font-weight: 700;
+    padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+}
+.badge-shirt-received {
+    background: #ede9fe; color: #5b21b6; font-size: 0.68rem; font-weight: 700;
+    padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+    border: none; cursor: pointer; font-family: inherit;
+}
+.badge-shirt-received:hover { background: #ddd6fe; }
+.badge-lunch-camp    { background: #ffedd5; color: #9a3412; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+.badge-lunch-allergy { background: #fee2e2; color: #991b1b; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
 
 .activity-checkbox-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .activity-check-label { display: flex; align-items: center; gap: 7px; padding: 7px 14px; border: 1px solid var(--border-color); border-radius: 20px; cursor: pointer; font-size: 0.85rem; background: white; transition: background 0.12s, border-color 0.12s; user-select: none; }

@@ -1,4 +1,4 @@
-# Dev app — deploys from the dev branch to sp-daily-memo-mtm6-w
+# Dev app - deploys from the dev branch to sp-daily-memo-mtm6-w
 # Deploy with: fly deploy --config fly.dev.toml
 
 app = 'sp-daily-memo-mtm6-w'

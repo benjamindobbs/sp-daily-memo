@@ -82,10 +82,16 @@
                                 <div class="cap-sub">Spot Available</div>
                             </div>
 
-                            <form action="/promote-waitlist" method="POST">
+                            <form action="/promote-waitlist" method="POST" style="margin-bottom:8px;">
                                 <input type="hidden" name="WaitlistID" value="<%= promo.WaitlistID %>">
                                 <button type="submit" class="btn btn-success" style="width: 100%;">
                                     Confirm Promotion
+                                </button>
+                            </form>
+                            <form action="/remove-waitlist/<%= promo.WaitlistID %>" method="POST"
+                                  onsubmit="return confirm('Deny the promotion for <%= promo.FirstName %> <%= promo.LastName %> into <%= promo.RequestedActivity %>?')">
+                                <button type="submit" class="btn" style="width:100%; color:#dc2626; border-color:#fca5a5;">
+                                    Deny
                                 </button>
                             </form>
                         </div>
@@ -144,9 +150,9 @@
                                 </button>
                             </form>
                             <form action="/remove-waitlist/<%= promo.WaitlistID %>" method="POST"
-                                  onsubmit="return confirm('Remove <%= promo.FirstName %> <%= promo.LastName %> from the waitlist?')">
+                                  onsubmit="return confirm('Deny <%= promo.FirstName %> <%= promo.LastName %>&#39;s waitlist request for <%= promo.RequestedActivity %>?')">
                                 <button type="submit" class="btn" style="width:100%; color:#dc2626; border-color:#fca5a5;">
-                                    Remove
+                                    Deny
                                 </button>
                             </form>
                         </div>

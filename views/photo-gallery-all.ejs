@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Photos | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 16px;
+        }
+        .photo-card {
+            position: relative;
+            border-radius: 10px;
+            overflow: hidden;
+            background: white;
+            border: 2px solid var(--border-color);
+            cursor: pointer;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .photo-card.selected {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.25);
+        }
+        .photo-card img {
+            width: 100%;
+            aspect-ratio: 4/3;
+            object-fit: cover;
+            display: block;
+        }
+        .photo-card .card-footer {
+            padding: 8px 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.82rem;
+        }
+        .photo-card .card-footer .name {
+            font-weight: 600;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .photo-card .card-footer .meta {
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+        .photo-card .check-overlay {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            width: 24px;
+            height: 24px;
+            background: white;
+            border: 2px solid #cbd5e1;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, border-color 0.15s;
+            pointer-events: none;
+        }
+        .photo-card.selected .check-overlay {
+            background: #3b82f6;
+            border-color: #3b82f6;
+        }
+        .photo-card.selected .check-overlay::after {
+            content: '';
+            display: block;
+            width: 6px;
+            height: 10px;
+            border: 2px solid white;
+            border-top: none;
+            border-left: none;
+            transform: rotate(45deg) translate(-1px, -1px);
+        }
+        .photo-card .date-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(0,0,0,0.55);
+            color: white;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 2px 7px;
+            border-radius: 20px;
+        }
+        .toolbar {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: white;
+            border-bottom: 1px solid var(--border-color);
+            padding: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .sort-btn {
+            padding: 6px 14px;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            background: white;
+            font-size: 0.83rem;
+            font-weight: 600;
+            cursor: pointer;
+            color: var(--text-muted);
+            text-decoration: none;
+            display: inline-block;
+        }
+        .sort-btn.active {
+            background: #1e293b;
+            color: white;
+            border-color: #1e293b;
+        }
+        #dl-btn {
+            padding: 7px 18px;
+            border-radius: 20px;
+            border: none;
+            background: #3b82f6;
+            color: white;
+            font-size: 0.85rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            gap: 6px;
+        }
+        #dl-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        #sel-count { font-size: 0.82rem; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/photo-day" class="nav-btn">&#128247; Photo of the Day</a>
+        <a href="/photo-gallery" class="nav-btn">&#127775; Gallery</a>
+        <a href="/photo-gallery/all" class="nav-btn primary">&#128444; All Photos</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
+    </nav>
+
+    <div class="container">
+        <header style="margin-bottom:18px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+            <div>
+                <h1>&#128444; All Photos</h1>
+                <p style="color:var(--text-muted); margin:0;"><%= photos.length %> photo<%= photos.length !== 1 ? 's' : '' %> total</p>
+            </div>
+        </header>
+
+        <% if (photos.length === 0) { %>
+        <div class="card" style="text-align:center; padding:48px 24px; color:var(--text-muted);">
+            No photos have been submitted yet.
+        </div>
+        <% } else { %>
+
+        <div class="toolbar">
+            <a href="/photo-gallery/all?sort=date" class="sort-btn <%= sort === 'date' ? 'active' : '' %>">&#128197; By Date</a>
+            <a href="/photo-gallery/all?sort=likes" class="sort-btn <%= sort === 'likes' ? 'active' : '' %>">&#10084;&#65039; By Likes</a>
+            <span style="width:1px; height:20px; background:var(--border-color); display:inline-block;"></span>
+            <button onclick="selectAll()" class="sort-btn" id="btn-select-all">Select All</button>
+            <button onclick="clearSelection()" class="sort-btn">Deselect All</button>
+            <span id="sel-count"></span>
+            <button id="dl-btn" onclick="downloadSelected()">&#11015; Download Selected</button>
+        </div>
+
+        <div class="photo-grid" id="photo-grid">
+            <% photos.forEach(p => { %>
+            <div class="photo-card" id="card-<%= p.id %>" data-id="<%= p.id %>" onclick="toggleSelect(this)">
+                <img src="<%= thumbUrl(p.imageUrl, 500) %>" alt="Photo by <%= p.counselorName %>" loading="lazy">
+                <div class="check-overlay"></div>
+                <div class="date-badge"><%= p.date %></div>
+                <div class="card-footer">
+                    <span class="name"><%= p.counselorName %></span>
+                    <span class="meta">&#10084;&#65039; <%= p.votes %></span>
+                </div>
+            </div>
+            <% }); %>
+        </div>
+
+        <% } %>
+    </div>
+
+    <script>
+        const selected = new Set();
+
+        function toggleSelect(card) {
+            const id = card.dataset.id;
+            if (selected.has(id)) {
+                selected.delete(id);
+                card.classList.remove('selected');
+            } else {
+                selected.add(id);
+                card.classList.add('selected');
+            }
+            updateToolbar();
+        }
+
+        function selectAll() {
+            document.querySelectorAll('.photo-card').forEach(card => {
+                selected.add(card.dataset.id);
+                card.classList.add('selected');
+            });
+            updateToolbar();
+        }
+
+        function clearSelection() {
+            selected.clear();
+            document.querySelectorAll('.photo-card').forEach(card => card.classList.remove('selected'));
+            updateToolbar();
+        }
+
+        function updateToolbar() {
+            const n = selected.size;
+            const countEl = document.getElementById('sel-count');
+            const dlBtn = document.getElementById('dl-btn');
+            if (n > 0) {
+                countEl.textContent = n + ' selected';
+                dlBtn.style.display = 'inline-flex';
+            } else {
+                countEl.textContent = '';
+                dlBtn.style.display = 'none';
+            }
+        }
+
+        function downloadSelected() {
+            if (!selected.size) return;
+            const dlBtn = document.getElementById('dl-btn');
+            dlBtn.disabled = true;
+            dlBtn.textContent = 'Preparing…';
+            const ids = Array.from(selected).join(',');
+            window.location = '/photo-download?ids=' + ids;
+            // Re-enable after a short delay to allow re-download
+            setTimeout(() => {
+                dlBtn.disabled = false;
+                dlBtn.innerHTML = '&#11015; Download Selected';
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

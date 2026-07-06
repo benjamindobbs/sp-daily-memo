@@ -25,6 +25,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/admin-set-name` | ✓ | Set logged-in admin name in session |
 | POST | `/director-notes` | ✓ | Add a director note (writes `DirectorNotes`) |
 | POST | `/director-notes/delete/:id` | ✓ | Delete a director note |
+| POST | `/director-notes/edit/:id` | ✓ | Edit an existing director note (author-gated — only the original author can edit) |
 | POST | `/hub-content/:id` | ✓ | Update `HubContent` (announcement or director_notes blob) |
 
 ---
@@ -34,7 +35,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | Method | Path | Admin only | Description |
 |---|---|:---:|---|
 | GET | `/master-schedule` | | All classes by period. Filterable by period, side, group. Uses the prep target week if one is set, otherwise the active week. |
-| GET | `/class-roster/:period/:activity` | | Camper list for one class/period |
+| GET | `/class-roster/:period/:activity` | | Camper list for one class/period. Respects prep mode (uses prep target week when admin is in prep mode). Dance & Cheerleading merge detected at query time — both activities served under one roster when they share a period. |
 | POST | `/update-class-location` | ✓ | Update location on a class roster |
 | GET | `/search` | | Camper search by name |
 | GET | `/counselor-directory` | | Staff directory grouped by role |
@@ -157,6 +158,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/attendance/check-in` | | Mark a late arrival as present |
 | POST | `/attendance/mark` | | Mark a camper present or absent on any roster |
 | POST | `/attendance/early-dismissal` | | Log an early dismissal for today |
+| POST | `/attendance/dismissal-undo` | | Undo an early dismissal — clears the `EarlyDismissals` record so the camper's dismissed badge is removed |
 | GET | `/attendance/dismissal-archive` | | Historical dismissal log |
 
 ---
@@ -260,6 +262,8 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/photo-day` | | Upload a photo |
 | GET | `/photo-gallery` | | Browse photos; staff can vote |
 | POST | `/photo-vote/:id` | | Cast or remove a vote |
+| GET | `/photo-gallery/all` | ✓ | All photos across all dates; sortable by `?sort=date` (default) or `?sort=likes` |
+| GET | `/photo-download` | ✓ | Download photos by ID: `?ids=1,2,3`. Single photo → image file; multiple → `camp-photos.zip` fetched from Cloudinary |
 
 ---
 

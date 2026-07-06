@@ -357,14 +357,39 @@
                             <strong><%= note.author %></strong>
                             <span class="note-ts" data-ts="<%= note.createdAt %>"></span>
                         </div>
-                        <form action="/director-notes/delete/<%= note.id %>" method="POST"
-                              onsubmit="return confirm('Delete this note?')" style="margin:0;">
-                            <button type="submit" title="Delete note"
+                        <div style="display:flex; align-items:center; gap:2px;">
+                            <% if (adminName && adminName === note.author) { %>
+                            <button type="button" title="Edit note" onclick="toggleNoteEdit(<%= note.id %>)"
                                     style="background:none; border:none; cursor:pointer; color:#cbd5e1; font-size:0.85rem; padding:2px 4px; line-height:1;"
-                                    onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">&#10005;</button>
-                        </form>
+                                    onmouseover="this.style.color='#3b82f6'" onmouseout="this.style.color='#cbd5e1'">&#9998;</button>
+                            <% } %>
+                            <form action="/director-notes/delete/<%= note.id %>" method="POST"
+                                  onsubmit="return confirm('Delete this note?')" style="margin:0;">
+                                <button type="submit" title="Delete note"
+                                        style="background:none; border:none; cursor:pointer; color:#cbd5e1; font-size:0.85rem; padding:2px 4px; line-height:1;"
+                                        onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">&#10005;</button>
+                            </form>
+                        </div>
                     </div>
-                    <div class="note-body"><%- note.body %></div>
+                    <div class="note-body" id="note-body-<%= note.id %>"><%- note.body %></div>
+                    <% if (adminName && adminName === note.author) { %>
+                    <form id="note-edit-form-<%= note.id %>" action="/director-notes/edit/<%= note.id %>" method="POST"
+                          style="display:none; margin-top:8px;">
+                        <textarea name="body" rows="3"
+                            style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #bfdbfe; border-radius:6px; font-size:0.9rem; resize:vertical;"
+                            ><%= note.body %></textarea>
+                        <div style="display:flex; gap:8px; margin-top:6px; align-items:center;">
+                            <select name="category" style="padding:4px 8px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem;">
+                                <option value="director"  <%= (note.category||'director')==='director'  ? 'selected':'' %>>Director Notes</option>
+                                <option value="camper"    <%= (note.category||'director')==='camper'    ? 'selected':'' %>>Camper/Parent</option>
+                                <option value="staff"     <%= (note.category||'director')==='staff'     ? 'selected':'' %>>Staff</option>
+                                <option value="timesheet" <%= (note.category||'director')==='timesheet' ? 'selected':'' %>>Timesheet</option>
+                            </select>
+                            <button type="submit" class="btn btn-primary btn-small">Save</button>
+                            <button type="button" class="btn btn-small" onclick="toggleNoteEdit(<%= note.id %>)">Cancel</button>
+                        </div>
+                    </form>
+                    <% } %>
                 </div>
                 <% }) %>
                 <p id="notesEmpty" style="display:none; color:var(--text-muted); text-align:center; padding:24px 0; font-size:0.9rem;">No notes yet.</p>
@@ -518,6 +543,14 @@
         function toggleAddNote() {
             const f = document.getElementById('addNoteForm');
             f.style.display = f.style.display === 'none' ? '' : 'none';
+        }
+
+        function toggleNoteEdit(id) {
+            const body = document.getElementById('note-body-' + id);
+            const form = document.getElementById('note-edit-form-' + id);
+            const editing = form.style.display !== 'none';
+            body.style.display = editing ? '' : 'none';
+            form.style.display = editing ? 'none' : '';
         }
 
         let _notesCat = 'director';

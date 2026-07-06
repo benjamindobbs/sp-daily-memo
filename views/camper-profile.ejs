@@ -231,7 +231,14 @@
                                     Period <%= idx + 1 %>
                                 </span>
                                 <div style="flex:1; min-width:120px;">
+                                    <% if (s.PeriodNumber && s.ActivityName !== 'SPLIT Sport') { %>
+                                    <a href="/class-roster/<%= s.PeriodNumber %>/<%= encodeURIComponent(s.ActivityName) %>"
+                                       style="font-weight:600; font-size:0.92rem; color:var(--text); text-decoration:none; border-bottom:1px solid var(--border-color);">
+                                        <%= s.ActivityName %>
+                                    </a>
+                                    <% } else { %>
                                     <div style="font-weight:600; font-size:0.92rem;"><%= s.ActivityName %></div>
+                                    <% } %>
                                     <% if (s.Location) { %>
                                         <div class="text-muted" style="font-size:0.78rem;">&#128205; <%= s.Location %></div>
                                     <% } %>
@@ -255,6 +262,30 @@
                     </a>
                 </div>
                 <% } %>
+
+                <div class="card" style="margin-top:20px;" id="dismissCard">
+                    <h4 style="margin:0 0 12px; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">&#128663; Quick Dismiss</h4>
+                    <form action="/attendance/early-dismissal" method="POST">
+                        <input type="hidden" name="camperId" value="<%= camper.CamperID %>">
+                        <input type="hidden" name="date" value="<%= new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) %>">
+                        <input type="hidden" name="returnTo" value="/camper/<%= camper.CamperID %>">
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                            <div style="flex:1; min-width:100px;">
+                                <label style="display:block; font-size:0.78rem; font-weight:600; margin-bottom:4px; color:var(--text-muted);">Time (optional)</label>
+                                <input type="time" name="dismissalTime"
+                                    style="width:100%; padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; box-sizing:border-box;">
+                            </div>
+                            <div style="flex:2; min-width:140px;">
+                                <label style="display:block; font-size:0.78rem; font-weight:600; margin-bottom:4px; color:var(--text-muted);">Notes (optional)</label>
+                                <input type="text" name="notes" placeholder="e.g. Doctor appt"
+                                    style="width:100%; padding:7px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.875rem; box-sizing:border-box;">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn" style="width:100%; background:#fef3c7; color:#92400e; border-color:#fcd34d; font-weight:600;">
+                            Dismiss <%= camper.PreferredName || camper.FirstName %>
+                        </button>
+                    </form>
+                </div>
             </div>
 
         </div>

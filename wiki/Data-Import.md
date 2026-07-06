@@ -58,9 +58,11 @@ Imports have dependencies. Always follow this sequence for a fresh setup:
 
 **What it does:**
 - Creates or updates camper records in `Campers`.
-- Sets: `FirstName`, `LastName`, `HomeGroupColor`, `CampLunch`, `ShirtSize`.
+- Sets: `FirstName`, `LastName`, `HomeGroupColor`, `CampLunch`, `ShirtSize`, `SessionCodes` (raw `Sessions` cell, e.g. `"SP01/SP02/SP03"`).
 - Does **not** touch bus data (`BusRoute`, `BusRidesAM`, `BusRidesPM`) — all bus data comes from ACR-132/133.
 - Does **not** set schedule data — that comes from the Master Camper Schedule (ACR-255) import.
+
+`SessionCodes` drives the shirt-order pills on the Monday AM Home Group attendance sheet (main camp colors only) — see [Attendance-and-Health](./Attendance-and-Health.md#shirt-order-pills).
 
 ---
 
@@ -225,5 +227,6 @@ Notable migrations in order:
 | `DirectorNotes.category` added | **[migrated]** — Adds tab-based categorization. Values: `director`, `camper`, `staff`, `timesheet`. Existing notes default to `director`. |
 | `Campers.BusRidesAM` / `BusRidesPM` added | **[migrated]** — Per-direction bus ride flags. Default `1` (rides). Set from the ACR-005 `AM Bus` / `PM Bus` columns (see the bus model in the ACR-005 section). |
 | `Campers.BusStopAM` / `BusStopPM` added | **[migrated]** — Raw ACR-005 stop text, retained so the Bus Route Audit can resolve ambiguous stops (West Hartford 2/5, Wolcott Park / Bishops Corner 3/4). |
+| `Campers.SessionCodes` added | **[migrated]** — Raw ACR-005 `Sessions` cell text (e.g. `"SP01/SP02/SP03"`). Drives the shirt-order pills on the Monday AM Home Group attendance sheet. |
 | `AppConfig` created | Key/value store for persistent server config (currently VAPID keys for web push). Auto-generates VAPID keys on first startup. |
 | `PushSubscriptions` created | Stores web push subscriptions for counselor attendance nudge notifications. One row per browser endpoint. |

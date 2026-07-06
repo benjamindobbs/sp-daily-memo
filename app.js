@@ -4,8 +4,11 @@ const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+const http = require('http');
 const cookieParser = require('cookie-parser');
 const cloudinary = require('cloudinary').v2;
+const archiver = require('archiver');
 
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -25,6 +28,14 @@ const HOME_GROUP_LABELS = {
     SPRC: 'SPRC', Swim: 'Swim Staff'
 };
 const SPECIALTY_CAMP_COLORS = ['LilPlace', 'KinderPlace', 'SPLIT', 'SPRC', 'Swim'];
+const MAIN_CAMP_COLORS = new Set(['Red', 'Carolina', 'Green', 'Navy']);
+
+// Activities that share a room/instructor and display as one merged class.
+// Each inner array is a merge group; first entry is the canonical link target.
+const MERGED_ACTIVITIES = [['Dance', 'Cheerleading']];
+function getMergeGroup(activityName) {
+    return MERGED_ACTIVITIES.find(g => g.includes(activityName)) || null;
+}
 
 // Period flip schedules — all times EST (UTC-5), 24-hour format.
 // clockBlock = universal time-block number (1-6 matching Sports period numbering).
@@ -63,6 +74,57 @@ function getTodayEST() {
     return new Intl.DateTimeFormat('en-CA', {
         timeZone: 'America/New_York'
     }).format(new Date()); // returns YYYY-MM-DD
+}
+
+// True if `today` (YYYY-MM-DD) falls on a weekend, on a known no-camp date,
+// or outside the configured session range (i.e. attendance isn't expected).
+function isCampDay(today) {
+    const [y, m, d] = today.split('-').map(Number);
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=Sun, 6=Sat
+    if (dow === 0 || dow === 6) return false;
+    if (today === '2026-07-03') return false; // no camp on 7/3
+    const w1 = db.prepare("SELECT startDate FROM Sessions WHERE weekNumber=1 LIMIT 1").get();
+    const w6 = db.prepare("SELECT startDate FROM Sessions WHERE weekNumber=6 LIMIT 1").get();
+    if (!w1?.startDate) return false; // sessions not configured yet
+    const campStart = w1.startDate; // 'YYYY-MM-DD'
+    const campEnd = (() => {
+        if (!w6?.startDate) return campStart;
+        const [wy, wm, wd] = w6.startDate.split('-').map(Number);
+        return new Date(Date.UTC(wy, wm - 1, wd + 4)).toISOString().slice(0, 10); // Friday of W6
+    })();
+    return today >= campStart && today <= campEnd;
+}
+
+// True if `dateStr` (YYYY-MM-DD) falls on a Monday.
+function isMonday(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 1;
+}
+
+// Parses ACR-005 "Sessions" codes (e.g. "SP01/SP02/SP03") into a sorted list of week numbers.
+function parseSessionWeeks(codes) {
+    if (!codes) return [];
+    const weeks = [];
+    const re = /SP0*(\d+)/gi;
+    let m;
+    while ((m = re.exec(codes))) {
+        const w = parseInt(m[1], 10);
+        if (w >= 1 && w <= 6) weeks.push(w);
+    }
+    return weeks.sort((a, b) => a - b);
+}
+
+// Shirt order info for a main-camp camper: how many shirts to hand out (session count + 1,
+// capped at 5 — the max days in a camp week) and whether they already received shirts during
+// an earlier, already-completed week (i.e. their earliest registered week precedes the active one).
+function getShirtInfo(camper, activeWeek) {
+    if (!MAIN_CAMP_COLORS.has(camper.HomeGroupColor)) return null;
+    const weeks = parseSessionWeeks(camper.SessionCodes);
+    if (weeks.length === 0) return null;
+    return {
+        shirtQty: Math.min(weeks.length + 1, 5),
+        shirtsReceived: weeks[0] < activeWeek
+    };
 }
 
 // Returns the last period whose start time <= estMins (holds until next period begins).
@@ -200,25 +262,31 @@ function computeBusAttStats(session, today) {
 
 function getAbsentByGroup(today, camperIdSet) {
     const aw = getActiveWeek();
+    // Only genuinely absent campers — late/dismissed/nurse are handled by separate sections.
+    const lateIds = new Set(
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType IN ('homegroup_am','specialty_am') AND Status='late'")
+            .all(today).map(r => r.CamperID)
+    );
+    const dismissedIds = new Set(
+        db.prepare("SELECT CamperID FROM EarlyDismissals WHERE Date=?").all(today).map(r => r.CamperID)
+    );
+    const nurseIds = new Set(
+        db.prepare("SELECT CamperID FROM NurseLog WHERE Date=? AND CheckOutTime IS NULL").all(today).map(r => r.CamperID)
+    );
+    const caseIds = new Set(
+        db.prepare("SELECT CamperID FROM CaseLog WHERE Date=? AND CheckOutTime IS NULL AND Dismissed=0").all(today).map(r => r.CamperID)
+    );
     const attRows = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, a.Status
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor
         FROM Attendance a
         JOIN Campers c ON c.CamperID = a.CamperID
         LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
-        WHERE a.Date = ? AND a.SessionType IN ('homegroup_am', 'specialty_am') AND a.Status IN ('absent', 'late', 'nurse')
-    `).all(aw, today);
-    const dismissalRows = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, 'dismissed' AS Status
-        FROM EarlyDismissals ed
-        JOIN Campers c ON c.CamperID = ed.CamperID
-        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
-        WHERE ed.Date = ?
-    `).all(aw, today);
-    const byId = new Map();
-    for (const r of attRows) byId.set(r.CamperID, r);
-    for (const r of dismissalRows) byId.set(r.CamperID, r); // dismissed overwrites absent/late
-    const all = [...byId.values()];
-    const filtered = camperIdSet ? all.filter(r => camperIdSet.has(r.CamperID)) : all;
+        WHERE a.Date = ? AND a.SessionType IN ('homegroup_am', 'specialty_am') AND a.Status = 'absent'
+    `).all(aw, today).filter(r =>
+        !lateIds.has(r.CamperID) && !dismissedIds.has(r.CamperID) &&
+        !nurseIds.has(r.CamperID) && !caseIds.has(r.CamperID)
+    );
+    const filtered = camperIdSet ? attRows.filter(r => camperIdSet.has(r.CamperID)) : attRows;
     filtered.sort((a, b) =>
         (a.HomeGroupColor || '').localeCompare(b.HomeGroupColor || '') ||
         a.LastName.localeCompare(b.LastName)
@@ -337,6 +405,11 @@ app.use((req, res, next) => {
         const h12 = h % 12 || 12;
         return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
     };
+    // Returns a resized Cloudinary URL for display; full-size URL is preserved for downloads.
+    res.locals.thumbUrl = (url, width = 600) => {
+        if (!url || !url.includes('res.cloudinary.com')) return url;
+        return url.replace('/upload/', `/upload/w_${width},c_limit,q_auto,f_auto/`);
+    };
     next();
 });
 
@@ -355,9 +428,9 @@ const ADMIN_ONLY_PREFIXES = [
     '/save-counselor-assignments', '/backup-counselor-assignments', '/counselor-schedule-backups', '/restore-counselor-backup', '/delete-counselor-backup',
     '/export-counselor-schedule', '/export-staff-schedule',
     '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups', '/sync-homegroup-colors',
-    '/hub-content', '/director-notes',
+    '/hub-content', '/director-notes', '/director-notes/edit',
     '/set-active-week', '/set-released-week', '/set-prep-week', '/update-session-label',
-    '/clear-counselor-week', '/counselor-week-assignments', '/clear-counselor-schedule', '/clear-counselor-homegroups',
+    '/clear-counselor-week', '/counselor-week-assignments', '/api/week-staff-assignments', '/mirror-sports-location', '/clear-counselor-schedule', '/clear-counselor-homegroups',
     '/audit', '/merge-class', '/set-activity-side', '/delete-counselor',
     '/update-staff-info', '/update-staff-period', '/remove-staff-period',
     '/homegroup-assignment', '/counselor-preferences-summary',
@@ -369,6 +442,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/reports', '/upload-pdf',
     '/create-staff', '/create-camper', '/assign-camper-schedule', '/get-new-camper-options', '/assign-camper-class',
     '/alerts', '/api/alerts',
+    '/photo-gallery/all', '/photo-download',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -875,6 +949,19 @@ try {
     if (!attCols.includes('MarkedBy')) db.exec("ALTER TABLE Attendance ADD COLUMN MarkedBy TEXT");
 } catch(e) { console.error('[migration] Attendance.MarkedBy:', e.message); }
 
+// Migration: scope Waitlists to the week they were created in, so entries from a
+// finished week stop appearing once the active week rolls over. Existing rows
+// (created before this column existed) are backfilled to the current active week
+// rather than left unscoped, since they represent real unresolved waitlist requests.
+try {
+    const wlCols = db.prepare("PRAGMA table_info(Waitlists)").all().map(c => c.name);
+    if (!wlCols.includes('WeekNumber')) {
+        db.exec("ALTER TABLE Waitlists ADD COLUMN WeekNumber INTEGER");
+        const curWeek = db.prepare("SELECT weekNumber FROM Sessions WHERE isActive=1 LIMIT 1").get()?.weekNumber ?? 1;
+        db.prepare("UPDATE Waitlists SET WeekNumber = ? WHERE WeekNumber IS NULL").run(curWeek);
+    }
+} catch(e) { console.error('[migration] Waitlists.WeekNumber:', e.message); }
+
 try {
     const edCols = db.prepare("PRAGMA table_info(EarlyDismissals)").all().map(c => c.name);
     if (!edCols.includes('MarkedBy')) db.exec("ALTER TABLE EarlyDismissals ADD COLUMN MarkedBy TEXT");
@@ -906,6 +993,13 @@ try {
     if (!camperCols.includes('ShirtSize')) db.exec("ALTER TABLE Campers ADD COLUMN ShirtSize TEXT");
     db.exec("UPDATE Campers SET Grade = Age WHERE Grade IS NULL AND Age IS NOT NULL");
 } catch(e) { console.error('[migration] Campers Grade/ShirtSize:', e.message); }
+
+// Migration: raw ACR-005 "Sessions" codes (e.g. "SP01/SP02/SP03"), used to compute
+// shirt order quantity and detect campers who already received shirts in a prior week.
+try {
+    const campSessCols = db.prepare("PRAGMA table_info(Campers)").all().map(c => c.name);
+    if (!campSessCols.includes('SessionCodes')) db.exec("ALTER TABLE Campers ADD COLUMN SessionCodes TEXT");
+} catch(e) { console.error('[migration] Campers.SessionCodes:', e.message); }
 
 try {
     const counsCols = db.prepare("PRAGMA table_info(Counselors)").all().map(c => c.name);
@@ -1172,7 +1266,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS AlertTargets (
     PRIMARY KEY (AlertID, CounselorID)
 )`);
 const SYSTEM_ALERT_GROUPS = [
-    'All Counselors', 'All Unit Leaders', 'All Admin',
+    'All Staff', 'All Counselors', 'All Unit Leaders', 'All Admin',
     'All AM Sports', 'All PM Sports', 'All AM Enrichment', 'All PM Enrichment',
 ];
 const seedGroup = db.prepare("INSERT OR IGNORE INTO AlertGroups (name, isSystem) VALUES (?, 1)");
@@ -1300,8 +1394,9 @@ app.get('/logout', (_req, res) => {
 
 app.get('/staff', (req, res) => {
     const cid = parseInt(req.cookies.selectedCounselor) || null;
-    const cRow = cid ? db.prepare('SELECT FirstName, LastName FROM Counselors WHERE CounselorID = ?').get(cid) : null;
+    const cRow = cid ? db.prepare('SELECT FirstName, LastName, StaffRole FROM Counselors WHERE CounselorID = ?').get(cid) : null;
     const selectedCounselorName = cRow ? `${cRow.FirstName} ${cRow.LastName}` : null;
+    const isHomeCounselor = ['Counselor', 'Swim Counselor'].includes(cRow?.StaffRole);
     const announcement = db.prepare("SELECT content FROM HubContent WHERE id='announcement'").get()?.content || '';
     const released = getReleasedWeek();
     const releasedSchedule = (released && cid)
@@ -1330,9 +1425,10 @@ app.get('/staff', (req, res) => {
         : null;
     const aw = getActiveWeek();
 
-    // Build counselor roster camper ID set for filtering (if a counselor is selected)
+    // Build counselor roster camper ID set for filtering (home-group counselors only).
+    // ULs, Directors, and Instructors see all camp data unfiltered.
     let rosterCamperIds = null;
-    if (cid) {
+    if (cid && isHomeCounselor) {
         const homeGroupIds = db.prepare(
             `SELECT CamperID FROM CamperHomeGroups WHERE CounselorID = ? AND WeekNumber = ?`
         ).all(cid, aw).map(r => r.CamperID);
@@ -1414,10 +1510,29 @@ app.get('/staff', (req, res) => {
 
     const absentByGroup = getAbsentByGroup(today, rosterCamperIds);
 
+    const nurseNow = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, nl.Notes, nl.CheckInTime
+        FROM NurseLog nl
+        JOIN Campers c ON c.CamperID = nl.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE nl.Date = ? AND nl.CheckOutTime IS NULL
+        ORDER BY nl.CheckInTime
+    `).all(getActiveWeek(), today);
+
+    const caseNow = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor, cl.Notes, cl.CheckInTime
+        FROM CaseLog cl
+        JOIN Campers c ON c.CamperID = cl.CamperID
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE cl.Date = ? AND cl.CheckOutTime IS NULL AND cl.Dismissed = 0
+        ORDER BY cl.CheckInTime
+    `).all(getActiveWeek(), today);
+
     res.render('staff-hub', {
         selectedCounselorName, announcement, releasedSchedule, releasedSessionLabel,
         yesterdayWinner, todayWinner, photoPhase,
-        todayPickups, todayLateArrivals, todayEarlyDismissals, todayScheduleChanges, today, absentByGroup
+        todayPickups, todayLateArrivals, todayEarlyDismissals, todayScheduleChanges, today,
+        absentByGroup, nurseNow, caseNow
     });
 });
 
@@ -1442,6 +1557,20 @@ app.post('/director-notes', (req, res) => {
 
 app.post('/director-notes/delete/:id', (req, res) => {
     db.prepare("DELETE FROM DirectorNotes WHERE id = ?").run(req.params.id);
+    res.redirect('/admin');
+});
+
+app.post('/director-notes/edit/:id', (req, res) => {
+    const id = parseInt(req.params.id);
+    const adminName = req.cookies.adminName;
+    if (!adminName) return res.redirect('/admin');
+    const note = db.prepare("SELECT author FROM DirectorNotes WHERE id=?").get(id);
+    if (!note || note.author !== adminName) return res.redirect('/admin');
+    const body = (req.body.body || '').trim();
+    if (!body) return res.redirect('/admin');
+    const VALID_CATS = new Set(['director', 'camper', 'staff', 'timesheet']);
+    const category = VALID_CATS.has(req.body.category) ? req.body.category : note.category || 'director';
+    db.prepare("UPDATE DirectorNotes SET body=?, category=? WHERE id=?").run(body, category, id);
     res.redirect('/admin');
 });
 
@@ -1472,7 +1601,8 @@ app.get('/admin', (req, res) => {
     const waitlistCount = db.prepare(`
         SELECT COUNT(*) as count FROM Waitlists w
         JOIN Activities a ON w.RequestedActivity = a.Name
-        WHERE (SELECT COUNT(*) FROM Schedules s
+        WHERE w.WeekNumber = ${aw}
+          AND (SELECT COUNT(*) FROM Schedules s
                WHERE s.ActivityName = a.Name AND s.PeriodNumber = w.PeriodNumber
                  AND s.PersonType = 'Camper' AND s.WeekNumber = ${aw}
                  AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ${aw} AND HomeGroupColor = 'SPLIT')
@@ -1761,8 +1891,46 @@ app.get('/master-schedule', (req, res) => {
             };
         });
 
-        const periodMap = new Map();
+        // Collapse merge groups (e.g. Dance + Cheer in same period) into one row
+        const absorbedKeys = new Set();
+        const mergedEnriched = [];
         for (const cls of enriched) {
+            const key = `${cls.periodNumber}:${cls.activityName}`;
+            if (absorbedKeys.has(key)) continue;
+            const group = getMergeGroup(cls.activityName);
+            if (group) {
+                const others = group.filter(n => n !== cls.activityName);
+                const peers  = others.map(n => enriched.find(e => e.periodNumber === cls.periodNumber && e.activityName === n)).filter(Boolean);
+                if (peers.length === others.length) {
+                    peers.forEach(p => absorbedKeys.add(`${p.periodNumber}:${p.activityName}`));
+                    const all = [cls, ...peers];
+                    const seenS = new Set(), seenC = new Set();
+                    const uStaff = [], uCounselors = [];
+                    for (const e of all) {
+                        for (const s of e.staff)      { if (!seenS.has(s.CounselorID)) { seenS.add(s.CounselorID); uStaff.push(s); } }
+                        for (const c of e.counselors) { if (!seenC.has(c.CounselorID)) { seenC.add(c.CounselorID); uCounselors.push(c); } }
+                    }
+                    mergedEnriched.push({
+                        ...cls,
+                        activityName: group.join(' & '),
+                        mergedNames:  group.slice(),
+                        enrolled:     all.reduce((s, e) => s + e.enrolled, 0),
+                        maxCapacity:  all.every(e => e.maxCapacity) ? all.reduce((s, e) => s + e.maxCapacity, 0) : null,
+                        colorGroups:  [...new Set(all.flatMap(e => e.colorGroups))],
+                        staff:        uStaff,
+                        counselors:   uCounselors,
+                        busPresent:   all.some(e => e.busPresent),
+                        extGroups:    [...new Set(all.flatMap(e => e.extGroups))],
+                        location:     all.map(e => e.location).find(Boolean) || null,
+                    });
+                    continue;
+                }
+            }
+            mergedEnriched.push(cls);
+        }
+
+        const periodMap = new Map();
+        for (const cls of mergedEnriched) {
             if (!periodMap.has(cls.periodNumber)) periodMap.set(cls.periodNumber, []);
             periodMap.get(cls.periodNumber).push(cls);
         }
@@ -1786,64 +1954,92 @@ app.get('/master-schedule', (req, res) => {
 // --- CLASS ROSTER ---
 app.get('/class-roster/:period/:activity', (req, res) => {
     try {
-        const period = parseInt(req.params.period);
-        const activityName = req.params.activity;
+        const period      = parseInt(req.params.period);
+        const rawActivity = req.params.activity;
+        const isAdmin    = req.cookies.adminAuth === 'true';
+        const activeWeek = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
 
-        const activity = db.prepare('SELECT * FROM Activities WHERE Name = ?').get(activityName);
+        // If this activity is in a merge group and all members exist this period, show merged view
+        const group = getMergeGroup(rawActivity);
+        let mergedNames = null;
+        if (group) {
+            const allPresent = group.every(n =>
+                db.prepare('SELECT 1 FROM Schedules WHERE PersonType=\'Camper\' AND ActivityName=? AND PeriodNumber=? AND WeekNumber=? LIMIT 1')
+                  .get(n, period, activeWeek)
+            );
+            if (allPresent) mergedNames = group;
+        }
 
-        const activeWeek = getActiveWeek();
+        const displayName = mergedNames ? mergedNames.join(' & ') : rawActivity;
+        const queryNames  = mergedNames || [rawActivity];
+        const ph          = queryNames.map(() => '?').join(',');
+
+        const activity = db.prepare('SELECT * FROM Activities WHERE Name = ?').get(queryNames[0]);
+
         const campers = db.prepare(`
             SELECT c.CamperID, c.FirstName, c.LastName, c.Grade,
                    cwd.HomeGroupColor, cwd.BusRoute, cwd.ExtendedHours,
-                   n.CounselorID, n.FirstName AS CounselorFirstName, n.LastName AS CounselorLastName
+                   n.CounselorID, n.FirstName AS CounselorFirstName, n.LastName AS CounselorLastName,
+                   s.ActivityName AS EnrolledActivity
             FROM Campers c
             JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper' AND s.WeekNumber = ?
             LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
             LEFT JOIN CamperHomeGroups chg ON chg.CamperID = c.CamperID AND chg.WeekNumber = ?
             LEFT JOIN Counselors n ON n.CounselorID = COALESCE(chg.CounselorID, c.HomeGroupCounselorID)
-            WHERE s.PeriodNumber = ? AND s.ActivityName = ?
+            WHERE s.PeriodNumber = ? AND s.ActivityName IN (${ph})
             ORDER BY cwd.HomeGroupColor, c.LastName
-        `).all(activeWeek, activeWeek, activeWeek, period, activityName);
+        `).all(activeWeek, activeWeek, activeWeek, period, ...queryNames);
 
         const colorGroups = [...new Set(campers.map(c => c.HomeGroupColor).filter(Boolean))];
 
-        // Period is now a clock block (1-6); no translation needed.
         const locRow = db.prepare(`
             SELECT Location FROM Schedules
-            WHERE PersonType = 'Instructor' AND ActivityName = ? AND PeriodNumber = ?
+            WHERE PersonType = 'Instructor' AND ActivityName IN (${ph}) AND PeriodNumber = ?
               AND Location IS NOT NULL AND Location != ''
             UNION
             SELECT Location FROM StaffWeekSchedules
-            WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
+            WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName IN (${ph})
               AND Location IS NOT NULL AND Location != ''
             UNION
             SELECT Location FROM Activities
-            WHERE Name = ? COLLATE NOCASE
+            WHERE Name IN (${ph})
               AND Location IS NOT NULL AND Location != ''
             LIMIT 1
-        `).get(activityName, period, activeWeek, period, activityName, activityName);
+        `).get(...queryNames, period, activeWeek, period, ...queryNames, ...queryNames);
 
         const staff = db.prepare(`
             SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
             FROM Counselors st JOIN Schedules s ON st.CounselorID = s.PersonID AND s.PersonType = 'Instructor'
-            WHERE s.PeriodNumber = ? AND s.ActivityName = ?
-        `).all(period, activityName);
+            WHERE s.PeriodNumber = ? AND s.ActivityName IN (${ph})
+            UNION
+            SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
+            FROM Counselors st JOIN StaffWeekSchedules sws ON sws.StaffID = st.CounselorID
+            WHERE sws.WeekNumber = ? AND sws.PeriodNumber = ? AND sws.ActivityName IN (${ph})
+            UNION
+            SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
+            FROM Counselors st JOIN CounselorScheduleAssignments csa ON csa.PersonID = st.CounselorID
+            WHERE csa.WeekNumber = ? AND csa.PeriodNumber = ? AND csa.ActivityName IN (${ph})
+              AND csa.PersonType IN ('Instructor', 'Staff')
+        `).all(period, ...queryNames, activeWeek, period, ...queryNames, activeWeek, period, ...queryNames);
 
         const counselors = db.prepare(`
-            SELECT c.CounselorID, c.FirstName, c.LastName,
+            SELECT DISTINCT c.CounselorID, c.FirstName, c.LastName,
                    COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
             FROM Counselors c
-            JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID AND cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ? COLLATE NOCASE
+            JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID
+              AND cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName IN (${ph})
             LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
             ORDER BY HomeGroupColor, c.LastName
-        `).all(activeWeek, period, activityName, activeWeek);
+        `).all(activeWeek, period, ...queryNames, activeWeek);
 
         res.render('class-roster', {
-            periodNumber: period,
-            activityName,
-            sideOfCamp:  activity ? activity.SideOfCamp  : null,
-            maxCapacity: activity ? activity.MaxCapacity : null,
-            location:    locRow   ? locRow.Location      : null,
+            periodNumber:         period,
+            activityName:         displayName,
+            locationActivityName: queryNames[0],
+            mergedNames,
+            sideOfCamp:           activity ? activity.SideOfCamp  : null,
+            maxCapacity:          activity ? activity.MaxCapacity : null,
+            location:             locRow   ? locRow.Location      : null,
             campers,
             colorGroups,
             staff,
@@ -2375,9 +2571,9 @@ app.get('/assign-camper-class', (req, res) => {
 
     if (enrollment >= maxCap) {
         db.prepare(`
-            INSERT INTO Waitlists (CamperID, PeriodNumber, RequestedActivity)
-            VALUES (?, ?, ?)
-        `).run(camperId, period, activity);
+            INSERT INTO Waitlists (CamperID, PeriodNumber, RequestedActivity, WeekNumber)
+            VALUES (?, ?, ?, ?)
+        `).run(camperId, period, activity, tw);
         return res.redirect(`/assign-camper-schedule/${camperId}?message=Class+full+%E2%80%94+added+to+waitlist`);
     }
 
@@ -2508,7 +2704,7 @@ app.get('/promotions', (req, res) => {
         JOIN Campers c ON w.CamperID = c.CamperID
         LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ${aw}
         JOIN Activities a ON w.RequestedActivity = a.Name
-        WHERE CurrentEnrollment < a.MaxCapacity
+        WHERE w.WeekNumber = ${aw} AND CurrentEnrollment < a.MaxCapacity
         ORDER BY w.Timestamp ASC
     `).all();
     const waitlistQueue = db.prepare(`
@@ -2518,7 +2714,7 @@ app.get('/promotions', (req, res) => {
         JOIN Campers c ON w.CamperID = c.CamperID
         LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ${aw}
         JOIN Activities a ON w.RequestedActivity = a.Name
-        WHERE CurrentEnrollment >= a.MaxCapacity
+        WHERE w.WeekNumber = ${aw} AND CurrentEnrollment >= a.MaxCapacity
         ORDER BY w.Timestamp ASC
     `).all();
     res.render('promotions', { potentialPromotions, waitlistQueue, alertMessage: req.query.message || null });
@@ -2569,7 +2765,7 @@ app.post('/promote-all', (req, res) => {
            AND s.PersonID NOT IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ${aw} AND HomeGroupColor = 'SPLIT')) as CurrentEnrollment
         FROM Waitlists w
         JOIN Activities a ON w.RequestedActivity = a.Name
-        WHERE CurrentEnrollment < a.MaxCapacity
+        WHERE w.WeekNumber = ${aw} AND CurrentEnrollment < a.MaxCapacity
         ORDER BY w.Timestamp ASC
     `).all();
 
@@ -2599,7 +2795,7 @@ app.post('/promote-all', (req, res) => {
 
 app.post('/remove-waitlist/:id', (req, res) => {
     db.prepare('DELETE FROM Waitlists WHERE WaitlistID = ?').run(req.params.id);
-    res.redirect('/promotions?message=Removed+from+waitlist');
+    res.redirect('/promotions?message=Promotion+denied');
 });
 
 // --- CSV IMPORTS (Consolidated) ---
@@ -2641,7 +2837,8 @@ function mapColor(raw) {
     return COLOR_MAP[raw.trim().toLowerCase()] || raw.trim();
 }
 
-// ACR-005 roster upload: upserts campers with color, lunch, and shirt size.
+// ACR-005 roster upload: upserts campers with color, lunch, shirt size, and raw
+// session codes (e.g. "SP01/SP02/SP03", used to compute shirt order quantity).
 // Parses homegroup section headers to assign CamperHomeGroups for the active week.
 // Does NOT touch bus data (BusRoute, BusRidesAM/PM, BusStopAM/PM) — those come from
 // ACR-132/133. Does NOT touch Grade, ExtendedHours, or Schedules.
@@ -2711,8 +2908,8 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
     const safeTrim = v => { const s = (v && typeof v === 'string') ? v.trim() : ''; return s.toLowerCase() === 'null' ? '' : s; };
     const findCamper    = db.prepare("SELECT CamperID FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
     const findCamperWd  = db.prepare("SELECT CampLunch FROM CamperWeekData WHERE CamperID=? AND WeekNumber=?");
-    const insertCamper  = db.prepare("INSERT INTO Campers (FirstName, LastName, ShirtSize) VALUES (?,?,?)");
-    const updateCamper  = db.prepare("UPDATE Campers SET ShirtSize=? WHERE CamperID=?");
+    const insertCamper  = db.prepare("INSERT INTO Campers (FirstName, LastName, ShirtSize, SessionCodes) VALUES (?,?,?,?)");
+    const updateCamper  = db.prepare("UPDATE Campers SET ShirtSize=?, SessionCodes=? WHERE CamperID=?");
     const upsertWeekData = db.prepare(`
         INSERT INTO CamperWeekData (CamperID, WeekNumber, HomeGroupColor, CampLunch)
         VALUES (?,?,?,?)
@@ -2740,18 +2937,19 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
                     const { firstName, lastName } = parseLastFirst(camperRaw);
                     if (!firstName && !lastName) continue;
 
-                    const color    = mapColor(safeTrim(row['Color']));
-                    const shirt    = safeTrim(row['T-Shirt']) || null;
-                    const lunchRaw = safeTrim(row['Lunch']);
+                    const color        = mapColor(safeTrim(row['Color']));
+                    const shirt        = safeTrim(row['T-Shirt']) || null;
+                    const sessionCodes = safeTrim(row['Sessions']) || null;
+                    const lunchRaw     = safeTrim(row['Lunch']);
                     const fullName = `${firstName} ${lastName}`;
                     const existing = findCamper.get(fullName);
 
                     let camperId;
                     if (existing) {
-                        updateCamper.run(shirt, existing.CamperID);
+                        updateCamper.run(shirt, sessionCodes, existing.CamperID);
                         camperId = existing.CamperID;
                     } else {
-                        const info = insertCamper.run(firstName, lastName, shirt);
+                        const info = insertCamper.run(firstName, lastName, shirt, sessionCodes);
                         camperId = info.lastInsertRowid;
                     }
 
@@ -3442,9 +3640,9 @@ app.get('/process-swap', (req, res) => {
     if (currentEnrollment.count >= activity.MaxCapacity) {
         // Activity is full — add to waitlist instead
         db.prepare(`
-            INSERT INTO Waitlists (CamperID, PeriodNumber, RequestedActivity)
-            VALUES (?, ?, ?)
-        `).run(camperId, period, newActivity);
+            INSERT INTO Waitlists (CamperID, PeriodNumber, RequestedActivity, WeekNumber)
+            VALUES (?, ?, ?, ?)
+        `).run(camperId, period, newActivity, aw);
     } else {
         // Capture current activity before overwriting it
         const currentSlot = db.prepare(`
@@ -3910,7 +4108,18 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
     const counselor = db.prepare("SELECT * FROM Counselors WHERE CounselorID=?").get(counselorId);
     if (!counselor) return res.status(404).send('Counselor not found');
 
-    const campers = getWeekCampersForCounselor(counselorId, getActiveWeek());
+    const aw = getActiveWeek();
+    const campers = getWeekCampersForCounselor(counselorId, aw);
+
+    // Shirt size/quantity pills: AM homegroup attendance on Mondays only, main-camp colors only.
+    const showShirtInfo = session === 'am' && isMonday(date);
+    // Lunch pill: Lunch homegroup attendance only, Camp Lunch / Allergy Meal only (not the default packed lunch).
+    const showLunchInfo = session === 'lunch';
+    const weekDataMap = {};
+    if (showShirtInfo || showLunchInfo) {
+        db.prepare("SELECT CamperID, HomeGroupColor, CampLunch FROM CamperWeekData WHERE WeekNumber=?").all(aw)
+            .forEach(r => { weekDataMap[r.CamperID] = r; });
+    }
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
@@ -3938,17 +4147,25 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
     const nurseAMSet1 = getNurseAMSet(date);
     const caseLogSet1 = getCaseLogSet(date);
     const pickupMap1 = getScheduledPickupMap(date);
-    const roster = campers.map(c => ({
-        ...c,
-        currentStatus: statusMap[c.CamperID] || null,
-        absentAM: absentAMSet.has(c.CamperID),
-        absentBusAM: absentBusAMSet.has(c.CamperID),
-        nurseAM: nurseAMSet1.has(c.CamperID),
-        caseLog: caseLogSet1.has(c.CamperID),
-        dismissed: dismissedSet.has(c.CamperID),
-        seenEarlier: seenEarlierSet.has(c.CamperID),
-        scheduledPickup: pickupMap1[c.CamperID] || null
-    }));
+    const roster = campers.map(c => {
+        const shirtInfo = showShirtInfo
+            ? getShirtInfo({ HomeGroupColor: weekDataMap[c.CamperID]?.HomeGroupColor, SessionCodes: c.SessionCodes }, aw)
+            : null;
+        return {
+            ...c,
+            currentStatus: statusMap[c.CamperID] || null,
+            absentAM: absentAMSet.has(c.CamperID),
+            absentBusAM: absentBusAMSet.has(c.CamperID),
+            nurseAM: nurseAMSet1.has(c.CamperID),
+            caseLog: caseLogSet1.has(c.CamperID),
+            dismissed: dismissedSet.has(c.CamperID),
+            seenEarlier: seenEarlierSet.has(c.CamperID),
+            scheduledPickup: pickupMap1[c.CamperID] || null,
+            shirtQty: shirtInfo?.shirtQty ?? null,
+            shirtsReceived: shirtInfo?.shirtsReceived ?? false,
+            campLunch: showLunchInfo ? (weekDataMap[c.CamperID]?.CampLunch || 'No') : null
+        };
+    });
 
     res.render('attendance-form', {
         title: `${counselor.FirstName} ${counselor.LastName}'s Group — ${session.toUpperCase()}`,
@@ -3969,7 +4186,7 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
     const aw = getActiveWeek();
 
     const campers = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize,
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize, c.SessionCodes,
                cwd.HomeGroupColor, cwd.CampLunch, cwd.ExtendedHours,
                cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM
         FROM Campers c
@@ -3977,6 +4194,11 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
         WHERE cwd.HomeGroupColor = ?
         ORDER BY c.LastName, c.FirstName
     `).all(aw, color);
+
+    // Shirt size/quantity pills: AM homegroup attendance on Mondays only, main-camp colors only.
+    const showShirtInfo = session === 'am' && isMonday(date);
+    // Lunch pill: Lunch homegroup attendance only, Camp Lunch / Allergy Meal only (not the default packed lunch).
+    const showLunchInfo = session === 'lunch';
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
@@ -4000,16 +4222,22 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
     const nurseAMSet2 = getNurseAMSet(date);
     const caseLogSet2 = getCaseLogSet(date);
     const pickupMap2 = getScheduledPickupMap(date);
-    const roster = campers.map(c => ({
-        ...c,
-        currentStatus: statusMap[c.CamperID] || null,
-        absentAM: absentAMSet.has(c.CamperID),
-        nurseAM: nurseAMSet2.has(c.CamperID),
-        caseLog: caseLogSet2.has(c.CamperID),
-        dismissed: dismissedSet.has(c.CamperID),
-        seenEarlier: seenEarlierSet.has(c.CamperID),
-        scheduledPickup: pickupMap2[c.CamperID] || null
-    }));
+    const roster = campers.map(c => {
+        const shirtInfo = showShirtInfo ? getShirtInfo(c, aw) : null;
+        return {
+            ...c,
+            currentStatus: statusMap[c.CamperID] || null,
+            absentAM: absentAMSet.has(c.CamperID),
+            nurseAM: nurseAMSet2.has(c.CamperID),
+            caseLog: caseLogSet2.has(c.CamperID),
+            dismissed: dismissedSet.has(c.CamperID),
+            seenEarlier: seenEarlierSet.has(c.CamperID),
+            scheduledPickup: pickupMap2[c.CamperID] || null,
+            shirtQty: shirtInfo?.shirtQty ?? null,
+            shirtsReceived: shirtInfo?.shirtsReceived ?? false,
+            campLunch: showLunchInfo ? (c.CampLunch || 'No') : null
+        };
+    });
 
     res.render('attendance-form', {
         title: `${color} Group — ${session.toUpperCase()}`,
@@ -4400,6 +4628,13 @@ app.post('/attendance/early-dismissal', (req, res) => {
     res.redirect(returnTo || `/attendance?date=${date}`);
 });
 
+app.post('/attendance/dismissal-undo', (req, res) => {
+    const { date, camperId } = req.body;
+    if (!date || !camperId) return res.redirect('/attendance/late-arrivals');
+    db.prepare("DELETE FROM EarlyDismissals WHERE Date=? AND CamperID=?").run(date, parseInt(camperId));
+    res.redirect(`/attendance/late-arrivals?date=${date}`);
+});
+
 // --- DISMISSAL ARCHIVE ---
 app.get('/attendance/dismissal-archive', (req, res) => {
     const date = req.query.date || todayStr();
@@ -4765,11 +5000,11 @@ app.post('/dismissals/update', (req, res) => {
 // --- Counselor Scheduling Tool ---
 app.get('/counselor-scheduling', (req, res) => {
     const sessions   = db.prepare('SELECT * FROM Sessions ORDER BY weekNumber').all();
-    const planWeek   = Math.min(6, Math.max(1, parseInt(req.query.week) || getActiveWeek()));
+    const planWeek   = Math.min(6, Math.max(1, parseInt(req.query.week) || getPrepTargetWeek() || getActiveWeek()));
     const alertMessage = req.query.message || null;
 
     // Offerings filtered to planning week, with per-week capacity/location overrides
-    const offerings = db.prepare(`
+    let offerings = db.prepare(`
         SELECT wo.*, COALESCE(wo.MaxCapacity, a.MaxCapacity) AS EffectiveCapacity,
                COALESCE(wo.Location, a.Location) AS EffectiveLocation
         FROM WeeklyOfferings wo
@@ -4777,6 +5012,33 @@ app.get('/counselor-scheduling', (req, res) => {
         WHERE wo.WeekNumber = ?
         ORDER BY wo.SideOfCamp, wo.ActivityName
     `).all(planWeek);
+
+    // Merge offerings that belong to the same MERGED_ACTIVITIES group in the same period
+    {
+        const absorbed = new Set();
+        const merged = [];
+        for (const off of offerings) {
+            const key = `${off.PeriodNumber}:${off.ActivityName}`;
+            if (absorbed.has(key)) continue;
+            const group = getMergeGroup(off.ActivityName);
+            if (group) {
+                const others = group.filter(n => n !== off.ActivityName);
+                const peers  = others.map(n => offerings.find(o => o.PeriodNumber === off.PeriodNumber && o.ActivityName === n)).filter(Boolean);
+                if (peers.length === others.length) {
+                    peers.forEach(p => absorbed.add(`${p.PeriodNumber}:${p.ActivityName}`));
+                    merged.push({
+                        ...off,
+                        ActivityName:           group.join(' & '),
+                        mergedNames:            group.slice(),
+                        PreliminaryEnrollment:  [off, ...peers].reduce((s, o) => s + (o.PreliminaryEnrollment || 0), 0),
+                    });
+                    continue;
+                }
+            }
+            merged.push(off);
+        }
+        offerings = merged;
+    }
 
     // Counselors with week-specific attributes (fall back to Counselors table)
     // Only Counselor and Swim Counselor roles — not Instructors, Unit Leaders, etc.
@@ -5454,6 +5716,7 @@ app.get('/api/attendance-nudge', (req, res) => {
 
     const estMins = getESTMins();
     const today   = getTodayEST();
+    if (!isCampDay(today)) return res.json({ notify: false });
 
     // Returns the clockBlock if we're 15+ min into a period (but before the next one starts).
     function notifiableBlock(schedule) {
@@ -5568,6 +5831,8 @@ app.post('/api/push-unsubscribe', (req, res) => {
 function resolveAlertCounselorIds(group) {
     const aw = getActiveWeek();
     const name = group.name;
+    if (name === 'All Staff')
+        return db.prepare("SELECT CounselorID FROM Counselors").all().map(r => r.CounselorID);
     if (name === 'All Counselors')
         return db.prepare("SELECT CounselorID FROM Counselors WHERE StaffRole IN ('Counselor','Swim Counselor')").all().map(r => r.CounselorID);
     if (name === 'All Unit Leaders')
@@ -5963,6 +6228,95 @@ app.post('/photo-vote/:id', (req, res) => {
     res.json({ ok: true, votes, voterVoteCount: todayCount + 1, voteLimit, remaining: voteLimit - todayCount - 1 });
 });
 
+app.get('/photo-gallery/all', (req, res) => {
+    const sort = req.query.sort || 'date';
+    const orderBy = sort === 'likes'
+        ? 'votes DESC, p.date DESC, p.submittedAt ASC'
+        : 'p.date DESC, votes DESC, p.submittedAt ASC';
+    const photos = db.prepare(`
+        SELECT p.id, p.counselorName, p.imageUrl, p.date, COUNT(v.id) as votes
+        FROM PhotoSubmissions p
+        LEFT JOIN PhotoVotes v ON v.photoId = p.id
+        GROUP BY p.id
+        ORDER BY ${orderBy}
+    `).all();
+    res.render('photo-gallery-all', { photos, sort });
+});
+
+app.get('/photo-download', async (req, res) => {
+    const ids = (req.query.ids || '').split(',').map(Number).filter(Boolean);
+    if (!ids.length) return res.status(400).send('No photos selected');
+    const idPlaceholders = ids.map(() => '?').join(',');
+    const photos = db.prepare(
+        `SELECT id, counselorName, imageUrl, date FROM PhotoSubmissions WHERE id IN (${idPlaceholders})`
+    ).all(...ids);
+    if (!photos.length) return res.status(404).send('Photos not found');
+
+    const safeName = (s) => s.replace(/[^a-z0-9_\-]/gi, '-').replace(/-+/g, '-');
+
+    const fetchBuf = (url) => new Promise((resolve, reject) => {
+        const doGet = (targetUrl) => {
+            const fetcher = targetUrl.startsWith('https') ? https : http;
+            fetcher.get(targetUrl, (imgRes) => {
+                if ((imgRes.statusCode === 301 || imgRes.statusCode === 302) && imgRes.headers.location) {
+                    imgRes.resume();
+                    return doGet(imgRes.headers.location);
+                }
+                if (imgRes.statusCode !== 200) {
+                    imgRes.resume();
+                    return reject(new Error(`HTTP ${imgRes.statusCode} fetching ${targetUrl}`));
+                }
+                const chunks = [];
+                imgRes.on('data', c => chunks.push(c));
+                imgRes.on('end', () => resolve(Buffer.concat(chunks)));
+                imgRes.on('error', reject);
+            }).on('error', reject);
+        };
+        doGet(url);
+    });
+
+    const getExt = (url) => (url.match(/\.([a-z0-9]+)(?:\?|$)/i) || [])[1] || 'jpg';
+
+    try {
+        if (photos.length === 1) {
+            const p = photos[0];
+            const ext = getExt(p.imageUrl);
+            const buf = await fetchBuf(p.imageUrl);
+            res.setHeader('Content-Disposition', `attachment; filename="${p.date}-${safeName(p.counselorName)}.${ext}"`);
+            res.setHeader('Content-Type', `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+            return res.end(buf);
+        }
+
+        // Fetch all images as buffers before writing any response headers,
+        // so a mid-stream error can't corrupt the HTTP response.
+        const entries = (await Promise.all(photos.map(async (p) => {
+            try {
+                const buf = await fetchBuf(p.imageUrl);
+                const ext = getExt(p.imageUrl);
+                return { name: `${p.date}-${safeName(p.counselorName)}-${p.id}.${ext}`, buf };
+            } catch { return null; }
+        }))).filter(Boolean);
+
+        if (!entries.length) return res.status(502).send('Failed to fetch images');
+
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', 'attachment; filename="camp-photos.zip"');
+        const archive = archiver('zip', { zlib: { level: 5 } });
+        archive.on('error', err => {
+            console.error('[photo-download] archiver error:', err);
+            if (!res.headersSent) res.status(500).send('Download failed');
+            else res.destroy();
+        });
+        archive.pipe(res);
+        for (const e of entries) archive.append(e.buf, { name: e.name });
+        await archive.finalize();
+    } catch (e) {
+        console.error('[photo-download] error:', e);
+        if (!res.headersSent) res.status(500).send('Download failed');
+        else res.destroy();
+    }
+});
+
 // --- SESSION MANAGEMENT ---
 app.post('/set-active-week', (req, res) => {
     const w = parseInt(req.body.weekNumber);
@@ -6030,6 +6384,25 @@ app.get('/counselor-week-assignments/:week', (req, res) => {
     if (w < 1 || w > 6) return res.status(400).json({ error: 'Invalid week' });
     const rows = db.prepare('SELECT CounselorID, PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE WeekNumber=?').all(w);
     res.json(rows);
+});
+
+app.get('/api/week-staff-assignments/:week', (req, res) => {
+    const w = parseInt(req.params.week);
+    if (w < 1 || w > 6) return res.status(400).json({ error: 'Invalid week' });
+    const rows = db.prepare("SELECT PersonID, PeriodNumber, ActivityName FROM CounselorScheduleAssignments WHERE PersonType='Instructor' AND WeekNumber=?").all(w);
+    res.json(rows);
+});
+
+app.post('/mirror-sports-location', (req, res) => {
+    const fromWeek = parseInt(req.body.fromWeek);
+    const toWeek   = parseInt(req.body.toWeek);
+    if (fromWeek < 1 || fromWeek > 6 || toWeek < 1 || toWeek > 6) {
+        return res.redirect(`/counselor-scheduling?week=${toWeek}&message=Invalid+week`);
+    }
+    const sources = db.prepare("SELECT PeriodNumber, ActivityName, Location FROM WeeklyOfferings WHERE WeekNumber=? AND SideOfCamp='Sports' AND Location IS NOT NULL").all(fromWeek);
+    const upd = db.prepare("UPDATE WeeklyOfferings SET Location=? WHERE WeekNumber=? AND PeriodNumber=? AND ActivityName=? AND SideOfCamp='Sports'");
+    db.transaction(() => { for (const s of sources) upd.run(s.Location, toWeek, s.PeriodNumber, s.ActivityName); })();
+    res.redirect(`/counselor-scheduling?week=${toWeek}&message=Mirrored+location+for+${sources.length}+Sports+class${sources.length !== 1 ? 'es' : ''}+from+Week+${fromWeek}`);
 });
 
 // --- HOMEGROUP ASSIGNMENT TOOL ---
@@ -6605,20 +6978,7 @@ setInterval(() => {
     const today   = getTodayEST();
 
     // Only send notifications on camp days
-    const [_ny, _nm, _nd] = today.split('-').map(Number);
-    const _dow = new Date(Date.UTC(_ny, _nm - 1, _nd)).getUTCDay(); // 0=Sun, 6=Sat
-    if (_dow === 0 || _dow === 6) return; // weekends
-    if (today === '2026-07-03') return;   // no camp on 7/3
-    const _w1 = db.prepare("SELECT startDate FROM Sessions WHERE weekNumber=1 LIMIT 1").get();
-    const _w6 = db.prepare("SELECT startDate FROM Sessions WHERE weekNumber=6 LIMIT 1").get();
-    if (!_w1?.startDate) return; // sessions not configured yet
-    const _campStart = _w1.startDate; // 'YYYY-MM-DD'
-    const _campEnd = (() => {
-        if (!_w6?.startDate) return _campStart;
-        const [y, m, d] = _w6.startDate.split('-').map(Number);
-        return new Date(Date.UTC(y, m - 1, d + 4)).toISOString().slice(0, 10); // Friday of W6
-    })();
-    if (today < _campStart || today > _campEnd) return;
+    if (!isCampDay(today)) return;
 
     // Prune stale date keys
     for (const [date] of _pushNudgedToday) {

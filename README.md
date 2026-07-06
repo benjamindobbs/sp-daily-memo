@@ -51,7 +51,7 @@ All imports happen on the **Settings** page (`/settings`).
 |---|---|---|
 | Activities | `Name`, `SideOfCamp`, `MaxCapacity`, `AllowedGroups` | `AllowedGroups`: `Red`, `Carolina`, `Red-Carolina`, `Green-Navy`, or blank for all |
 | All Staff | `Name` (Last, First), `Positions`, `Camp` | Handles all roles. Home group color is set in the Schedule Builder, not here. |
-| Camper Roster (ACR-005) | ACR-005 export from camp management | Creates/updates: name, color group, lunch, shirt size. Must run **after** staff import. **In CB:** Select All Seasons → add Session filter → select relevant weeks for all specialty camps and main camp → Run report as CSV. If a **Prep Target** week is set in Session Management, the upload goes to that week instead of the active week. |
+| Camper Roster (ACR-005) | ACR-005 export from camp management | Creates/updates: name, color group, lunch, shirt size, registered session codes (drives the Monday shirt-order pills). Must run **after** staff import. **In CB:** Select All Seasons → add Session filter → select relevant weeks for all specialty camps and main camp → Run report as CSV. If a **Prep Target** week is set in Session Management, the upload goes to that week instead of the active week. |
 | Master Camper Schedule (ACR-255) | ACR-255 export from camp management | Enriches existing campers with: grade, bus route, extended hours, activity schedule. Must run **after** camper roster import. **In CB:** Select All Seasons → add Session filter → select all SP W[X] - Period sessions (Periods 1–5) → Run report as CSV. |
 | Instructor Schedules | `FirstName`, `LastName`, `P1`–`P6`, `L1`–`L6` | Locations (`L1`–`L6`) are optional. Unknown names are auto-created as Instructors. Uploads to the **Prep Target** week if one is set, otherwise to the active week. |
 
@@ -222,6 +222,10 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | 🚗 **Pickup [time]** | A scheduled pickup has been entered for this camper (yellow badge, clickable to see pickup time and notes) |
 | ✓ **Seen Earlier** | Camper was marked present on a different roster earlier in the same session |
 | 🏕️ **Field Trip** | Shown on SPLIT AM specialty sheets when the group has been marked as on a field trip; individual SPLIT campers appearing on class sheets show a bus icon next to their name |
+| 👕 **Shirt Size / ×Quantity** | Monday AM Home Group sheets only, main camp campers (Red/Carolina/Green/Navy) only. Shows the camper's shirt size and how many shirts to hand out (registered weeks + 1, capped at 5) |
+| 👕 **Shirts Received** | Replaces the size/quantity pills once the camper already picked up shirts during an earlier, completed week. Click it to reveal the size and quantity again |
+| 🍱 **Camp Lunch** | Lunch Home Group sheets only. Shown when the camper is signed up for a camp-provided lunch |
+| ⚠️ **Allergy Meal** | Lunch Home Group sheets only. Shown when the camper needs an allergy meal |
 
 **Home group AM/PM sheets** also show a **🚌 Bus [route]** chip and an **⏰ Extended** chip next to camper names so staff can quickly see who needs bus or extended care pickup without switching to another roster.
 
@@ -240,8 +244,8 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 
 | Page | URL | Admin Only | Description |
 |---|---|:---:|---|
-| Admin Hub | `/admin` | ✓ | Dashboard: director notes, announcements, camper/staff counts, links to all admin tools |
-| Staff Hub | `/staff` | | Counselor-facing dashboard: daily schedule, home group roster, attendance links. Auto-refreshes silently every 15 minutes. |
+| Admin Hub | `/admin` | ✓ | Dashboard: director notes, announcements, camper/staff counts, links to all admin tools. Admins can edit their own notes inline using the pencil button next to each note. |
+| Staff Hub | `/staff` | | Counselor-facing dashboard: daily schedule, home group roster, attendance links. Auto-refreshes silently every 15 minutes. **Attendance at a Glance** (absent campers, nurse check-ins, active case log entries) and **Today's Memo** are always visible to all staff including Unit Leaders. |
 
 ---
 
@@ -250,9 +254,9 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | Page | URL | Description |
 |---|---|---|
 | Master Schedule | `/master-schedule` | All classes by period. Filter by period, side, and color group. Click a class name to open its roster. Instructor, Unit Leader, and Sports Leader names are clickable links to their staff profile for all users. |
-| Class Roster | `/class-roster/:period/:activity` | Full camper list for one class period. Admin can update the location. |
+| Class Roster | `/class-roster/:period/:activity` | Full camper list for one class period. Admin can update the location. In prep mode, shows data for the prep target week. If Dance and Cheerleading share a period, they appear merged as "Dance & Cheerleading" with a Class column showing each camper's actual enrollment. |
 | Camper Lookup | `/search` | Search campers by name. Shows full schedule, bus route, and extended hours. |
-| Camper Profile | `/camper/:id` | Full detail for one camper: schedule, contacts, notes. Admin can edit all fields or delete the record. |
+| Camper Profile | `/camper/:id` | Full detail for one camper: schedule, contacts, notes. Admin can edit all fields or delete the record. Schedule entries link directly to class rosters. A **Quick Dismiss** card on the profile lets admin log an early dismissal without going through the attendance or dismissals page. |
 | Staff Directory | `/counselor-directory` | All staff listed by role. Admin mode links to individual profile pages. |
 | Staff Profile | `/counselor-profile/:id` | Individual staff detail: schedule, home group roster, contact info. Admin can edit all profile fields. |
 | Full Summer (Instructors) | `/faculty-summer` | Week-by-week instructor schedule view. Upload or clear assignments per week. |
@@ -266,8 +270,8 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 |---|---|---|
 | Swap Tool | `/swap-tool` | Move a camper from one class to another. Shows capacity and waitlist status for all available options. Displays a count of how many swaps have been made for the selected camper during the current week. |
 | Schedule History | `/schedule-history` | Log of recent swap and assignment changes. Admin can archive entries. |
-| Waitlist / Promotions | `/promotions` | Lists campers eligible to be promoted off the waitlist into an open spot. Promote individually, all at once, or force-promote into an over-capacity class. |
-| Counselor Scheduling | `/counselor-scheduling` | Full counselor assignment builder — see [Counselor Scheduling](#counselor-scheduling) above. |
+| Waitlist / Promotions | `/promotions` | Lists campers eligible to be promoted off the waitlist into an open spot. Promote individually, all at once, force-promote into an over-capacity class, or deny a request outright. Only shows requests made during the current active week — older requests stop appearing once the week rolls over. |
+| Counselor Scheduling | `/counselor-scheduling` | Full counselor assignment builder — see [Counselor Scheduling](#counselor-scheduling) above. If Dance and Cheerleading are offered in the same period, they appear as a single merged "Dance & Cheerleading" card; assignments save to both activities. |
 | Counselor Schedule Backups | `/counselor-schedule-backups` | Named snapshots of saved counselor assignments. Restore or delete from here. |
 | Home Group Assignment | `/homegroup-assignment` | Assign counselors to color-group home groups by week. Can mirror assignments from one week to another. |
 | SPLIT Scheduling | `/split-scheduling` | Dedicated view for managing SPLIT camper period assignments (periods 1, 2, 4, 5, 6). |
@@ -286,7 +290,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | Specialty Attendance | `/attendance/specialty/:color/:session` | Attendance for specialty programs (LilPlace, KinderPlace, etc.). |
 | Bus Attendance | `/attendance/bus/:route/:session` | Riders grouped by bus route. |
 | Extended Care | `/attendance/extended/:session` | AM and PM extended hours roster. |
-| Late Arrivals | `/attendance/late-arrivals` | Check in campers who arrive after the normal start time. |
+| Late Arrivals | `/attendance/late-arrivals` | Check in campers who arrive after the normal start time. Includes a **Back In** button to undo an early dismissal if a dismissed camper returns. |
 | Dismissal Archive | `/attendance/dismissal-archive` | Historical log of early dismissal records. |
 
 ---
@@ -337,6 +341,7 @@ All at `/settings`.
 | Attendance Nudge Notifications | — | Push notifications sent to subscribed counselors reminding them to submit attendance 15+ minutes into a class period. Staff subscribe via the **Enable notifications** button in My Preferences. One notification per class per day; no notification if attendance is already submitted. See [Staff: Setting Up Notifications](#staff-setting-up-notifications). |
 | Instant Alerts | `/alerts` | Send a push notification to a named group or individual counselor. Seven built-in system groups are available (All Counselors, All Unit Leaders, All Admin, and the four AM/PM Sports/Enrichment splits). Admins can also create custom named groups with a hand-picked member list. Alerts sent to **All Admin** additionally display a red banner at the top of the admin hub for any admin currently logged in, regardless of whether they have push notifications enabled. All sent alerts are logged with recipient group, sender, timestamp, and delivery count. |
 | Photo Gallery | `/photo-gallery` | Browse uploaded photos; staff can vote |
+| All Photos (Admin) | `/photo-gallery/all` | Admin-only view of every submitted photo across all dates. Sort by date or by likes. Select one or multiple photos and download — single photos download directly, multiple photos download as a `.zip` file. |
 | Export Counselor Schedule | `/export-counselor-schedule` | Download current counselor assignments as CSV |
 | Export Staff Schedule | `/export-staff-schedule` | Download instructor/unit leader assignments as CSV |
 | Export Master Schedule | `/export-master-schedule` | Download the full class-by-period master schedule as CSV |
