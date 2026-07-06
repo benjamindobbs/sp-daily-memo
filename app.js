@@ -4113,10 +4113,12 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
 
     // Shirt size/quantity pills: AM homegroup attendance on Mondays only, main-camp colors only.
     const showShirtInfo = session === 'am' && isMonday(date);
-    const shirtColorMap = {};
-    if (showShirtInfo) {
-        db.prepare("SELECT CamperID, HomeGroupColor FROM CamperWeekData WHERE WeekNumber=?").all(aw)
-            .forEach(r => { shirtColorMap[r.CamperID] = r.HomeGroupColor; });
+    // Lunch pill: Lunch homegroup attendance only, Camp Lunch / Allergy Meal only (not the default packed lunch).
+    const showLunchInfo = session === 'lunch';
+    const weekDataMap = {};
+    if (showShirtInfo || showLunchInfo) {
+        db.prepare("SELECT CamperID, HomeGroupColor, CampLunch FROM CamperWeekData WHERE WeekNumber=?").all(aw)
+            .forEach(r => { weekDataMap[r.CamperID] = r; });
     }
 
     const absentAMSet = new Set();
@@ -4147,7 +4149,7 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
     const pickupMap1 = getScheduledPickupMap(date);
     const roster = campers.map(c => {
         const shirtInfo = showShirtInfo
-            ? getShirtInfo({ HomeGroupColor: shirtColorMap[c.CamperID], SessionCodes: c.SessionCodes }, aw)
+            ? getShirtInfo({ HomeGroupColor: weekDataMap[c.CamperID]?.HomeGroupColor, SessionCodes: c.SessionCodes }, aw)
             : null;
         return {
             ...c,
@@ -4160,7 +4162,8 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
             seenEarlier: seenEarlierSet.has(c.CamperID),
             scheduledPickup: pickupMap1[c.CamperID] || null,
             shirtQty: shirtInfo?.shirtQty ?? null,
-            shirtsReceived: shirtInfo?.shirtsReceived ?? false
+            shirtsReceived: shirtInfo?.shirtsReceived ?? false,
+            campLunch: showLunchInfo ? (weekDataMap[c.CamperID]?.CampLunch || 'No') : null
         };
     });
 
@@ -4194,6 +4197,8 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
 
     // Shirt size/quantity pills: AM homegroup attendance on Mondays only, main-camp colors only.
     const showShirtInfo = session === 'am' && isMonday(date);
+    // Lunch pill: Lunch homegroup attendance only, Camp Lunch / Allergy Meal only (not the default packed lunch).
+    const showLunchInfo = session === 'lunch';
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
@@ -4229,7 +4234,8 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
             seenEarlier: seenEarlierSet.has(c.CamperID),
             scheduledPickup: pickupMap2[c.CamperID] || null,
             shirtQty: shirtInfo?.shirtQty ?? null,
-            shirtsReceived: shirtInfo?.shirtsReceived ?? false
+            shirtsReceived: shirtInfo?.shirtsReceived ?? false,
+            campLunch: showLunchInfo ? (c.CampLunch || 'No') : null
         };
     });
 

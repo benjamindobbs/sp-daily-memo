@@ -61,6 +61,16 @@ Shown only on the AM Home Group attendance sheet (`/attendance/homegroup/counsel
 - **Quantity** = number of `SPnn` codes in `SessionCodes`, `+1`, capped at `5` (max days in a camp week).
 - **Shirts Received** replaces the size/quantity pills when the camper's earliest registered week is before the current active week (i.e. they already picked up shirts during an earlier, completed week). Clicking the "Shirts Received" pill toggles it to show the size and quantity that were computed, for reference.
 
+### Lunch Pills
+
+Shown only on the Lunch Home Group attendance sheet (`/attendance/homegroup/counselor/:counselorId/lunch` and `/attendance/homegroup/:color/lunch`), for every color (not restricted to main camp). Reads `CamperWeekData.CampLunch` for the active week:
+
+| `CampLunch` | Badge |
+|---|---|
+| `Yes` | 🍱 Camp Lunch |
+| `Allergy` | ⚠️ Allergy Meal |
+| `No` (packed lunch) | *(no badge)* |
+
 ---
 
 ## Early Dismissals
