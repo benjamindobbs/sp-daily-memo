@@ -47,6 +47,7 @@
             grid-template-columns: repeat(2, 4in);
             grid-auto-rows: 3in;
             gap: 0;
+            margin-bottom: 0.5in;
         }
         .name-card {
             width: 4in;
@@ -62,7 +63,7 @@
         }
         .name-card.hidden { display: none; }
         .card-logo {
-            height: 0.38in;
+            height: 0.5in;
             object-fit: contain;
         }
         .card-body {
@@ -105,6 +106,8 @@
             .container { padding: 0; max-width: none; }
             .name-card { border: 1px dashed #aaa; }
             .name-card.hidden { display: none !important; }
+            .card-grid { margin-bottom: 0; page-break-after: always; break-after: page; }
+            .card-grid:last-child { page-break-after: avoid; break-after: avoid; }
         }
     </style>
 </head>
@@ -135,8 +138,9 @@
         <span class="card-count" id="cardCount"></span>
     </div>
 
-    <div class="card-grid" id="cardGrid">
-        <% campers.forEach(camper => { %>
+    <% for (let pi = 0; pi < campers.length; pi += 6) { %>
+    <div class="card-grid">
+        <% campers.slice(pi, pi + 6).forEach(camper => { %>
         <div class="name-card" data-group="<%= camper.HomeGroupColor %>" data-name="<%= ((camper.PreferredName || camper.FirstName) + ' ' + camper.LastName).toLowerCase() %>">
             <img src="/assets/SP-Logo.svg" class="card-logo" alt="SummerPlace">
             <div class="card-body">
@@ -154,6 +158,7 @@
         </div>
         <% }) %>
     </div>
+    <% } %>
 
     <script>
         const FILTER_GROUPS = new Set(['Red', 'Carolina', 'Green', 'Navy', 'SPLIT']);
