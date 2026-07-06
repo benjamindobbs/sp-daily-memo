@@ -6840,12 +6840,15 @@ app.get('/reports/name-cards', (_req, res) => {
     const aw = getActiveWeek();
     const rows = db.prepare(`
         SELECT ca.CamperID, ca.FirstName, ca.LastName, ca.PreferredName, cwd.HomeGroupColor,
-               s.PeriodNumber, s.ActivityName
+               s.PeriodNumber, s.ActivityName,
+               co.FirstName AS CounselorFirst, co.LastName AS CounselorLast
         FROM Campers ca
         LEFT JOIN CamperWeekData cwd ON cwd.CamperID = ca.CamperID AND cwd.WeekNumber = ?
         JOIN Schedules s ON s.PersonID = ca.CamperID AND s.PersonType = 'Camper' AND s.WeekNumber = ?
+        LEFT JOIN CamperHomeGroups chg ON chg.CamperID = ca.CamperID AND chg.WeekNumber = ?
+        LEFT JOIN Counselors co ON co.CounselorID = chg.CounselorID
         ORDER BY ca.LastName, ca.FirstName, s.PeriodNumber
-    `).all(aw, aw);
+    `).all(aw, aw, aw);
 
     const camperMap = {};
     rows.forEach(r => {
@@ -6856,13 +6859,14 @@ app.get('/reports/name-cards', (_req, res) => {
                 LastName: r.LastName,
                 PreferredName: r.PreferredName,
                 HomeGroupColor: r.HomeGroupColor || '',
+                counselorName: r.CounselorFirst ? `${r.CounselorFirst} ${r.CounselorLast}` : null,
                 classes: []
             };
         }
         camperMap[r.CamperID].classes.push(r.ActivityName);
     });
 
-    res.render('name-cards', { campers: Object.values(camperMap) });
+    res.render('name-cards', { campers: Object.values(camperMap), sessionNumber: aw });
 });
 
 // ─── DOCUMENT PDF UPLOAD / SERVE ──────────────────────────────────────────────

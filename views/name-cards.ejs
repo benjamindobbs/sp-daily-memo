@@ -45,32 +45,55 @@
         .card-grid {
             display: grid;
             grid-template-columns: repeat(2, 4in);
-            grid-auto-rows: 3.5in;
+            grid-auto-rows: 3in;
             gap: 0;
         }
         .name-card {
             width: 4in;
-            height: 3.5in;
+            height: 3in;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: space-between;
             text-align: center;
-            padding: 0.25in 0.4in;
+            padding: 0.18in 0.4in 0.15in;
             box-sizing: border-box;
             border: 1px dashed #ccc;
         }
         .name-card.hidden { display: none; }
+        .card-logo {
+            height: 0.38in;
+            object-fit: contain;
+        }
+        .card-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
         .card-name {
             font-size: 18pt;
             font-weight: 700;
-            margin-bottom: 14pt;
+            margin-bottom: 4pt;
             line-height: 1.2;
         }
+        .card-counselor {
+            font-size: 9pt;
+            color: #555;
+            margin-bottom: 8pt;
+        }
         .card-classes {
-            font-size: 11pt;
-            line-height: 1.9;
+            font-size: 10pt;
+            line-height: 1.8;
             color: #333;
+        }
+        .card-session {
+            font-size: 8pt;
+            font-weight: 700;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         @media print {
@@ -115,12 +138,19 @@
     <div class="card-grid" id="cardGrid">
         <% campers.forEach(camper => { %>
         <div class="name-card" data-group="<%= camper.HomeGroupColor %>" data-name="<%= ((camper.PreferredName || camper.FirstName) + ' ' + camper.LastName).toLowerCase() %>">
-            <div class="card-name"><%= camper.PreferredName || camper.FirstName %> <%= camper.LastName %></div>
-            <div class="card-classes">
-                <% camper.classes.forEach(cls => { %>
-                    <%= cls %><br>
-                <% }) %>
+            <img src="/assets/SP-Logo.svg" class="card-logo" alt="SummerPlace">
+            <div class="card-body">
+                <div class="card-name"><%= camper.PreferredName || camper.FirstName %> <%= camper.LastName %></div>
+                <% if (camper.counselorName) { %>
+                <div class="card-counselor"><%= camper.counselorName %></div>
+                <% } %>
+                <div class="card-classes">
+                    <% camper.classes.forEach(cls => { %>
+                        <%= cls %><br>
+                    <% }) %>
+                </div>
             </div>
+            <div class="card-session">Session <%= sessionNumber %></div>
         </div>
         <% }) %>
     </div>
