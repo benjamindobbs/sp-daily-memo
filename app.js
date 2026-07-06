@@ -28,6 +28,7 @@ const HOME_GROUP_LABELS = {
     SPRC: 'SPRC', Swim: 'Swim Staff'
 };
 const SPECIALTY_CAMP_COLORS = ['LilPlace', 'KinderPlace', 'SPLIT', 'SPRC', 'Swim'];
+const MAIN_CAMP_COLORS = new Set(['Red', 'Carolina', 'Green', 'Navy']);
 
 // Activities that share a room/instructor and display as one merged class.
 // Each inner array is a merge group; first entry is the canonical link target.
@@ -92,6 +93,38 @@ function isCampDay(today) {
         return new Date(Date.UTC(wy, wm - 1, wd + 4)).toISOString().slice(0, 10); // Friday of W6
     })();
     return today >= campStart && today <= campEnd;
+}
+
+// True if `dateStr` (YYYY-MM-DD) falls on a Monday.
+function isMonday(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 1;
+}
+
+// Parses ACR-005 "Sessions" codes (e.g. "SP01/SP02/SP03") into a sorted list of week numbers.
+function parseSessionWeeks(codes) {
+    if (!codes) return [];
+    const weeks = [];
+    const re = /SP0*(\d+)/gi;
+    let m;
+    while ((m = re.exec(codes))) {
+        const w = parseInt(m[1], 10);
+        if (w >= 1 && w <= 6) weeks.push(w);
+    }
+    return weeks.sort((a, b) => a - b);
+}
+
+// Shirt order info for a main-camp camper: how many shirts to hand out (session count + 1,
+// capped at 5 — the max days in a camp week) and whether they already received shirts during
+// an earlier, already-completed week (i.e. their earliest registered week precedes the active one).
+function getShirtInfo(camper, activeWeek) {
+    if (!MAIN_CAMP_COLORS.has(camper.HomeGroupColor)) return null;
+    const weeks = parseSessionWeeks(camper.SessionCodes);
+    if (weeks.length === 0) return null;
+    return {
+        shirtQty: Math.min(weeks.length + 1, 5),
+        shirtsReceived: weeks[0] < activeWeek
+    };
 }
 
 // Returns the last period whose start time <= estMins (holds until next period begins).
@@ -960,6 +993,13 @@ try {
     if (!camperCols.includes('ShirtSize')) db.exec("ALTER TABLE Campers ADD COLUMN ShirtSize TEXT");
     db.exec("UPDATE Campers SET Grade = Age WHERE Grade IS NULL AND Age IS NOT NULL");
 } catch(e) { console.error('[migration] Campers Grade/ShirtSize:', e.message); }
+
+// Migration: raw ACR-005 "Sessions" codes (e.g. "SP01/SP02/SP03"), used to compute
+// shirt order quantity and detect campers who already received shirts in a prior week.
+try {
+    const campSessCols = db.prepare("PRAGMA table_info(Campers)").all().map(c => c.name);
+    if (!campSessCols.includes('SessionCodes')) db.exec("ALTER TABLE Campers ADD COLUMN SessionCodes TEXT");
+} catch(e) { console.error('[migration] Campers.SessionCodes:', e.message); }
 
 try {
     const counsCols = db.prepare("PRAGMA table_info(Counselors)").all().map(c => c.name);
@@ -2797,7 +2837,8 @@ function mapColor(raw) {
     return COLOR_MAP[raw.trim().toLowerCase()] || raw.trim();
 }
 
-// ACR-005 roster upload: upserts campers with color, lunch, and shirt size.
+// ACR-005 roster upload: upserts campers with color, lunch, shirt size, and raw
+// session codes (e.g. "SP01/SP02/SP03", used to compute shirt order quantity).
 // Parses homegroup section headers to assign CamperHomeGroups for the active week.
 // Does NOT touch bus data (BusRoute, BusRidesAM/PM, BusStopAM/PM) — those come from
 // ACR-132/133. Does NOT touch Grade, ExtendedHours, or Schedules.
@@ -2867,8 +2908,8 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
     const safeTrim = v => { const s = (v && typeof v === 'string') ? v.trim() : ''; return s.toLowerCase() === 'null' ? '' : s; };
     const findCamper    = db.prepare("SELECT CamperID FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
     const findCamperWd  = db.prepare("SELECT CampLunch FROM CamperWeekData WHERE CamperID=? AND WeekNumber=?");
-    const insertCamper  = db.prepare("INSERT INTO Campers (FirstName, LastName, ShirtSize) VALUES (?,?,?)");
-    const updateCamper  = db.prepare("UPDATE Campers SET ShirtSize=? WHERE CamperID=?");
+    const insertCamper  = db.prepare("INSERT INTO Campers (FirstName, LastName, ShirtSize, SessionCodes) VALUES (?,?,?,?)");
+    const updateCamper  = db.prepare("UPDATE Campers SET ShirtSize=?, SessionCodes=? WHERE CamperID=?");
     const upsertWeekData = db.prepare(`
         INSERT INTO CamperWeekData (CamperID, WeekNumber, HomeGroupColor, CampLunch)
         VALUES (?,?,?,?)
@@ -2896,18 +2937,19 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
                     const { firstName, lastName } = parseLastFirst(camperRaw);
                     if (!firstName && !lastName) continue;
 
-                    const color    = mapColor(safeTrim(row['Color']));
-                    const shirt    = safeTrim(row['T-Shirt']) || null;
-                    const lunchRaw = safeTrim(row['Lunch']);
+                    const color        = mapColor(safeTrim(row['Color']));
+                    const shirt        = safeTrim(row['T-Shirt']) || null;
+                    const sessionCodes = safeTrim(row['Sessions']) || null;
+                    const lunchRaw     = safeTrim(row['Lunch']);
                     const fullName = `${firstName} ${lastName}`;
                     const existing = findCamper.get(fullName);
 
                     let camperId;
                     if (existing) {
-                        updateCamper.run(shirt, existing.CamperID);
+                        updateCamper.run(shirt, sessionCodes, existing.CamperID);
                         camperId = existing.CamperID;
                     } else {
-                        const info = insertCamper.run(firstName, lastName, shirt);
+                        const info = insertCamper.run(firstName, lastName, shirt, sessionCodes);
                         camperId = info.lastInsertRowid;
                     }
 
@@ -4066,7 +4108,16 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
     const counselor = db.prepare("SELECT * FROM Counselors WHERE CounselorID=?").get(counselorId);
     if (!counselor) return res.status(404).send('Counselor not found');
 
-    const campers = getWeekCampersForCounselor(counselorId, getActiveWeek());
+    const aw = getActiveWeek();
+    const campers = getWeekCampersForCounselor(counselorId, aw);
+
+    // Shirt size/quantity pills: AM homegroup attendance on Mondays only, main-camp colors only.
+    const showShirtInfo = session === 'am' && isMonday(date);
+    const shirtColorMap = {};
+    if (showShirtInfo) {
+        db.prepare("SELECT CamperID, HomeGroupColor FROM CamperWeekData WHERE WeekNumber=?").all(aw)
+            .forEach(r => { shirtColorMap[r.CamperID] = r.HomeGroupColor; });
+    }
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
@@ -4094,17 +4145,24 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
     const nurseAMSet1 = getNurseAMSet(date);
     const caseLogSet1 = getCaseLogSet(date);
     const pickupMap1 = getScheduledPickupMap(date);
-    const roster = campers.map(c => ({
-        ...c,
-        currentStatus: statusMap[c.CamperID] || null,
-        absentAM: absentAMSet.has(c.CamperID),
-        absentBusAM: absentBusAMSet.has(c.CamperID),
-        nurseAM: nurseAMSet1.has(c.CamperID),
-        caseLog: caseLogSet1.has(c.CamperID),
-        dismissed: dismissedSet.has(c.CamperID),
-        seenEarlier: seenEarlierSet.has(c.CamperID),
-        scheduledPickup: pickupMap1[c.CamperID] || null
-    }));
+    const roster = campers.map(c => {
+        const shirtInfo = showShirtInfo
+            ? getShirtInfo({ HomeGroupColor: shirtColorMap[c.CamperID], SessionCodes: c.SessionCodes }, aw)
+            : null;
+        return {
+            ...c,
+            currentStatus: statusMap[c.CamperID] || null,
+            absentAM: absentAMSet.has(c.CamperID),
+            absentBusAM: absentBusAMSet.has(c.CamperID),
+            nurseAM: nurseAMSet1.has(c.CamperID),
+            caseLog: caseLogSet1.has(c.CamperID),
+            dismissed: dismissedSet.has(c.CamperID),
+            seenEarlier: seenEarlierSet.has(c.CamperID),
+            scheduledPickup: pickupMap1[c.CamperID] || null,
+            shirtQty: shirtInfo?.shirtQty ?? null,
+            shirtsReceived: shirtInfo?.shirtsReceived ?? false
+        };
+    });
 
     res.render('attendance-form', {
         title: `${counselor.FirstName} ${counselor.LastName}'s Group — ${session.toUpperCase()}`,
@@ -4125,7 +4183,7 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
     const aw = getActiveWeek();
 
     const campers = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize,
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize, c.SessionCodes,
                cwd.HomeGroupColor, cwd.CampLunch, cwd.ExtendedHours,
                cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM
         FROM Campers c
@@ -4133,6 +4191,9 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
         WHERE cwd.HomeGroupColor = ?
         ORDER BY c.LastName, c.FirstName
     `).all(aw, color);
+
+    // Shirt size/quantity pills: AM homegroup attendance on Mondays only, main-camp colors only.
+    const showShirtInfo = session === 'am' && isMonday(date);
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
@@ -4156,16 +4217,21 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
     const nurseAMSet2 = getNurseAMSet(date);
     const caseLogSet2 = getCaseLogSet(date);
     const pickupMap2 = getScheduledPickupMap(date);
-    const roster = campers.map(c => ({
-        ...c,
-        currentStatus: statusMap[c.CamperID] || null,
-        absentAM: absentAMSet.has(c.CamperID),
-        nurseAM: nurseAMSet2.has(c.CamperID),
-        caseLog: caseLogSet2.has(c.CamperID),
-        dismissed: dismissedSet.has(c.CamperID),
-        seenEarlier: seenEarlierSet.has(c.CamperID),
-        scheduledPickup: pickupMap2[c.CamperID] || null
-    }));
+    const roster = campers.map(c => {
+        const shirtInfo = showShirtInfo ? getShirtInfo(c, aw) : null;
+        return {
+            ...c,
+            currentStatus: statusMap[c.CamperID] || null,
+            absentAM: absentAMSet.has(c.CamperID),
+            nurseAM: nurseAMSet2.has(c.CamperID),
+            caseLog: caseLogSet2.has(c.CamperID),
+            dismissed: dismissedSet.has(c.CamperID),
+            seenEarlier: seenEarlierSet.has(c.CamperID),
+            scheduledPickup: pickupMap2[c.CamperID] || null,
+            shirtQty: shirtInfo?.shirtQty ?? null,
+            shirtsReceived: shirtInfo?.shirtsReceived ?? false
+        };
+    });
 
     res.render('attendance-form', {
         title: `${color} Group — ${session.toUpperCase()}`,

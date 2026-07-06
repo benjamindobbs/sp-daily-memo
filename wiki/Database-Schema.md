@@ -26,6 +26,7 @@ Primary record for every enrolled camper.
 | `BusRidesPM` | INTEGER | DEFAULT `1` | **[migrated]** — `1` = rides the PM bus, `0` = does not. Set from ACR-005 `PM Bus` column. |
 | `BusStopAM` | TEXT | | **[migrated]** — raw ACR-005 `AM Bus` cell text. Used by the Bus Route Audit to resolve ambiguous stops. |
 | `BusStopPM` | TEXT | | **[migrated]** — raw ACR-005 `PM Bus` cell text. |
+| `SessionCodes` | TEXT | | **[migrated]** — raw ACR-005 `Sessions` cell (e.g. `"SP01/SP02/SP03"`), one `SPnn` code per registered week. Used to compute the shirt-order quantity and "Shirts Received" flag on the Monday AM Home Group attendance sheet — see [Attendance-and-Health](./Attendance-and-Health.md). |
 
 > **Bus route source:** Main camp (Red/Carolina/Green/Navy) gets `BusRoute` from ACR-255's `Bus Number`. Specialty campers (KinderPlace/LilPlace/SPLIT/SPRC/Robotics) get it from the ACR-005 stop name; ambiguous stops (West Hartford = Bus 2/5, Wolcott Park / Bishops Corner = Bus 3/4) are left NULL and resolved in the [Bus Route Audit](./Data-Import.md#bus-route-audit). See [Data-Import](./Data-Import.md).
 

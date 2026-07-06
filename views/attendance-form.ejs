@@ -150,6 +150,17 @@
                         <span style="font-size:0.7rem; font-weight:600; background:#fef3c7; color:#92400e; border-radius:4px; padding:1px 7px; white-space:nowrap;">&#9200; Extended</span>
                         <% } %>
                         <div class="camper-badges">
+                            <% if (c.shirtQty) { %>
+                                <% if (c.shirtsReceived) { %>
+                                <button type="button" class="badge-shirt-received" onclick="toggleShirtInfo(this)"
+                                        data-size="<%= c.ShirtSize || 'Unknown size' %>" data-qty="<%= c.shirtQty %>" data-showing="false">
+                                    &#128085; Shirts Received
+                                </button>
+                                <% } else { %>
+                                <span class="badge-shirt-size">&#128085; <%= c.ShirtSize || 'Unknown size' %></span>
+                                <span class="badge-shirt-qty">&times;<%= c.shirtQty %></span>
+                                <% } %>
+                            <% } %>
                             <% if (c.nurseAM) { %><span class="badge-absent-am" style="background:#fee2e2;color:#991b1b;">&#128137; In Nurse</span><% } else if (c.absentAM) { %><span class="badge-absent-am">&#9888; Absent AM</span><% } %>
                             <% if (c.caseLog) { %><span class="badge-absent-am" style="background:#ede9fe;color:#5b21b6;">&#128330;&#65039; With No&#235;l</span><% } %>
                             <% if (c.absentBusAM) { %><span class="badge-absent-bus">&#128652; Absent Bus AM</span><% } %>
@@ -282,6 +293,17 @@
                 row.style.display = row.dataset.name.includes(term) ? '' : 'none';
             });
             updateCounts();
+        }
+
+        function toggleShirtInfo(btn) {
+            const showing = btn.dataset.showing === 'true';
+            if (showing) {
+                btn.innerHTML = '&#128085; Shirts Received';
+                btn.dataset.showing = 'false';
+            } else {
+                btn.textContent = '\u{1F455} ' + btn.dataset.size + ' ×' + btn.dataset.qty;
+                btn.dataset.showing = 'true';
+            }
         }
 
         function openDismiss(camperId, name) {

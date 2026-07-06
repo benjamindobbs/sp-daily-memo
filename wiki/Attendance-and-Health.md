@@ -54,6 +54,13 @@ Attendance rosters pull from multiple tables in one query to compute status badg
 | Row in `Attendance` with `present` from another roster | ✓ Seen Earlier |
 | Date in `SplitFieldTrip` | 🏕️ Field Trip |
 
+### Shirt Order Pills
+
+Shown only on the AM Home Group attendance sheet (`/attendance/homegroup/counselor/:counselorId/am` and `/attendance/homegroup/:color/am`), only when the viewed `date` falls on a Monday, and only for main-camp campers (`HomeGroupColor` in `Red`/`Carolina`/`Green`/`Navy`). Computed from `Campers.SessionCodes` (see [Data-Import](./Data-Import.md#camper-roster-acr-005)) — not stored, recalculated on every page load:
+
+- **Quantity** = number of `SPnn` codes in `SessionCodes`, `+1`, capped at `5` (max days in a camp week).
+- **Shirts Received** replaces the size/quantity pills when the camper's earliest registered week is before the current active week (i.e. they already picked up shirts during an earlier, completed week). Clicking the "Shirts Received" pill toggles it to show the size and quantity that were computed, for reference.
+
 ---
 
 ## Early Dismissals
