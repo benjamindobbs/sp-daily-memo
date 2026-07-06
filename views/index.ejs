@@ -240,7 +240,16 @@
                         <% } else if (cam.Status === 'nurse') { %>
                         <div style="font-size:0.82rem; padding:2px 0; color:#991b1b;">&#128137; <%= cam.FirstName %> <%= cam.LastName %></div>
                         <% } else { %>
-                        <div style="font-size:0.82rem; padding:2px 0;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <div style="font-size:0.82rem; padding:2px 0; display:flex; align-items:center; gap:6px;">
+                            <span><%= cam.FirstName %> <%= cam.LastName %></span>
+                            <form action="/attendance/check-in" method="POST" style="margin:0;"
+                                  onsubmit="return confirm('Check in <%= cam.FirstName %> <%= cam.LastName %>?')">
+                                <input type="hidden" name="camperId" value="<%= cam.CamperID %>">
+                                <input type="hidden" name="date" value="<%= today %>">
+                                <input type="hidden" name="returnTo" value="/admin">
+                                <button type="submit" style="font-size:0.65rem; padding:1px 7px; background:#dcfce7; color:#166534; border:1px solid #bbf7d0; border-radius:8px; cursor:pointer; font-family:inherit; white-space:nowrap;">Check In</button>
+                            </form>
+                        </div>
                         <% } %>
                     <% }); %>
                     <% if (!(absentByGroup[color] || []).length) { %><div style="font-size:0.78rem; color:var(--text-muted); font-style:italic;">None absent</div><% } %>
@@ -259,7 +268,16 @@
                         <% } else if (cam.Status === 'nurse') { %>
                         <div style="font-size:0.82rem; padding:2px 0; color:#991b1b;">&#128137; <%= cam.FirstName %> <%= cam.LastName %></div>
                         <% } else { %>
-                        <div style="font-size:0.82rem; padding:2px 0;"><%= cam.FirstName %> <%= cam.LastName %></div>
+                        <div style="font-size:0.82rem; padding:2px 0; display:flex; align-items:center; gap:6px;">
+                            <span><%= cam.FirstName %> <%= cam.LastName %></span>
+                            <form action="/attendance/check-in" method="POST" style="margin:0;"
+                                  onsubmit="return confirm('Check in <%= cam.FirstName %> <%= cam.LastName %>?')">
+                                <input type="hidden" name="camperId" value="<%= cam.CamperID %>">
+                                <input type="hidden" name="date" value="<%= today %>">
+                                <input type="hidden" name="returnTo" value="/admin">
+                                <button type="submit" style="font-size:0.65rem; padding:1px 7px; background:#dcfce7; color:#166534; border:1px solid #bbf7d0; border-radius:8px; cursor:pointer; font-family:inherit; white-space:nowrap;">Check In</button>
+                            </form>
+                        </div>
                         <% } %>
                     <% }); %>
                     <% if (!(absentByGroup[pair[0]] || []).length) { %><div style="font-size:0.78rem; color:var(--text-muted); font-style:italic;">None</div><% } %>

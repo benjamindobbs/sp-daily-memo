@@ -4382,7 +4382,7 @@ app.post('/attendance/check-in', (req, res) => {
         UPDATE Attendance SET Status = 'late', MarkedAt = CURRENT_TIMESTAMP, MarkedBy = ?
         WHERE Date = ? AND CamperID = ? AND SessionType = ?
     `).run(markedBy, date, camperId, sessionType);
-    res.redirect(`/attendance/late-arrivals?date=${date}`);
+    res.redirect(req.body.returnTo || `/attendance/late-arrivals?date=${date}`);
 });
 
 // --- EARLY DISMISSAL ---
