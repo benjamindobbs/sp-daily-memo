@@ -1314,6 +1314,68 @@ function getWeekCampersForCounselor(counselorId, weekNumber) {
     ).all(counselorId);
 }
 
+// --- ACTIVITY GROUP SYNC ---
+function syncActivityGroups(weekNumber) {
+    const classPeriods = db.prepare(`
+        SELECT DISTINCT s.ActivityName, s.PeriodNumber
+        FROM Schedules s
+        WHERE s.PersonType = 'Camper' AND s.WeekNumber = ?
+        ORDER BY s.ActivityName, s.PeriodNumber
+    `).all(weekNumber);
+
+    const getColors = db.prepare(`
+        SELECT DISTINCT cwd.HomeGroupColor
+        FROM Schedules s
+        JOIN CamperWeekData cwd ON cwd.CamperID = s.PersonID AND cwd.WeekNumber = ?
+        WHERE s.PersonType = 'Camper' AND s.ActivityName = ? AND s.PeriodNumber = ? AND s.WeekNumber = ?
+          AND cwd.HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')
+    `);
+
+    function colorsToGroup(rows) {
+        const colors = new Set(rows.map(r => r.HomeGroupColor));
+        if (colors.has('Green') || colors.has('Navy')) return 'Green-Navy';
+        if (colors.has('Red') && colors.has('Carolina')) return 'Red-Carolina';
+        if (colors.has('Red')) return 'Red';
+        if (colors.has('Carolina')) return 'Carolina';
+        return null;
+    }
+
+    const activityMap = {};
+    for (const { ActivityName, PeriodNumber } of classPeriods) {
+        const group = colorsToGroup(getColors.all(weekNumber, ActivityName, PeriodNumber, weekNumber));
+        if (!activityMap[ActivityName]) activityMap[ActivityName] = {};
+        activityMap[ActivityName][PeriodNumber] = group;
+    }
+
+    const updateActivity     = db.prepare("UPDATE Activities SET AllowedGroups = ? WHERE Name = ?");
+    const deletePeriodGroups = db.prepare("DELETE FROM ActivityPeriodGroups WHERE ActivityName = ?");
+    const upsertPeriodGroup  = db.prepare(`
+        INSERT INTO ActivityPeriodGroups (ActivityName, PeriodNumber, AllowedGroups)
+        VALUES (?, ?, ?)
+        ON CONFLICT (ActivityName, PeriodNumber) DO UPDATE SET AllowedGroups = excluded.AllowedGroups
+    `);
+
+    let syncedCount = 0;
+    db.transaction(() => {
+        for (const [actName, periodMap] of Object.entries(activityMap)) {
+            const nonNullGroups = Object.values(periodMap).filter(g => g !== null);
+            const uniqueGroups  = new Set(nonNullGroups);
+            deletePeriodGroups.run(actName);
+            if (uniqueGroups.size === 1) {
+                updateActivity.run([...uniqueGroups][0], actName);
+            } else {
+                updateActivity.run(null, actName);
+                for (const [period, group] of Object.entries(periodMap)) {
+                    if (group) upsertPeriodGroup.run(actName, parseInt(period), group);
+                }
+            }
+            syncedCount++;
+        }
+    })();
+
+    return syncedCount;
+}
+
 // --- AUTO WEEK ROLLOVER ---
 // Rolls the active week to the next one at 23:59 on the Friday of the active session's start week.
 function checkWeekRollover() {
@@ -1344,6 +1406,8 @@ function checkWeekRollover() {
         db.exec('UPDATE Sessions SET isActive = 0');
         db.prepare('UPDATE Sessions SET isActive = 1 WHERE weekNumber = ?').run(nextSession.weekNumber);
         console.log(`[auto-rollover] Week ${activeSession.weekNumber} → Week ${nextSession.weekNumber}`);
+        const synced = syncActivityGroups(nextSession.weekNumber);
+        console.log(`[auto-rollover] Synced group assignments for ${synced} activities from Week ${nextSession.weekNumber}`);
     }
 }
 checkWeekRollover(); // catch any missed rollover on startup
@@ -2702,69 +2766,7 @@ app.post('/delete-activity-period-group', (req, res) => {
 app.post('/sync-activity-groups', (req, res) => {
     const aw = getActiveWeek();
     if (!aw) return res.redirect('/settings?message=No+active+week+set');
-
-    const classPeriods = db.prepare(`
-        SELECT DISTINCT s.ActivityName, s.PeriodNumber
-        FROM Schedules s
-        WHERE s.PersonType = 'Camper' AND s.WeekNumber = ?
-        ORDER BY s.ActivityName, s.PeriodNumber
-    `).all(aw);
-
-    const getColors = db.prepare(`
-        SELECT DISTINCT cwd.HomeGroupColor
-        FROM Schedules s
-        JOIN CamperWeekData cwd ON cwd.CamperID = s.PersonID AND cwd.WeekNumber = ?
-        WHERE s.PersonType = 'Camper' AND s.ActivityName = ? AND s.PeriodNumber = ? AND s.WeekNumber = ?
-          AND cwd.HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')
-    `);
-
-    function colorsToGroup(rows) {
-        const colors = new Set(rows.map(r => r.HomeGroupColor));
-        if (colors.has('Green') || colors.has('Navy')) return 'Green-Navy';
-        if (colors.has('Red') && colors.has('Carolina')) return 'Red-Carolina';
-        if (colors.has('Red')) return 'Red';
-        if (colors.has('Carolina')) return 'Carolina';
-        return null;
-    }
-
-    // Build map: activityName → { periodNumber → allowedGroups }
-    const activityMap = {};
-    for (const { ActivityName, PeriodNumber } of classPeriods) {
-        const group = colorsToGroup(getColors.all(aw, ActivityName, PeriodNumber, aw));
-        if (!activityMap[ActivityName]) activityMap[ActivityName] = {};
-        activityMap[ActivityName][PeriodNumber] = group;
-    }
-
-    const updateActivity    = db.prepare("UPDATE Activities SET AllowedGroups = ? WHERE Name = ?");
-    const deletePeriodGroups = db.prepare("DELETE FROM ActivityPeriodGroups WHERE ActivityName = ?");
-    const upsertPeriodGroup  = db.prepare(`
-        INSERT INTO ActivityPeriodGroups (ActivityName, PeriodNumber, AllowedGroups)
-        VALUES (?, ?, ?)
-        ON CONFLICT (ActivityName, PeriodNumber) DO UPDATE SET AllowedGroups = excluded.AllowedGroups
-    `);
-
-    let syncedCount = 0;
-    db.transaction(() => {
-        for (const [actName, periodMap] of Object.entries(activityMap)) {
-            const nonNullGroups = Object.values(periodMap).filter(g => g !== null);
-            const uniqueGroups  = new Set(nonNullGroups);
-
-            deletePeriodGroups.run(actName);
-
-            if (uniqueGroups.size === 1) {
-                // All periods agree — write activity-level
-                updateActivity.run([...uniqueGroups][0], actName);
-            } else {
-                // Periods differ or all null — clear activity-level, write per-period
-                updateActivity.run(null, actName);
-                for (const [period, group] of Object.entries(periodMap)) {
-                    if (group) upsertPeriodGroup.run(actName, parseInt(period), group);
-                }
-            }
-            syncedCount++;
-        }
-    })();
-
+    const syncedCount = syncActivityGroups(aw);
     res.redirect(`/settings?message=Synced+group+assignments+for+${syncedCount}+activit${syncedCount !== 1 ? 'ies' : 'y'}+from+Week+${aw}`);
 });
 
