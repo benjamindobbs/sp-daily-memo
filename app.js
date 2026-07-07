@@ -423,7 +423,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/upload-bus-am', '/upload-bus-pm',
     '/upload-staff', '/upload-instructors', '/upload-activity-rules', '/add-activity',
     '/delete-activity', '/update-activity', '/add-activity-period-group',
-    '/delete-activity-period-group',
+    '/delete-activity-period-group', '/sync-activity-groups',
     '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings', '/sync-offerings-from-schedule', '/api/sync-offerings',
     '/save-counselor-assignments', '/backup-counselor-assignments', '/counselor-schedule-backups', '/restore-counselor-backup', '/delete-counselor-backup',
     '/export-counselor-schedule', '/export-staff-schedule',
@@ -2334,7 +2334,12 @@ app.post('/camper/:id/delete', (req, res) => {
 
 // --- SETTINGS & ACTIVITY MANAGEMENT ---
 app.get('/settings', (req, res) => {
+    const aw = getActiveWeek();
     const activities = db.prepare('SELECT * FROM Activities ORDER BY SideOfCamp, Name').all();
+    const activeActivityNames = new Set(
+        db.prepare("SELECT DISTINCT ActivityName FROM Schedules WHERE PersonType='Camper' AND WeekNumber=?")
+          .all(aw).map(r => r.ActivityName)
+    );
     const periodOverrides = db.prepare('SELECT * FROM ActivityPeriodGroups ORDER BY ActivityName, PeriodNumber').all();
     const sessions = db.prepare('SELECT * FROM Sessions ORDER BY weekNumber').all();
     // Attach counselor + offering counts per week
@@ -2348,7 +2353,8 @@ app.get('/settings', (req, res) => {
     PDF_DOCS.forEach(d => { pdfExists[d.slug] = uploadedSlugs.has(d.slug); });
     const prepTargetWeek = getPrepTargetWeek();
     res.render('settings', {
-        activities, periodOverrides, sessions, alertMessage: req.query.message,
+        activities, activeActivityNames, activeWeek: aw,
+        periodOverrides, sessions, alertMessage: req.query.message,
         confirmWeek: req.query.confirmWeek || null, weekCount: req.query.weekCount || null,
         confirmOfferWeek: req.query.confirmOfferWeek || null, offerCount: req.query.offerCount || null,
         pdfExists, docs: PDF_DOCS, prepTargetWeek
@@ -2691,6 +2697,75 @@ app.post('/delete-activity-period-group', (req, res) => {
     db.prepare("DELETE FROM ActivityPeriodGroups WHERE ActivityName = ? AND PeriodNumber = ?")
       .run(activityName, parseInt(periodNumber));
     res.redirect('/settings?message=Period+Override+Removed');
+});
+
+app.post('/sync-activity-groups', (req, res) => {
+    const aw = getActiveWeek();
+    if (!aw) return res.redirect('/settings?message=No+active+week+set');
+
+    const classPeriods = db.prepare(`
+        SELECT DISTINCT s.ActivityName, s.PeriodNumber
+        FROM Schedules s
+        WHERE s.PersonType = 'Camper' AND s.WeekNumber = ?
+        ORDER BY s.ActivityName, s.PeriodNumber
+    `).all(aw);
+
+    const getColors = db.prepare(`
+        SELECT DISTINCT cwd.HomeGroupColor
+        FROM Schedules s
+        JOIN CamperWeekData cwd ON cwd.CamperID = s.PersonID AND cwd.WeekNumber = ?
+        WHERE s.PersonType = 'Camper' AND s.ActivityName = ? AND s.PeriodNumber = ? AND s.WeekNumber = ?
+          AND cwd.HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')
+    `);
+
+    function colorsToGroup(rows) {
+        const colors = new Set(rows.map(r => r.HomeGroupColor));
+        if (colors.has('Green') || colors.has('Navy')) return 'Green-Navy';
+        if (colors.has('Red') && colors.has('Carolina')) return 'Red-Carolina';
+        if (colors.has('Red')) return 'Red';
+        if (colors.has('Carolina')) return 'Carolina';
+        return null;
+    }
+
+    // Build map: activityName → { periodNumber → allowedGroups }
+    const activityMap = {};
+    for (const { ActivityName, PeriodNumber } of classPeriods) {
+        const group = colorsToGroup(getColors.all(aw, ActivityName, PeriodNumber, aw));
+        if (!activityMap[ActivityName]) activityMap[ActivityName] = {};
+        activityMap[ActivityName][PeriodNumber] = group;
+    }
+
+    const updateActivity    = db.prepare("UPDATE Activities SET AllowedGroups = ? WHERE Name = ?");
+    const deletePeriodGroups = db.prepare("DELETE FROM ActivityPeriodGroups WHERE ActivityName = ?");
+    const upsertPeriodGroup  = db.prepare(`
+        INSERT INTO ActivityPeriodGroups (ActivityName, PeriodNumber, AllowedGroups)
+        VALUES (?, ?, ?)
+        ON CONFLICT (ActivityName, PeriodNumber) DO UPDATE SET AllowedGroups = excluded.AllowedGroups
+    `);
+
+    let syncedCount = 0;
+    db.transaction(() => {
+        for (const [actName, periodMap] of Object.entries(activityMap)) {
+            const nonNullGroups = Object.values(periodMap).filter(g => g !== null);
+            const uniqueGroups  = new Set(nonNullGroups);
+
+            deletePeriodGroups.run(actName);
+
+            if (uniqueGroups.size === 1) {
+                // All periods agree — write activity-level
+                updateActivity.run([...uniqueGroups][0], actName);
+            } else {
+                // Periods differ or all null — clear activity-level, write per-period
+                updateActivity.run(null, actName);
+                for (const [period, group] of Object.entries(periodMap)) {
+                    if (group) upsertPeriodGroup.run(actName, parseInt(period), group);
+                }
+            }
+            syncedCount++;
+        }
+    })();
+
+    res.redirect(`/settings?message=Synced+group+assignments+for+${syncedCount}+activit${syncedCount !== 1 ? 'ies' : 'y'}+from+Week+${aw}`);
 });
 
 // --- WAITLIST & PROMOTIONS ---

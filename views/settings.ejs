@@ -154,10 +154,17 @@
                             <button type="submit" class="btn primary btn-small">Add</button>
                         </form>
 
-                        <div style="margin-bottom: 15px;">
+                        <div style="margin-bottom: 10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                             <input type="text" id="activitySearch" onkeyup="filterActivities()"
                                 placeholder="&#128269; Filter activity list..."
-                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.9rem;">
+                                style="flex:1; min-width:160px; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.9rem;">
+                            <% if (activeWeek) { %>
+                            <button type="button" id="inactiveToggle" onclick="toggleInactive(this)"
+                                style="font-size:0.75rem; padding:5px 12px; border:1px solid #cbd5e1; border-radius:20px; background:#f8fafc; cursor:pointer; white-space:nowrap; color:#64748b;">
+                                Show all activities
+                            </button>
+                            <span style="font-size:0.75rem; color:var(--text-muted);">Showing W<%= activeWeek %> only</span>
+                            <% } %>
                         </div>
 
                         <div style="max-height: 400px; overflow-y: auto; border: 1px solid #f1f5f9; border-radius: 8px;">
@@ -171,16 +178,13 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <% activities.forEach(act=> { %>
-                                        <tr
-                                            class="activity-row <%= act.SideOfCamp === 'Sports' ? 'row-sports' : 'row-enrichment' %>">
-                                            <td class="act-name"><strong>
-                                                    <%= act.Name %>
-                                                </strong></td>
-                                            <td>
-                                                <%= act.SideOfCamp %>
-                                            </td>
-
+                                    <% activities.forEach(act=> {
+                                        const isActive = activeActivityNames && activeActivityNames.has(act.Name);
+                                    %>
+                                        <tr class="activity-row <%= act.SideOfCamp === 'Sports' ? 'row-sports' : 'row-enrichment' %> <%= (!isActive && activeWeek) ? 'activity-inactive' : '' %>"
+                                            data-active="<%= isActive ? 'true' : 'false' %>">
+                                            <td class="act-name"><strong><%= act.Name %></strong><% if (!isActive && activeWeek) { %> <span style="font-size:0.7rem; color:#94a3b8; font-weight:400;">(not in W<%= activeWeek %>)</span><% } %></td>
+                                            <td><%= act.SideOfCamp %></td>
                                             <td>
                                                 <form action="/update-activity" method="POST"
                                                     style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
@@ -203,7 +207,6 @@
                                                     </button>
                                                 </form>
                                             </td>
-
                                             <td>
                                                 <form action="/delete-activity/<%= encodeURIComponent(act.Name) %>"
                                                     method="POST" onsubmit="return confirm('Delete activity?');">
@@ -212,13 +215,24 @@
                                                 </form>
                                             </td>
                                         </tr>
-                                        <% }) %>
+                                    <% }) %>
                                 </tbody>
                             </table>
                         </div>
 
                         <div style="margin-top: 20px; border-top: 1px solid #f1f5f9; padding-top: 16px;">
-                            <h4 style="margin: 0 0 8px 0; font-size: 0.9rem;">Period Group Exceptions</h4>
+                            <div style="display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                                <h4 style="margin: 0; font-size: 0.9rem;">Period Group Exceptions</h4>
+                                <% if (activeWeek) { %>
+                                <form action="/sync-activity-groups" method="POST"
+                                      onsubmit="return confirm('Sync AllowedGroups from the active week schedule? This will overwrite all current group settings and period exceptions.');">
+                                    <button type="submit" class="btn btn-small"
+                                        style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-size:0.75rem;">
+                                        &#128260; Sync Groups from W<%= activeWeek %>
+                                    </button>
+                                </form>
+                                <% } %>
+                            </div>
                             <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">
                                 Override an activity's allowed groups for a specific period only.
                             </p>
@@ -280,21 +294,29 @@
                         </div>
                     </section>
 
+                    <style>
+                        .activity-inactive { display: none; }
+                    </style>
                     <script>
-                        function filterActivities() {
-                            const input = document.getElementById('activitySearch');
-                            const filter = input.value.toLowerCase();
-                            const rows = document.querySelectorAll('.activity-row');
+                        let showAllActivities = false;
 
-                            rows.forEach(row => {
-                                const name = row.querySelector('.act-name').textContent.toLowerCase();
-                                if (name.includes(filter)) {
-                                    row.style.display = "";
-                                } else {
-                                    row.style.display = "none";
-                                }
+                        function filterActivities() {
+                            const filter = document.getElementById('activitySearch').value.toLowerCase();
+                            document.querySelectorAll('.activity-row').forEach(row => {
+                                const inactive = row.dataset.active === 'false' && !showAllActivities;
+                                const nameMatch = row.querySelector('.act-name').textContent.toLowerCase().includes(filter);
+                                row.style.display = (inactive || !nameMatch) ? 'none' : '';
                             });
                         }
+
+                        function toggleInactive(btn) {
+                            showAllActivities = !showAllActivities;
+                            btn.textContent = showAllActivities ? 'Hide inactive' : 'Show all activities';
+                            filterActivities();
+                        }
+
+                        // Apply initial hide on load
+                        filterActivities();
                     </script>
 
                     <div style="display: flex; flex-direction: column; gap: 30px;">
