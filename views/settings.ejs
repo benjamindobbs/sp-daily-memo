@@ -117,7 +117,7 @@
 
                 <div class="settings-grid">
 
-                    <section class="settings-card" style="display:flex; flex-direction:column; min-height:0; overflow:hidden;">
+                    <section class="settings-card">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
                             <div>
                                 <h2 style="margin:0 0 4px;">&#127934; Activity Manager</h2>
@@ -199,7 +199,7 @@
                             periodExMap[ov.ActivityName].push(ov);
                         });
                         %>
-                        <div style="flex: 1; min-height: 0; overflow-y: auto; border: 1px solid #f1f5f9; border-radius: 8px;">
+                        <div style="max-height: calc(100vh - 380px); overflow-y: auto; border: 1px solid #f1f5f9; border-radius: 8px;">
                             <table id="activityTable" class="settings-table activity-table">
                                 <thead>
                                     <tr>
