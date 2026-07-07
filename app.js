@@ -1316,14 +1316,31 @@ function getWeekCampersForCounselor(counselorId, weekNumber) {
 
 // --- ACTIVITY GROUP SYNC ---
 function syncActivityGroups(weekNumber) {
+    // Converts a Set of enrolled HomeGroupColors to an AllowedGroups value.
+    // If both camps are present (Green/Navy + Red/Carolina) the period is open to all → null.
+    function colorsToGroup(colorSet) {
+        const hasGN = colorSet.has('Green') || colorSet.has('Navy');
+        const hasRC = colorSet.has('Red')   || colorSet.has('Carolina');
+        if (hasGN && hasRC) return null;
+        if (hasGN) return 'Green-Navy';
+        if (hasRC) {
+            if (colorSet.has('Red') && colorSet.has('Carolina')) return 'Red-Carolina';
+            return colorSet.has('Red') ? 'Red' : 'Carolina';
+        }
+        return null;
+    }
+
+    // All (activity, side, period) combinations for this week
     const classPeriods = db.prepare(`
-        SELECT DISTINCT s.ActivityName, s.PeriodNumber
+        SELECT DISTINCT s.ActivityName, a.SideOfCamp, s.PeriodNumber
         FROM Schedules s
+        JOIN Activities a ON a.Name = s.ActivityName
         WHERE s.PersonType = 'Camper' AND s.WeekNumber = ?
         ORDER BY s.ActivityName, s.PeriodNumber
     `).all(weekNumber);
 
-    const getColors = db.prepare(`
+    // Colors enrolled per individual (activity, period)
+    const getActivityColors = db.prepare(`
         SELECT DISTINCT cwd.HomeGroupColor
         FROM Schedules s
         JOIN CamperWeekData cwd ON cwd.CamperID = s.PersonID AND cwd.WeekNumber = ?
@@ -1331,20 +1348,39 @@ function syncActivityGroups(weekNumber) {
           AND cwd.HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')
     `);
 
-    function colorsToGroup(rows) {
-        const colors = new Set(rows.map(r => r.HomeGroupColor));
-        if (colors.has('Green') || colors.has('Navy')) return 'Green-Navy';
-        if (colors.has('Red') && colors.has('Carolina')) return 'Red-Carolina';
-        if (colors.has('Red')) return 'Red';
-        if (colors.has('Carolina')) return 'Carolina';
-        return null;
+    // All colors per (side, period) across ALL activities — used to compute period universals
+    const allSidePeriodColors = db.prepare(`
+        SELECT DISTINCT a.SideOfCamp, s.PeriodNumber, cwd.HomeGroupColor
+        FROM Schedules s
+        JOIN Activities a ON a.Name = s.ActivityName
+        JOIN CamperWeekData cwd ON cwd.CamperID = s.PersonID AND cwd.WeekNumber = ?
+        WHERE s.PersonType = 'Camper' AND s.WeekNumber = ?
+          AND cwd.HomeGroupColor IN ('Red', 'Carolina', 'Green', 'Navy')
+          AND a.SideOfCamp IS NOT NULL
+    `).all(weekNumber, weekNumber);
+
+    // periodUniversal[`${side}|${period}`] = the AllowedGroups value that covers every
+    // camper attending any activity on that side during that period.
+    // If it's null, all four main-camp colors are present and no restriction is needed.
+    const sidePeriodColorSets = {};
+    for (const row of allSidePeriodColors) {
+        const key = `${row.SideOfCamp}|${row.PeriodNumber}`;
+        if (!sidePeriodColorSets[key]) sidePeriodColorSets[key] = new Set();
+        sidePeriodColorSets[key].add(row.HomeGroupColor);
+    }
+    const periodUniversal = {};
+    for (const [key, colorSet] of Object.entries(sidePeriodColorSets)) {
+        periodUniversal[key] = colorsToGroup(colorSet);
     }
 
+    // Build per-activity map: actName → { side, periods: { period → group } }
     const activityMap = {};
-    for (const { ActivityName, PeriodNumber } of classPeriods) {
-        const group = colorsToGroup(getColors.all(weekNumber, ActivityName, PeriodNumber, weekNumber));
-        if (!activityMap[ActivityName]) activityMap[ActivityName] = {};
-        activityMap[ActivityName][PeriodNumber] = group;
+    for (const { ActivityName, SideOfCamp, PeriodNumber } of classPeriods) {
+        const colorRows = getActivityColors.all(weekNumber, ActivityName, PeriodNumber, weekNumber);
+        const colors = new Set(colorRows.map(r => r.HomeGroupColor));
+        const group = colorsToGroup(colors);
+        if (!activityMap[ActivityName]) activityMap[ActivityName] = { side: SideOfCamp, periods: {} };
+        activityMap[ActivityName].periods[PeriodNumber] = group;
     }
 
     const updateActivity     = db.prepare("UPDATE Activities SET AllowedGroups = ? WHERE Name = ?");
@@ -1357,16 +1393,34 @@ function syncActivityGroups(weekNumber) {
 
     let syncedCount = 0;
     db.transaction(() => {
-        for (const [actName, periodMap] of Object.entries(activityMap)) {
-            const nonNullGroups = Object.values(periodMap).filter(g => g !== null);
+        for (const [actName, { side, periods }] of Object.entries(activityMap)) {
+            const nonNullGroups = Object.values(periods).filter(g => g !== null);
             const uniqueGroups  = new Set(nonNullGroups);
+
             deletePeriodGroups.run(actName);
-            if (uniqueGroups.size === 1) {
-                updateActivity.run([...uniqueGroups][0], actName);
-            } else {
+
+            if (uniqueGroups.size === 0) {
+                // No main-camp colors enrolled — clear any restriction
                 updateActivity.run(null, actName);
-                for (const [period, group] of Object.entries(periodMap)) {
-                    if (group) upsertPeriodGroup.run(actName, parseInt(period), group);
+            } else if (uniqueGroups.size === 1) {
+                // Same group across all periods — decide whether the activity level captures it
+                const commonGroup = [...uniqueGroups][0];
+                // If the activity's group matches the period-side universal for every period it
+                // runs in, no explicit restriction is needed (the scheduling already enforces it).
+                const allMatchUniversal = Object.entries(periods).every(([period, group]) => {
+                    if (group === null) return true; // period has no main-camp enrollment, skip
+                    return commonGroup === periodUniversal[`${side}|${period}`];
+                });
+                updateActivity.run(allMatchUniversal ? null : commonGroup, actName);
+            } else {
+                // Periods produce different groups — write per-period exceptions only where
+                // the activity deviates from the natural universal for that side+period.
+                updateActivity.run(null, actName);
+                for (const [period, group] of Object.entries(periods)) {
+                    if (!group) continue;
+                    if (group !== periodUniversal[`${side}|${period}`]) {
+                        upsertPeriodGroup.run(actName, parseInt(period), group);
+                    }
                 }
             }
             syncedCount++;
