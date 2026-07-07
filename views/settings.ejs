@@ -199,7 +199,7 @@
                             periodExMap[ov.ActivityName].push(ov);
                         });
                         %>
-                        <div style="max-height: calc(100vh - 380px); overflow-y: auto; border: 1px solid #f1f5f9; border-radius: 8px;">
+                        <div class="activity-table-scroll" style="overflow-y: auto; border: 1px solid #f1f5f9; border-radius: 8px;">
                             <table id="activityTable" class="settings-table activity-table">
                                 <thead>
                                     <tr>
@@ -283,6 +283,8 @@
 
                     <style>
                         .activity-inactive { display: none; }
+                        .activity-table-scroll { max-height: 180vh; }
+                        @media (max-width: 768px) { .activity-table-scroll { max-height: 50vh; } }
                     </style>
                     <script>
                         let showAllActivities = false;
