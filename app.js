@@ -1306,21 +1306,37 @@ function getReleasedWeek() {
 }
 
 // Returns campers for a counselor, preferring week-keyed CamperHomeGroups over legacy HomeGroupCounselorID.
+// CamperWeekData is LEFT JOINed so week-specific fields (bus, extended hours) come from the week row
+// rather than the base Campers table, which may have stale or missing values from earlier imports.
 function getWeekCampersForCounselor(counselorId, weekNumber) {
     const hasWeekData = db.prepare(
         "SELECT 1 FROM CamperHomeGroups WHERE WeekNumber=? LIMIT 1"
     ).get(weekNumber);
     if (hasWeekData) {
         return db.prepare(`
-            SELECT c.* FROM Campers c
+            SELECT c.*,
+                   COALESCE(cwd.BusRoute,    c.BusRoute)          AS BusRoute,
+                   COALESCE(cwd.BusRidesAM,  c.BusRidesAM,  1)   AS BusRidesAM,
+                   COALESCE(cwd.BusRidesPM,  c.BusRidesPM,  1)   AS BusRidesPM,
+                   COALESCE(cwd.ExtendedHours, c.ExtendedHours)   AS ExtendedHours
+            FROM Campers c
             JOIN CamperHomeGroups chg ON chg.CamperID = c.CamperID
               AND chg.WeekNumber = ? AND chg.CounselorID = ?
+            LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
             ORDER BY c.LastName, c.FirstName
-        `).all(weekNumber, counselorId);
+        `).all(weekNumber, counselorId, weekNumber);
     }
-    return db.prepare(
-        "SELECT * FROM Campers WHERE HomeGroupCounselorID=? ORDER BY LastName, FirstName"
-    ).all(counselorId);
+    return db.prepare(`
+        SELECT c.*,
+               COALESCE(cwd.BusRoute,    c.BusRoute)          AS BusRoute,
+               COALESCE(cwd.BusRidesAM,  c.BusRidesAM,  1)   AS BusRidesAM,
+               COALESCE(cwd.BusRidesPM,  c.BusRidesPM,  1)   AS BusRidesPM,
+               COALESCE(cwd.ExtendedHours, c.ExtendedHours)   AS ExtendedHours
+        FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE c.HomeGroupCounselorID = ?
+        ORDER BY c.LastName, c.FirstName
+    `).all(weekNumber, counselorId);
 }
 
 // --- ACTIVITY GROUP SYNC ---
