@@ -117,7 +117,7 @@
                         <tbody id="rosterBody">
                             <% campers.forEach(function(c) { %>
                             <tr class="roster-row" data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>">
-                                <td><a class="camper-name-link" href="/search?name=<%= encodeURIComponent(c.FirstName + ' ' + c.LastName) %>"><%= c.FirstName %> <%= c.LastName %></a></td>
+                                <td><a class="camper-name-link" href="/camper/<%= c.CamperID %>" target="_blank"><%= c.FirstName %> <%= c.LastName %></a></td>
                                 <td style="color: var(--text-muted);"><%= c.Grade || '—' %></td>
                                 <% if (mergedNames) { %>
                                 <td style="color: var(--text-muted); font-size: 0.82rem;"><%= c.EnrolledActivity %></td>
