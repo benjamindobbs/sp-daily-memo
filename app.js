@@ -6260,6 +6260,8 @@ app.get('/counselor-preferences', (req, res) => {
 
 app.get('/counselor-preferences-summary', (_req, res) => {
     const activeWeek = getActiveWeek();
+    const prepWeek   = getPrepTargetWeek();
+    const displayWeek = prepWeek || activeWeek;
     const counselors = db.prepare(`
         SELECT c.CounselorID, c.FirstName, c.LastName, c.StaffRole,
                c.HomeGroupColor AS defaultColor,
@@ -6271,17 +6273,17 @@ app.get('/counselor-preferences-summary', (_req, res) => {
         LEFT JOIN CounselorPreferences p ON c.CounselorID = p.CounselorID
         WHERE c.StaffRole IN ('Counselor', 'Swim Counselor')
         ORDER BY c.LastName, c.FirstName
-    `).all(activeWeek);
+    `).all(displayWeek);
 
     const weekActivities = db.prepare(
         "SELECT DISTINCT ActivityName AS Name, SideOfCamp FROM WeeklyOfferings WHERE WeekNumber = ? ORDER BY SideOfCamp, ActivityName"
-    ).all(activeWeek);
+    ).all(displayWeek);
     const activityMap = {};
     weekActivities.forEach(a => { activityMap[a.Name] = a.SideOfCamp; });
 
     const assignmentRows = db.prepare(
         "SELECT CounselorID, ActivityName FROM CounselorWeekSchedules WHERE WeekNumber = ?"
-    ).all(activeWeek);
+    ).all(displayWeek);
     const assignmentMap = {};
     for (const a of assignmentRows) {
         if (!assignmentMap[a.CounselorID]) assignmentMap[a.CounselorID] = [];
@@ -6318,7 +6320,7 @@ app.get('/counselor-preferences-summary', (_req, res) => {
                  hasNotifications: subscribedIds.has(c.CounselorID) };
     });
 
-    res.render('counselor-preferences-summary', { rows, activeWeek });
+    res.render('counselor-preferences-summary', { rows, activeWeek, displayWeek, isPrepping: !!prepWeek });
 });
 
 app.post('/counselor-preferences', (req, res) => {

@@ -52,7 +52,10 @@
 
         <div class="page-header" style="margin-bottom: 16px;">
             <h1 style="margin:0;">Counselor Preference Summary</h1>
-            <p style="color:var(--text-muted); margin: 4px 0 0; font-size:0.9rem;">Week <%= activeWeek %></p>
+            <p style="color:var(--text-muted); margin: 4px 0 0; font-size:0.9rem;">
+                Week <%= displayWeek %>
+                <% if (isPrepping) { %><span style="margin-left:8px; background:#fef3c7; color:#92400e; font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:20px; border:1px solid #fde68a;">&#9998; Prep</span><% } %>
+            </p>
         </div>
 
         <%
