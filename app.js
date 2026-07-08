@@ -2381,7 +2381,19 @@ app.get('/camper/:id', (req, res) => {
         if (!camper) return res.status(404).send('Camper not found');
 
         const schedule = db.prepare(`
-            SELECT s.PeriodNumber, s.ActivityName, s.Location, a.SideOfCamp
+            SELECT s.PeriodNumber, s.ActivityName,
+                COALESCE(
+                    (SELECT loc.Location FROM Schedules loc
+                     WHERE loc.PersonType = 'Instructor' AND loc.ActivityName = s.ActivityName
+                       AND loc.PeriodNumber = s.PeriodNumber AND loc.WeekNumber = s.WeekNumber
+                       AND loc.Location IS NOT NULL AND loc.Location != '' LIMIT 1),
+                    (SELECT sws.Location FROM StaffWeekSchedules sws
+                     WHERE sws.WeekNumber = s.WeekNumber AND sws.PeriodNumber = s.PeriodNumber
+                       AND sws.ActivityName = s.ActivityName COLLATE NOCASE
+                       AND sws.Location IS NOT NULL AND sws.Location != '' LIMIT 1),
+                    (SELECT act.Location FROM Activities act WHERE act.Name = s.ActivityName LIMIT 1)
+                ) AS Location,
+                a.SideOfCamp
             FROM Schedules s
             LEFT JOIN Activities a ON s.ActivityName = a.Name
             WHERE s.PersonID = ? AND s.PersonType = 'Camper' AND s.WeekNumber = ?
