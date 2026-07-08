@@ -5363,14 +5363,21 @@ app.get('/counselor-scheduling', (req, res) => {
         ORDER BY LastName, FirstName
     `).all();
 
-    // staffBusy: CounselorID → [periods] where they are assigned as staff/instructor
-    // Covers both CounselorScheduleAssignments and Schedules (Instructor rows from imports)
+    // staffBusy: CounselorID → [periods] where they are assigned as staff/instructor.
+    // Dual-enrolled staff have two separate Counselors rows (different IDs, same name).
+    // Join through Counselors by first+last name so both IDs receive the busy periods.
     const staffBusyRows = db.prepare(`
-        SELECT PersonID AS CounselorID, PeriodNumber FROM CounselorScheduleAssignments
-        WHERE PersonType = 'Instructor' AND WeekNumber = ?
+        SELECT c2.CounselorID, csa.PeriodNumber
+        FROM CounselorScheduleAssignments csa
+        JOIN Counselors c1 ON c1.CounselorID = csa.PersonID
+        JOIN Counselors c2 ON c2.FirstName = c1.FirstName AND c2.LastName = c1.LastName
+        WHERE csa.PersonType = 'Instructor' AND csa.WeekNumber = ?
         UNION
-        SELECT PersonID AS CounselorID, PeriodNumber FROM Schedules
-        WHERE PersonType = 'Instructor'
+        SELECT c2.CounselorID, s.PeriodNumber
+        FROM Schedules s
+        JOIN Counselors c1 ON c1.CounselorID = s.PersonID
+        JOIN Counselors c2 ON c2.FirstName = c1.FirstName AND c2.LastName = c1.LastName
+        WHERE s.PersonType = 'Instructor'
     `).all(planWeek);
     const staffBusy = {};
     for (const r of staffBusyRows) {
