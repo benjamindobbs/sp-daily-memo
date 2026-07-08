@@ -232,27 +232,37 @@
                         </div>
                     <% } else { %>
                         <% schedule.forEach(function(s, idx) { %>
-                            <div style="display:flex; align-items:center; gap:14px; padding:14px 20px; border-bottom:1px solid #f1f5f9; flex-wrap:wrap;">
-                                <span class="period-badge" style="font-size:0.75rem; padding:4px 12px; white-space:nowrap;">
-                                    Period <%= idx + 1 %>
-                                </span>
-                                <div style="flex:1; min-width:120px;">
+                            <div style="padding:12px 20px; border-bottom:1px solid #f1f5f9;">
+                                <div style="display:flex; align-items:center; gap:10px; margin-bottom:<%= (s.Location || (s.staff && s.staff.length) || (s.classCounselors && s.classCounselors.length)) ? '6px' : '0' %>;">
+                                    <span class="period-badge" style="font-size:0.75rem; padding:4px 12px; white-space:nowrap;">
+                                        Period <%= idx + 1 %>
+                                    </span>
                                     <% if (s.PeriodNumber && s.ActivityName !== 'SPLIT Sport') { %>
                                     <a href="/class-roster/<%= s.PeriodNumber %>/<%= encodeURIComponent(s.ActivityName) %>"
-                                       style="font-weight:600; font-size:0.92rem; color:var(--text); text-decoration:none; border-bottom:1px solid var(--border-color);">
+                                       style="font-weight:600; font-size:0.92rem; color:var(--text); text-decoration:none; border-bottom:1px solid var(--border-color); flex:1;">
                                         <%= s.ActivityName %>
                                     </a>
                                     <% } else { %>
-                                    <div style="font-weight:600; font-size:0.92rem;"><%= s.ActivityName %></div>
+                                    <div style="font-weight:600; font-size:0.92rem; flex:1;"><%= s.ActivityName %></div>
                                     <% } %>
-                                    <% if (s.Location) { %>
-                                        <div class="text-muted" style="font-size:0.78rem;">&#128205; <%= s.Location %></div>
+                                    <% if (s.SideOfCamp) { %>
+                                        <span class="side-pill <%= s.SideOfCamp === 'Sports' ? 'side-sports' : 'side-enrichment' %>">
+                                            <%= s.SideOfCamp %>
+                                        </span>
                                     <% } %>
                                 </div>
-                                <% if (s.SideOfCamp) { %>
-                                    <span class="side-pill <%= s.SideOfCamp === 'Sports' ? 'side-sports' : 'side-enrichment' %>">
-                                        <%= s.SideOfCamp %>
-                                    </span>
+                                <% if (s.Location || (s.staff && s.staff.length) || (s.classCounselors && s.classCounselors.length)) { %>
+                                <div style="display:flex; flex-wrap:wrap; gap:12px; padding-left:4px; font-size:0.78rem; color:var(--text-muted);">
+                                    <% if (s.Location) { %>
+                                        <span>&#128205; <%= s.Location %></span>
+                                    <% } %>
+                                    <% if (s.staff && s.staff.length) { %>
+                                        <span>&#128203; <%= s.staff.map(function(p){ return p.FirstName + ' ' + p.LastName; }).join(', ') %></span>
+                                    <% } %>
+                                    <% if (s.classCounselors && s.classCounselors.length) { %>
+                                        <span>&#128100; <%= s.classCounselors.map(function(p){ return p.FirstName + ' ' + p.LastName; }).join(', ') %></span>
+                                    <% } %>
+                                </div>
                                 <% } %>
                             </div>
                         <% }); %>

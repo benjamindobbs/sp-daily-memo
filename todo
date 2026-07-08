@@ -1,6 +1,2 @@
-Future tasks, ignore below:
-
-
-
-Schedule dimissals for non-active week campers.
-
+Add text search on master Schedule. Should be searchable by class name, counselor name, staff name, or camper name
+Selecting side from filter dropdown on mobile does not function correctly

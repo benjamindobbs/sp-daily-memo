@@ -2388,6 +2388,34 @@ app.get('/camper/:id', (req, res) => {
                 { PeriodNumber: 3, ActivityName: 'SPLIT Sport', Location: null, SideOfCamp: 'Sports' });
         }
 
+        const getStaff = db.prepare(`
+            SELECT st.FirstName, st.LastName, st.StaffRole
+            FROM Counselors st JOIN Schedules s ON st.CounselorID = s.PersonID AND s.PersonType = 'Instructor'
+            WHERE s.PeriodNumber = ? AND s.ActivityName = ?
+            UNION
+            SELECT st.FirstName, st.LastName, st.StaffRole
+            FROM Counselors st JOIN StaffWeekSchedules sws ON sws.StaffID = st.CounselorID
+            WHERE sws.WeekNumber = ? AND sws.PeriodNumber = ? AND sws.ActivityName = ? COLLATE NOCASE
+            UNION
+            SELECT st.FirstName, st.LastName, st.StaffRole
+            FROM Counselors st JOIN CounselorScheduleAssignments csa ON csa.PersonID = st.CounselorID
+            WHERE csa.WeekNumber = ? AND csa.PeriodNumber = ? AND csa.ActivityName = ? COLLATE NOCASE
+              AND csa.PersonType IN ('Instructor', 'Staff')
+        `);
+        const getCounselors = db.prepare(`
+            SELECT c.FirstName, c.LastName, COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
+            FROM Counselors c
+            JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID
+                AND cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ? COLLATE NOCASE
+            LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
+            ORDER BY HomeGroupColor, c.LastName
+        `);
+        for (const row of schedule) {
+            if (row.ActivityName === 'SPLIT Sport') { row.staff = []; row.classCounselors = []; continue; }
+            row.staff = getStaff.all(row.PeriodNumber, row.ActivityName, aw, row.PeriodNumber, row.ActivityName, aw, row.PeriodNumber, row.ActivityName);
+            row.classCounselors = getCounselors.all(aw, row.PeriodNumber, row.ActivityName, aw);
+        }
+
         const counselors = db.prepare(`
             SELECT c.CounselorID, c.FirstName, c.LastName,
                 COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor
