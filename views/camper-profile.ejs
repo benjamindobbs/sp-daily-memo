@@ -170,16 +170,22 @@
                         </span>
                     </div>
 
+                    <% var _br = camper.BusRoute && camper.BusRoute.toLowerCase() !== 'null' ? camper.BusRoute : null; %>
                     <div class="info-row" style="margin-top:12px;">
-                        <span class="info-label">Bus Route</span>
+                        <span class="info-label">AM Bus</span>
                         <span class="info-value">
-                            <% var _br = camper.BusRoute && camper.BusRoute.toLowerCase() !== 'null' ? camper.BusRoute : null; %>
-                            <% if (_br) { %>
+                            <% if (_br && camper.BusRidesAM) { %>
                                 &#128652; Bus <%= _br %>
-                                <% var _dirs = [camper.BusRidesAM ? 'AM' : null, camper.BusRidesPM ? 'PM' : null].filter(Boolean); %>
-                                <% if (_dirs.length > 0 && _dirs.length < 2) { %>
-                                    <span style="font-size:0.78rem; color:var(--text-muted); margin-left:4px;">(<%= _dirs.join(' only') %>)</span>
-                                <% } %>
+                            <% } else { %>
+                                <span class="text-muted">Parent Dropoff</span>
+                            <% } %>
+                        </span>
+                    </div>
+                    <div class="info-row" style="margin-top:8px;">
+                        <span class="info-label">PM Bus</span>
+                        <span class="info-value">
+                            <% if (_br && camper.BusRidesPM) { %>
+                                &#128652; Bus <%= _br %>
                             <% } else { %>
                                 <span class="text-muted">Parent Pickup</span>
                             <% } %>
