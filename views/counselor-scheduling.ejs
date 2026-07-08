@@ -1491,13 +1491,17 @@
         // Canonical block-used key: rec swim and swim lessons are the same class for scheduling purposes
         function blockKey(name) { return /swim/i.test(name) ? 'swim' : name; }
 
-        // Minimum counselors for an enrichment offering based on its AllowedGroups and configured inputs
+        // Minimum counselors for an enrichment offering based on period, enrollment, AllowedGroups, and configured inputs.
+        // PM enrichment with ≤8 enrolled campers gets a reduced minimum of 1.
         function getEnrichMin(act) {
-            const ag  = act.AllowedGroups || '';
-            const eRed = parseInt(document.getElementById('enrichRed').value)      || 2;
-            const eCar = parseInt(document.getElementById('enrichCarolina').value)  || 1;
-            const eRC  = parseInt(document.getElementById('enrichRC').value)        || 2;
-            const eGN  = parseInt(document.getElementById('enrichGN').value)        || 2;
+            const period     = act.PeriodNumber || 0;
+            const enrollment = act.PreliminaryEnrollment || 0;
+            if (period > 3 && enrollment <= 8) return 1;
+            const ag   = act.AllowedGroups || '';
+            const eRed = parseInt(document.getElementById('enrichRed').value)     || 2;
+            const eCar = parseInt(document.getElementById('enrichCarolina').value) || 2;
+            const eRC  = parseInt(document.getElementById('enrichRC').value)       || 2;
+            const eGN  = parseInt(document.getElementById('enrichGN').value)       || 2;
             if (ag === 'Red')               return eRed;
             if (ag === 'Carolina')          return eCar;
             if (ag === 'Red-Carolina')      return eRC;
@@ -1569,12 +1573,18 @@
                     count = sportsMin + Math.ceil(Math.max(0, enrollment - sportsThreshold) / sportsPer);
                     if (/swim/i.test(act.ActivityName)) count = Math.min(count, 2);
                 } else {
-                    const ag = act.AllowedGroups || '';
-                    if (ag === 'Red')               count = enrichRed;
-                    else if (ag === 'Carolina')     count = enrichCarolina;
-                    else if (ag === 'Red-Carolina') count = enrichRC;
-                    else if (ag === 'Green-Navy')   count = enrichGN;
-                    else                            count = enrichRC;
+                    const enrollment = act.PreliminaryEnrollment || 0;
+                    if (act.PeriodNumber > 3 && enrollment <= 8) {
+                        // PM enrichment with small classes: reduced minimum of 1
+                        count = 1;
+                    } else {
+                        const ag = act.AllowedGroups || '';
+                        if (ag === 'Red')               count = enrichRed;
+                        else if (ag === 'Carolina')     count = enrichCarolina;
+                        else if (ag === 'Red-Carolina') count = enrichRC;
+                        else if (ag === 'Green-Navy')   count = enrichGN;
+                        else                            count = enrichRC;
+                    }
                 }
                 rawCounts[idx] = count;
             });
