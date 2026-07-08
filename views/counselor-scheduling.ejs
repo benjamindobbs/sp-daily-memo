@@ -603,6 +603,8 @@
         const PREFERENCES  = <%- JSON.stringify(preferences) %>;
         const CAMPER_COUNTS  = <%- JSON.stringify(camperCounts) %>;
         const STAFF_MEMBERS  = <%- JSON.stringify(staffMembers) %>;
+        const STAFF_BUSY   = <%- JSON.stringify(staffBusy) %>;
+        const LOCKED_FROM_SERVER = <%- JSON.stringify(lockedOfferingsData) %>;
         const PLAN_WEEK    = <%= planWeek %>;
         const SESSIONS     = <%- JSON.stringify(sessions) %>;
 
@@ -610,6 +612,10 @@
         // Each offering already carries its PeriodNumber, so we don't need a period dimension.
         const state = {};
         OFFERINGS.forEach((_, idx) => { state[idx] = { counselors: [], staff: [] }; });
+
+        // Snapshot of counselors loaded from EXISTING at init — survives forceReset so
+        // manually saved assignments are never wiped by Full Auto Build.
+        const pinnedCounselors = {};
 
         // Tracks offering indices where the user has explicitly typed a slot count.
         // Auto-assign must not change the length for these offerings.
@@ -624,19 +630,27 @@
             return act ? `${act.PeriodNumber}|${act.ActivityName}` : String(idx);
         }
 
-        function loadLockedState() {
-            try {
-                const saved = JSON.parse(localStorage.getItem(LOCK_STORAGE_KEY) || '[]');
-                // saved is an array of lock keys; map back to current indices
-                const keyToIdx = {};
-                OFFERINGS.forEach((act, idx) => { keyToIdx[lockKey(idx)] = idx; });
-                for (const k of saved) {
-                    if (keyToIdx[k] != null) {
-                        lockedOfferings.add(keyToIdx[k]);
-                        applyLockUI(keyToIdx[k], true);
-                    }
+        async function loadLockedState() {
+            const keyToIdx = {};
+            OFFERINGS.forEach((act, idx) => { keyToIdx[lockKey(idx)] = idx; });
+
+            // Primary: load from server (shared across browsers/users)
+            const serverKeys = new Set(
+                LOCKED_FROM_SERVER.map(r => `${r.PeriodNumber}|${r.ActivityName}`)
+            );
+            // Merge with localStorage cache (covers any toggle made since last page load)
+            let localKeys = [];
+            try { localKeys = JSON.parse(localStorage.getItem(LOCK_STORAGE_KEY) || '[]'); } catch {}
+            const allKeys = new Set([...serverKeys, ...localKeys]);
+
+            for (const k of allKeys) {
+                if (keyToIdx[k] != null) {
+                    lockedOfferings.add(keyToIdx[k]);
+                    applyLockUI(keyToIdx[k], true);
                 }
-            } catch { /* ignore stale localStorage */ }
+            }
+            // Keep localStorage in sync with server truth
+            localStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify([...allKeys]));
         }
 
         function saveLockedState() {
@@ -656,6 +670,14 @@
             if (nowLocked) lockedOfferings.add(idx); else lockedOfferings.delete(idx);
             applyLockUI(idx, nowLocked);
             saveLockedState();
+            const act = OFFERINGS[idx];
+            if (act && act.PeriodNumber) {
+                fetch('/api/toggle-lock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ weekNumber: PLAN_WEEK, periodNumber: act.PeriodNumber, activityName: act.ActivityName, locked: nowLocked })
+                }).catch(() => {}); // fire-and-forget; localStorage is the fallback
+            }
         }
 
         // ── Restore saved assignments on load ────────────────────────────────────
@@ -673,6 +695,7 @@
                 }
                 state[idx].counselors = [...counselorSet];
                 state[idx].staff      = [...staffSet];
+                pinnedCounselors[idx] = [...counselorSet]; // snapshot for forceReset preservation
             });
         }
 
@@ -1300,6 +1323,7 @@
             document.getElementById('mirrorLocationForm').submit();
         }
 
+        // Keep for manual "Auto Assign Homegroups" server-side button — not called from Full Auto.
         function autoAssignHomeGroups() {
             const prefMap = {};
             PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
@@ -1307,7 +1331,6 @@
             const totalCampers = colors.reduce((s, c) => s + (CAMPER_COUNTS[c] || 0), 0);
             if (totalCampers === 0 || MAIN_COUNSELORS.length === 0) return;
 
-            // Proportional home group targets with largest-remainder rounding
             const targets = {};
             let totalAssigned = 0;
             colors.forEach(c => {
@@ -1318,7 +1341,6 @@
             colors.map(c => ({ c, frac: ((CAMPER_COUNTS[c]||0)/totalCampers)*MAIN_COUNSELORS.length - targets[c] }))
                 .sort((a,b) => b.frac - a.frac).slice(0, rem).forEach(({c}) => targets[c]++);
 
-            // Assign home groups: preference first, then random
             const assignedIds = new Set();
             const assignments = {};
             const targetsLeft = { ...targets };
@@ -1333,15 +1355,20 @@
                 unassigned.slice(offset, offset + targetsLeft[color]).forEach(c => { assignments[c.CounselorID] = color; });
                 offset += targetsLeft[color];
             }
-
-            // Update home group dropdowns
             Object.entries(assignments).forEach(([cid, color]) => {
                 const hg = document.querySelector(`.cg-homegroup[data-cid="${cid}"]`);
                 if (hg) hg.value = color;
             });
+            updateGroupCounters();
+        }
 
-            // ── Schedule type assignment with demand-aware preference override ─────
-            // Compute per-quadrant demand using the same slot formula as autoCalculateSlots
+        // ── Schedule type assignment (used by Full Auto Build) ───────────────────
+        // Respects already-saved schedule types — only assigns free counselors.
+        // Shows a modal if fixed types cannot satisfy quadrant demand.
+        function autoAssignScheduleTypes(savedTypes) {
+            const prefMap = {};
+            PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
+
             const sMin = parseInt(document.getElementById('sportsMin').value)       || 2;
             const sThr = parseInt(document.getElementById('sportsThreshold').value) || 16;
             const sPer = parseInt(document.getElementById('sportsPer').value)       || 8;
@@ -1370,7 +1397,6 @@
                 }
                 slotTotals[key] = (slotTotals[key] || 0) + cnt;
             });
-            // Demand per quadrant = highest single-period slot total in that quadrant
             Object.entries(slotTotals).forEach(([key, total]) => {
                 const [p, side] = key.split('_');
                 const am = parseInt(p) <= 3;
@@ -1378,7 +1404,6 @@
                 else if (side === 'Enrichment') { if (am) demand.amEnrich = Math.max(demand.amEnrich, total); else demand.pmEnrich = Math.max(demand.pmEnrich, total); }
             });
 
-            // Which quadrants each schedule type covers (1 counselor each)
             const COVERS = {
                 'All Sports':                { amSports: 1, pmSports: 1, amEnrich: 0, pmEnrich: 0 },
                 'All Enrichment':            { amSports: 0, pmSports: 0, amEnrich: 1, pmEnrich: 1 },
@@ -1398,7 +1423,6 @@
                 return supply.amSports >= demand.amSports && supply.pmSports >= demand.pmSports &&
                        supply.amEnrich >= demand.amEnrich && supply.pmEnrich >= demand.pmEnrich;
             }
-            // Returns the type that most reduces total shortfall given current supply
             function mostNeededType(supply) {
                 let best = null, bestScore = -1;
                 for (const [type, cov] of Object.entries(COVERS)) {
@@ -1408,23 +1432,32 @@
                 return best;
             }
 
-            // First pass: honor all explicit preferences
+            // Build assignment map: counselors with a saved type are fixed; others are free
             const typeAssignments = {};
+            const freeCids = [];
             const prefCids = [];
-            Object.keys(assignments).forEach(cid => {
-                const schedPref = prefMap[parseInt(cid)]?.SchedulePreference;
-                if (schedPref && schedPref !== 'No Preference' && VALID_TYPES.includes(schedPref)) {
-                    typeAssignments[cid] = schedPref;
-                    prefCids.push(cid);
+            MAIN_COUNSELORS.forEach(c => {
+                const cid = String(c.CounselorID);
+                const saved = savedTypes[cid];
+                if (saved && VALID_TYPES.includes(saved)) {
+                    typeAssignments[cid] = saved; // locked — do not change
+                } else {
+                    const schedPref = prefMap[c.CounselorID]?.SchedulePreference;
+                    if (schedPref && schedPref !== 'No Preference' && VALID_TYPES.includes(schedPref)) {
+                        typeAssignments[cid] = schedPref;
+                        prefCids.push(cid);
+                    } else {
+                        freeCids.push(cid);
+                    }
                 }
             });
-            // Assign non-preference counselors demand-first
-            Object.keys(assignments).forEach(cid => {
-                if (typeAssignments[cid]) return;
+
+            // Assign free counselors demand-first
+            freeCids.forEach(cid => {
                 typeAssignments[cid] = mostNeededType(supplyFrom(typeAssignments)) || 'All Sports';
             });
 
-            // Second pass: if supply still can't meet demand, override preferences one at a time
+            // If supply still can't meet demand, override preference-only counselors
             if (!scheduleIsValid(supplyFrom(typeAssignments))) {
                 for (const cid of shuffle(prefCids)) {
                     if (scheduleIsValid(supplyFrom(typeAssignments))) break;
@@ -1433,8 +1466,21 @@
                 }
             }
 
-            // Apply to DOM
+            // If still invalid after all free reassignments, show shortfall modal
+            const finalSupply = supplyFrom(typeAssignments);
+            if (!scheduleIsValid(finalSupply)) {
+                const lines = [];
+                const labels = { amSports: 'AM Sports', pmSports: 'PM Sports', amEnrich: 'AM Enrichment', pmEnrich: 'PM Enrichment' };
+                Object.keys(demand).forEach(q => {
+                    const gap = demand[q] - finalSupply[q];
+                    if (gap > 0) lines.push(`${gap} more ${labels[q]} counselor${gap !== 1 ? 's' : ''} needed`);
+                });
+                alert('Warning: Saved schedule types cannot fully satisfy demand.\n\n' + lines.join('\n') + '\n\nSchedule types have been assigned as best as possible. Consider updating manually before building.');
+            }
+
+            // Apply only to counselors that are NOT saved (don't overwrite fixed types)
             Object.entries(typeAssignments).forEach(([cid, type]) => {
+                if (savedTypes[cid]) return; // saved type — leave DOM as-is
                 const sc = document.querySelector(`.cg-schedule[data-cid="${cid}"]:not(.cg-specialty-schedule)`);
                 if (sc) sc.value = type;
             });
@@ -1504,11 +1550,16 @@
                     }
                 }
 
-                if (state[idx].counselors.length !== 0) return;
+                // If all existing slots are already filled (all pinned), skip calculation
+                if (state[idx].counselors.length !== 0 && !state[idx].counselors.includes(null)) return;
 
                 // Respect counts the user manually typed before running Full Auto Build
                 const mcPre = manualCounts[idx]?.counselors;
-                if (mcPre != null) { rawCounts[idx] = mcPre; return; }
+                if (mcPre != null) {
+                    // Pad pinned counselors up to the manual count with nulls
+                    while (state[idx].counselors.length < mcPre) state[idx].counselors.push(null);
+                    return;
+                }
 
                 let count;
                 if (/archery/i.test(act.ActivityName)) {
@@ -1574,14 +1625,18 @@
                     });
             });
 
-            // Step 4: Apply to state and DOM
+            // Step 4: Apply to state and DOM — pad pinned counselors with nulls to target count
             OFFERINGS.forEach((act, idx) => {
                 if (finalCounts[idx] == null) return;
-                state[idx].counselors = Array(finalCounts[idx]).fill(null);
+                const target = finalCounts[idx];
+                // Keep already-pinned (non-null) entries; add nulls for remaining slots
+                const pinned = state[idx].counselors.filter(id => id !== null);
+                const extra = Math.max(0, target - pinned.length);
+                state[idx].counselors = [...pinned, ...Array(extra).fill(null)];
                 const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
                 if (card) {
                     const inp = card.querySelector('[data-count-type="counselors"]');
-                    if (inp) inp.value = finalCounts[idx];
+                    if (inp) inp.value = state[idx].counselors.length;
                 }
             });
 
@@ -1594,11 +1649,17 @@
             const statusEl = document.getElementById('autoStatus');
             statusEl.textContent = 'Building…';
 
-            // Step 1: Set slot counts from slot calculation rules (all start as null)
-            // forceReset clears counselor arrays before autoCalculateSlots so the guard
-            // (state[idx].counselors.length !== 0) never blocks recalculation during Full Auto Build.
+            // Step 1: Set slot counts from slot calculation rules.
+            // forceReset restores pinned (manually-saved) counselors for non-locked offerings
+            // and clears auto-assigned slots, so autoCalculateSlots can pad to target count.
             // Staff/UL arrays are intentionally NOT cleared — they must survive the reset.
-            if (forceReset) OFFERINGS.forEach((_, idx) => { if (!lockedOfferings.has(idx)) state[idx].counselors = []; });
+            if (forceReset) {
+                OFFERINGS.forEach((_, idx) => {
+                    if (lockedOfferings.has(idx)) return;
+                    // Restore pinned (saved) counselors; null slots will be recalculated
+                    state[idx].counselors = [...(pinnedCounselors[idx] || [])];
+                });
+            }
             autoCalculateSlots();
 
             const prefMap = {};
@@ -1647,6 +1708,7 @@
                 // Eligible for the source period (skip same-name blockUsed; repeat is intentional)
                 const tEligible = getAssignablePool().filter(c => {
                     if (usedThisPeriod[srcPeriod].has(c.CounselorID)) return false;
+                    if ((STAFF_BUSY[c.CounselorID] || []).includes(srcPeriod)) return false;
                     const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     return isCounselorAvailableFor(sched, srcPeriod, tSide);
@@ -1697,6 +1759,7 @@
 
                 const eligible = getAssignablePool().filter(c => {
                     if (usedThisPeriod[period].has(c.CounselorID)) return false;
+                    if ((STAFF_BUSY[c.CounselorID] || []).includes(period)) return false;
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     if (!isCounselorAvailableFor(sched, period, side)) return false;
@@ -1740,6 +1803,7 @@
                     const cId = state[indices[0]].counselors[slot] ?? null;
                     if (cId === null) continue;
                     for (const idx of indices.slice(1)) {
+                        if (lockedOfferings.has(idx)) continue; // never overwrite locked periods
                         if (state[idx].counselors.length <= slot) {
                             const mc = manualCounts[idx]?.counselors;
                             if (mc == null || state[idx].counselors.length < mc) state[idx].counselors.push(cId);
@@ -1807,6 +1871,7 @@
                     // Counselors that should be in this period+side but aren't placed
                     const extras = getAssignablePool().filter(c => {
                         if (usedThisPeriod.has(c.CounselorID)) return false;
+                        if ((STAFF_BUSY[c.CounselorID] || []).includes(period)) return false;
                         const schedSel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                         const sched = schedSel ? schedSel.value : (c.ScheduleType || '');
                         return isCounselorAvailableFor(sched, period, side);
@@ -1920,6 +1985,7 @@
                 for (const side3 of ['Sports', 'Enrichment']) {
                     const unplaced = getAssignablePool().filter(c => {
                         if (usedP3.has(c.CounselorID)) return false;
+                        if ((STAFF_BUSY[c.CounselorID] || []).includes(p3)) return false;
                         const sel3   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                         const sched3 = sel3 ? sel3.value : (c.ScheduleType || '');
                         return isCounselorAvailableFor(sched3, p3, side3);
@@ -1980,6 +2046,7 @@
                     if (cId === null) continue;
 
                     for (const idx of indices.slice(1)) {
+                        if (lockedOfferings.has(idx)) continue; // never overwrite locked periods
                         if (state[idx].counselors.length <= slot) {
                             const mc = manualCounts[idx]?.counselors;
                             if (mc == null || state[idx].counselors.length < mc) state[idx].counselors.push(cId);
@@ -2060,6 +2127,7 @@
 
                 const supply = rebuildPool.filter(c => {
                     if (usedThisPeriod[p].has(c.CounselorID)) return false;
+                    if ((STAFF_BUSY[c.CounselorID] || []).includes(p)) return false;
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     return isCounselorAvailableFor(sched, p, targetSide);
@@ -2186,6 +2254,7 @@
                 const slotPos = state[bestIdx].counselors.indexOf(null);
                 const eligible = rebuildPool.filter(c => {
                     if (usedThisPeriod[period].has(c.CounselorID)) return false;
+                    if ((STAFF_BUSY[c.CounselorID] || []).includes(period)) return false;
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     if (!isCounselorAvailableFor(sched, period, targetSide)) return false;
@@ -2411,6 +2480,18 @@
                 statusEl.textContent = 'Sync failed — try again.';
                 return;
             }
+            // Sync home group colors from roster data before reload (replaces algorithmic color assignment)
+            statusEl.textContent = 'Syncing colors from roster…';
+            try {
+                const colorResp = await fetch('/sync-homegroup-colors', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `weekNumber=${PLAN_WEEK}`
+                });
+                if (!colorResp.ok) throw new Error('color sync failed');
+            } catch {
+                statusEl.textContent = 'Color sync failed — continuing without color update.';
+            }
             sessionStorage.setItem('pendingFullAuto', '1');
             location.reload();
         }
@@ -2419,36 +2500,45 @@
         document.addEventListener('DOMContentLoaded', () => {
             initState();
             renderAllFromState();
-            loadLockedState();
-            // Default staff slot count to 1 for sports activities, but only if never previously saved
-            // (preserves explicit 0-UL saves — EXISTING[key] exists even when staff array is empty)
-            OFFERINGS.forEach((act, idx) => {
-                if (!act.PeriodNumber || act.SideOfCamp !== 'Sports') return;
-                if (/hartt.+chamber/i.test(act.ActivityName)) return;
-                if (/swim/i.test(act.ActivityName)) return; // Swim UL assigned manually
-                const key = `${act.PeriodNumber}|${act.ActivityName}`;
-                if (state[idx].staff.length === 0 && !EXISTING[key]) {
-                    handleCountChange(idx, 'staff', 1);
-                    const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
-                    if (card) {
-                        const sInput = card.querySelector('[data-count-type="staff"]');
-                        if (sInput) sInput.value = 1;
+            // loadLockedState is async (fetches from server); await it so locks are set before
+            // pendingFullAuto runs and before any other interaction reads lockedOfferings.
+            loadLockedState().then(() => {
+                // Default staff slot count to 1 for sports activities, but only if never previously saved
+                // (preserves explicit 0-UL saves — EXISTING[key] exists even when staff array is empty)
+                OFFERINGS.forEach((act, idx) => {
+                    if (!act.PeriodNumber || act.SideOfCamp !== 'Sports') return;
+                    if (/hartt.+chamber/i.test(act.ActivityName)) return;
+                    if (/swim/i.test(act.ActivityName)) return; // Swim UL assigned manually
+                    const key = `${act.PeriodNumber}|${act.ActivityName}`;
+                    if (state[idx].staff.length === 0 && !EXISTING[key]) {
+                        handleCountChange(idx, 'staff', 1);
+                        const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                        if (card) {
+                            const sInput = card.querySelector('[data-count-type="staff"]');
+                            if (sInput) sInput.value = 1;
+                        }
                     }
+                });
+                updateAllCounters();
+                updateGroupCounters();
+                document.querySelectorAll('.cg-schedule').forEach(sel => {
+                    sel.addEventListener('change', () => { updateAllCounters(); updateGroupCounters(); });
+                });
+
+                if (sessionStorage.getItem('pendingFullAuto')) {
+                    sessionStorage.removeItem('pendingFullAuto');
+                    // Snapshot saved schedule types before assigning — counselors with a saved
+                    // type are treated as fixed; only unset types are auto-assigned.
+                    const savedTypes = {};
+                    document.querySelectorAll('.cg-schedule:not(.cg-specialty-schedule)').forEach(sel => {
+                        if (sel.value) savedTypes[sel.dataset.cid] = sel.value;
+                    });
+                    autoAssignScheduleTypes(savedTypes);
+                    buildSchedule(true);
+                    fillExtraCounselors();
+                    saveCounselorGroups();
                 }
             });
-            updateAllCounters();
-            updateGroupCounters();
-            document.querySelectorAll('.cg-schedule').forEach(sel => {
-                sel.addEventListener('change', () => { updateAllCounters(); updateGroupCounters(); });
-            });
-
-            if (sessionStorage.getItem('pendingFullAuto')) {
-                sessionStorage.removeItem('pendingFullAuto');
-                autoAssignHomeGroups();
-                buildSchedule(true);
-                fillExtraCounselors();
-                saveCounselorGroups();
-            }
         });
     </script>
 </body>

@@ -431,6 +431,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/hub-content', '/director-notes', '/director-notes/edit',
     '/set-active-week', '/set-released-week', '/set-prep-week', '/update-session-label',
     '/clear-counselor-week', '/counselor-week-assignments', '/api/week-staff-assignments', '/mirror-sports-location', '/clear-counselor-schedule', '/clear-counselor-homegroups',
+    '/api/locked-offerings', '/api/toggle-lock',
     '/audit', '/merge-class', '/set-activity-side', '/delete-counselor',
     '/update-staff-info', '/update-staff-period', '/remove-staff-period',
     '/homegroup-assignment', '/counselor-preferences-summary',
@@ -1084,6 +1085,14 @@ try {
         db.exec("ALTER TABLE CounselorWeekAttributes ADD COLUMN isWorkingThisWeek INTEGER DEFAULT 1");
     }
 } catch(e) { console.error('[migration] isWorkingThisWeek:', e.message); }
+
+// Migration: create LockedOfferings table for server-side lock persistence
+db.exec(`CREATE TABLE IF NOT EXISTS LockedOfferings (
+    WeekNumber  INTEGER NOT NULL,
+    PeriodNumber INTEGER NOT NULL,
+    ActivityName TEXT NOT NULL,
+    PRIMARY KEY (WeekNumber, PeriodNumber, ActivityName)
+)`);
 
 // Migration: add WeekNumber to Schedules (used for camper rows to scope per-week)
 try {
@@ -5354,7 +5363,27 @@ app.get('/counselor-scheduling', (req, res) => {
         ORDER BY LastName, FirstName
     `).all();
 
-    res.render('counselor-scheduling', { offerings, counselors, mainCounselors, specialtyCounselors, availability, staffAvailability, existingAssignments, alertMessage, camperCounts, preferences, sessions, planWeek, staffMembers });
+    // staffBusy: CounselorID → [periods] where they are assigned as staff/instructor
+    // Covers both CounselorScheduleAssignments and Schedules (Instructor rows from imports)
+    const staffBusyRows = db.prepare(`
+        SELECT PersonID AS CounselorID, PeriodNumber FROM CounselorScheduleAssignments
+        WHERE PersonType = 'Instructor' AND WeekNumber = ?
+        UNION
+        SELECT PersonID AS CounselorID, PeriodNumber FROM Schedules
+        WHERE PersonType = 'Instructor'
+    `).all(planWeek);
+    const staffBusy = {};
+    for (const r of staffBusyRows) {
+        if (!staffBusy[r.CounselorID]) staffBusy[r.CounselorID] = [];
+        if (!staffBusy[r.CounselorID].includes(r.PeriodNumber)) staffBusy[r.CounselorID].push(r.PeriodNumber);
+    }
+
+    // Locked offerings for this planning week (server-persisted)
+    const lockedOfferingsData = db.prepare(
+        'SELECT PeriodNumber, ActivityName FROM LockedOfferings WHERE WeekNumber = ?'
+    ).all(planWeek);
+
+    res.render('counselor-scheduling', { offerings, counselors, mainCounselors, specialtyCounselors, availability, staffAvailability, existingAssignments, alertMessage, camperCounts, preferences, sessions, planWeek, staffMembers, staffBusy, lockedOfferingsData });
 });
 
 app.post('/auto-assign-homegroups', (req, res) => {
@@ -6550,11 +6579,42 @@ app.post('/clear-counselor-schedule', (req, res) => {
     const w = parseInt(req.body.weekNumber);
     const mode = req.body.mode; // 'full' or 'counselors'
     if (w < 1 || w > 6) return res.redirect(`/counselor-scheduling?week=${w}&message=Invalid+week`);
-    db.prepare('DELETE FROM CounselorWeekSchedules WHERE WeekNumber=?').run(w);
+    // Preserve locked offerings — save their assignments, delete all, then restore
+    const locked = db.prepare('SELECT PeriodNumber, ActivityName FROM LockedOfferings WHERE WeekNumber=?').all(w);
+    if (locked.length === 0) {
+        db.prepare('DELETE FROM CounselorWeekSchedules WHERE WeekNumber=?').run(w);
+    } else {
+        const keep = db.prepare(
+            `SELECT CounselorID, PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE WeekNumber=? AND (${locked.map(() => '(PeriodNumber=? AND ActivityName=?)').join(' OR ')})`
+        ).all(w, ...locked.flatMap(l => [l.PeriodNumber, l.ActivityName]));
+        db.prepare('DELETE FROM CounselorWeekSchedules WHERE WeekNumber=?').run(w);
+        const reinsert = db.prepare('INSERT OR IGNORE INTO CounselorWeekSchedules (CounselorID, WeekNumber, PeriodNumber, ActivityName) VALUES (?,?,?,?)');
+        db.transaction(() => { keep.forEach(r => reinsert.run(r.CounselorID, w, r.PeriodNumber, r.ActivityName)); })();
+    }
     if (mode === 'full') {
         db.prepare('DELETE FROM CounselorScheduleAssignments').run();
     }
     res.redirect(`/counselor-scheduling?week=${w}&message=Schedule+cleared`);
+});
+
+// ── Lock offering API ────────────────────────────────────────────────────────
+app.get('/api/locked-offerings', (req, res) => {
+    const w = parseInt(req.query.week);
+    if (!w) return res.status(400).json({ error: 'Missing week' });
+    const rows = db.prepare('SELECT PeriodNumber, ActivityName FROM LockedOfferings WHERE WeekNumber=?').all(w);
+    res.json(rows);
+});
+
+app.post('/api/toggle-lock', (req, res) => {
+    const { weekNumber, periodNumber, activityName, locked } = req.body;
+    const w = parseInt(weekNumber), p = parseInt(periodNumber);
+    if (!w || !p || !activityName) return res.status(400).json({ error: 'Missing fields' });
+    if (locked) {
+        db.prepare('INSERT OR IGNORE INTO LockedOfferings (WeekNumber, PeriodNumber, ActivityName) VALUES (?,?,?)').run(w, p, activityName);
+    } else {
+        db.prepare('DELETE FROM LockedOfferings WHERE WeekNumber=? AND PeriodNumber=? AND ActivityName=?').run(w, p, activityName);
+    }
+    res.json({ ok: true });
 });
 
 app.post('/clear-counselor-homegroups', (req, res) => {
