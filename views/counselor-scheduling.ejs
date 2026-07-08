@@ -1710,6 +1710,26 @@
             for (const [tName, tIndices] of Object.entries(tripleGroupsPre)) {
                 if (tIndices.length < 2) continue;
                 tIndices.sort((a, b) => OFFERINGS[a].PeriodNumber - OFFERINGS[b].PeriodNumber);
+
+                // If any period is locked, propagate its counselors to unlocked periods instead
+                // of running the pool-based logic (which would exclude the locked counselors from
+                // the eligible pool and overwrite the locked state with wrong counselors).
+                const lockedIdx = tIndices.find(i => lockedOfferings.has(i));
+                if (lockedIdx != null) {
+                    const lockedCounselors = state[lockedIdx].counselors.filter(id => id && id !== -1);
+                    const tBlock = OFFERINGS[lockedIdx].PeriodNumber <= 3 ? 'am' : 'pm';
+                    for (const tidx of tIndices) {
+                        if (lockedOfferings.has(tidx)) continue;
+                        while (state[tidx].counselors.length < lockedCounselors.length) state[tidx].counselors.push(null);
+                        lockedCounselors.forEach((cId, slot) => {
+                            state[tidx].counselors[slot] = cId;
+                            usedThisPeriod[OFFERINGS[tidx].PeriodNumber].add(cId);
+                            if (blockUsed[cId]) blockUsed[cId][tBlock].add(blockKey(tName));
+                        });
+                    }
+                    continue;
+                }
+
                 const srcIdx    = tIndices[0];
                 const srcPeriod = OFFERINGS[srcIdx].PeriodNumber;
                 const tSide     = OFFERINGS[srcIdx].SideOfCamp;
@@ -1730,6 +1750,7 @@
                     if (!tPool[slot]) break;
                     const chosen = tPool[slot];
                     for (const tidx of tIndices) {
+                        if (lockedOfferings.has(tidx)) continue; // never overwrite locked periods
                         while (state[tidx].counselors.length <= slot) state[tidx].counselors.push(null);
                         state[tidx].counselors[slot] = chosen.CounselorID;
                         usedThisPeriod[OFFERINGS[tidx].PeriodNumber].add(chosen.CounselorID);
@@ -2218,6 +2239,24 @@
             for (const [tName, tIndices] of Object.entries(tripleGroupsPre)) {
                 if (tIndices.length < 2) continue;
                 tIndices.sort((a, b) => OFFERINGS[a].PeriodNumber - OFFERINGS[b].PeriodNumber);
+
+                // If any period is locked, propagate its counselors to unlocked periods
+                const lockedIdx = tIndices.find(i => lockedOfferings.has(i));
+                if (lockedIdx != null) {
+                    const lockedCounselors = state[lockedIdx].counselors.filter(id => id && id !== -1);
+                    const tBlock = OFFERINGS[lockedIdx].PeriodNumber <= 3 ? 'am' : 'pm';
+                    for (const tidx of tIndices) {
+                        if (lockedOfferings.has(tidx)) continue;
+                        while (state[tidx].counselors.length < lockedCounselors.length) state[tidx].counselors.push(null);
+                        lockedCounselors.forEach((cId, slot) => {
+                            state[tidx].counselors[slot] = cId;
+                            usedThisPeriod[OFFERINGS[tidx].PeriodNumber].add(cId);
+                            if (blockUsed[cId]) blockUsed[cId][tBlock].add(blockKey(tName));
+                        });
+                    }
+                    continue;
+                }
+
                 const srcIdx    = tIndices[0];
                 const srcPeriod = OFFERINGS[srcIdx].PeriodNumber;
                 const tBlock    = srcPeriod <= 3 ? 'am' : 'pm';
@@ -2235,6 +2274,7 @@
                     if (!tPool[slot]) break;
                     const chosen = tPool[slot];
                     for (const tidx of tIndices) {
+                        if (lockedOfferings.has(tidx)) continue; // never overwrite locked periods
                         while (state[tidx].counselors.length <= slot) state[tidx].counselors.push(null);
                         state[tidx].counselors[slot] = chosen.CounselorID;
                         usedThisPeriod[OFFERINGS[tidx].PeriodNumber].add(chosen.CounselorID);
