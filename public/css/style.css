@@ -998,6 +998,8 @@ select.filter-dropdown { padding: 7px 12px; border-radius: 6px; border: 1px soli
         padding-bottom: 10px !important;
     }
     .class-table .mc-card td.mc-hide { display: none !important; }
+    /* Filter must beat both .mc-card (block) and .class-table .mc-card (grid) overrides */
+    .class-table .mc-card.filter-hidden { display: none !important; }
 
     /* Camper lookup: 2-column info grid inside each card */
     .search-table .mc-card tr.main-info-row {

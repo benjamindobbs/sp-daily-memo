@@ -1,2 +1,0 @@
-
-Selecting side from filter dropdown on mobile does not function correctly. It works as intended on desktop browser, but setting view to mobile via chrome dev tools stops functionality. This seems to be universal across all mobile browsers, not just chrome. 
