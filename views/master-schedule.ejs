@@ -51,7 +51,11 @@
         </header>
 
         <div class="filter-bar">
-            <label for="periodFilter">Period:</label>
+            <input type="search" id="scheduleSearch" placeholder="&#128269; Search class, staff, counselor, camper..." autocomplete="off"
+                oninput="applyFilters()"
+                style="padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.875rem; font-family:inherit; min-width:260px; outline:none;">
+
+            <label for="periodFilter" style="margin-left:10px;">Period:</label>
             <select id="periodFilter" class="filter-dropdown" onchange="applyFilters()">
                 <option value="all">All Periods</option>
                 <% for (let p = 1; p <= 6; p++) { %>
@@ -97,12 +101,20 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <% period.classes.forEach(function(cls) { %>
+                    <% period.classes.forEach(function(cls) {
+                        const searchTokens = [
+                            cls.activityName,
+                            cls.staff.map(function(s){ return s.FirstName + ' ' + s.LastName; }).join(' '),
+                            cls.counselors.map(function(c){ return c.FirstName + ' ' + c.LastName; }).join(' '),
+                            (cls.camperNames || []).join(' ')
+                        ].join(' ').toLowerCase();
+                    %>
                     <tr class="class-row mc-card"
                         data-side="<%= cls.sideOfCamp || '' %>"
                         data-groups="<%= cls.colorGroups.join(',') %>"
                         data-bus="<%= cls.busPresent ? 'yes' : '' %>"
-                        data-extended="<%= (cls.extGroups || []).join(',') %>">
+                        data-extended="<%= (cls.extGroups || []).join(',') %>"
+                        data-search="<%- searchTokens %>">
 
                         <td class="mc-title">
                             <a class="activity-link"
@@ -195,6 +207,7 @@
             const period = document.getElementById('periodFilter').value;
             const side   = document.getElementById('sideFilter').value;
             const group  = document.getElementById('groupFilter').value;
+            const query  = document.getElementById('scheduleSearch').value.toLowerCase().trim();
 
             document.querySelectorAll('.period-section').forEach(section => {
                 const periodMatch = period === 'all' || section.dataset.period === period;
@@ -202,9 +215,17 @@
             });
 
             document.querySelectorAll('.class-row').forEach(row => {
-                const sideMatch = side === 'all' || row.dataset.side === side;
-                const visible = sideMatch && groupMatches(row, group);
+                const sideMatch   = side === 'all' || row.dataset.side === side;
+                const searchMatch = !query || (row.dataset.search || '').includes(query);
+                const visible = sideMatch && groupMatches(row, group) && searchMatch;
                 row.classList.toggle('filter-hidden', !visible);
+            });
+
+            // Hide period headers with no visible rows
+            document.querySelectorAll('.period-section').forEach(section => {
+                if (section.style.display === 'none') return;
+                const anyVisible = [...section.querySelectorAll('.class-row')].some(r => !r.classList.contains('filter-hidden'));
+                section.style.display = anyVisible ? '' : 'none';
             });
         }
     </script>

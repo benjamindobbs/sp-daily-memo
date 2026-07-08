@@ -1996,19 +1996,25 @@ app.get('/master-schedule', (req, res) => {
             SELECT DISTINCT cwd.ExtendedHours FROM CamperWeekData cwd JOIN Schedules s ON cwd.CamperID=s.PersonID AND s.PersonType='Camper' AND s.WeekNumber=cwd.WeekNumber
             WHERE cwd.WeekNumber=? AND s.PeriodNumber=? AND s.ActivityName=? AND cwd.ExtendedHours IS NOT NULL AND cwd.ExtendedHours!=''
         `);
+        const getCamperNames = db.prepare(`
+            SELECT COALESCE(c.PreferredName, c.FirstName) AS First, c.LastName
+            FROM Campers c JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper'
+            WHERE s.WeekNumber = ? AND s.PeriodNumber = ? AND s.ActivityName = ?
+        `);
 
         // Each row in Schedules now uses clock blocks (1-6) — no P3 AM/PM split needed.
         const enriched = classes.map(cls => {
             const locRow = getLocation.get(cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName);
             return {
                 ...cls,
-                location:    locRow ? locRow.Location : (cls.location || null),
-                enrolled:    getEnrollment.get(aw, cls.periodNumber, cls.activityName, aw).n,
-                colorGroups: getColorGroups.all(aw, cls.periodNumber, cls.activityName).map(r => r.HomeGroupColor),
-                staff:       getStaff.all(cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName),
-                counselors:  getCounselors.all(aw, cls.periodNumber, cls.activityName, aw),
-                busPresent:  !!getBusPresence.get(aw, cls.periodNumber, cls.activityName),
-                extGroups:   getExtGroups.all(aw, cls.periodNumber, cls.activityName).map(r => r.ExtendedHours)
+                location:     locRow ? locRow.Location : (cls.location || null),
+                enrolled:     getEnrollment.get(aw, cls.periodNumber, cls.activityName, aw).n,
+                colorGroups:  getColorGroups.all(aw, cls.periodNumber, cls.activityName).map(r => r.HomeGroupColor),
+                staff:        getStaff.all(cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName),
+                counselors:   getCounselors.all(aw, cls.periodNumber, cls.activityName, aw),
+                busPresent:   !!getBusPresence.get(aw, cls.periodNumber, cls.activityName),
+                extGroups:    getExtGroups.all(aw, cls.periodNumber, cls.activityName).map(r => r.ExtendedHours),
+                camperNames:  getCamperNames.all(aw, cls.periodNumber, cls.activityName).map(r => r.First + ' ' + r.LastName)
             };
         });
 
@@ -2043,6 +2049,7 @@ app.get('/master-schedule', (req, res) => {
                         busPresent:   all.some(e => e.busPresent),
                         extGroups:    [...new Set(all.flatMap(e => e.extGroups))],
                         location:     all.map(e => e.location).find(Boolean) || null,
+                        camperNames:  [...new Set(all.flatMap(e => e.camperNames))],
                     });
                     continue;
                 }
