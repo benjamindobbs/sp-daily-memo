@@ -2220,9 +2220,13 @@ app.get('/search', (req, res) => {
             LEFT JOIN Schedules s4 ON c.CamperID = s4.PersonID AND s4.PeriodNumber = 4 AND s4.PersonType = 'Camper' AND s4.WeekNumber = ?
             LEFT JOIN Schedules s5 ON c.CamperID = s5.PersonID AND s5.PeriodNumber = 5 AND s5.PersonType = 'Camper' AND s5.WeekNumber = ?
             LEFT JOIN Schedules s6 ON c.CamperID = s6.PersonID AND s6.PeriodNumber = 6 AND s6.PersonType = 'Camper' AND s6.WeekNumber = ?
-            WHERE (c.FirstName || ' ' || c.LastName LIKE ?) OR (? = '')
+            WHERE EXISTS (
+                SELECT 1 FROM Schedules sw
+                WHERE sw.PersonID = c.CamperID AND sw.PersonType = 'Camper' AND sw.WeekNumber = ?
+            )
+            AND ((c.FirstName || ' ' || c.LastName LIKE ?) OR (? = ''))
             ORDER BY c.LastName ASC
-        `).all(aw, aw, aw, aw, aw, aw, aw, `%${query}%`, query);
+        `).all(aw, aw, aw, aw, aw, aw, aw, aw, `%${query}%`, query);
 
         res.render('search', { 
             camper: camperList, 
