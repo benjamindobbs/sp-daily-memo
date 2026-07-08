@@ -862,6 +862,7 @@
             const arr       = state[offerIdx][type];
             const allPeople = type === 'counselors'
                 ? getAssignablePool().filter(c => {
+                      if ((STAFF_BUSY[c.CounselorID] || []).includes(period)) return false;
                       const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                       const sched = sel ? sel.value : (c.ScheduleType || '');
                       return sched && isCounselorAvailableFor(sched, period, side);
