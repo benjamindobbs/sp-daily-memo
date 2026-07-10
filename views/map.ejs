@@ -7,20 +7,32 @@
     <link rel="stylesheet" href="/css/style.css">
     <script src="/js/nav.js" defer></script>
     <style>
+        .map-outer {
+            display: flex;
+            justify-content: center;
+        }
         .map-wrap {
             position: relative;
             display: inline-block;
             width: 100%;
             line-height: 0;
         }
-        @media (min-width: 768px) {
-            .map-wrap { width: 70vw; }
-        }
         .map-wrap img {
             width: 100%;
+            height: auto;
             display: block;
             border-radius: 10px;
             box-shadow: var(--shadow);
+        }
+        @media (min-width: 768px) {
+            .map-wrap {
+                width: auto;
+                height: calc(100vh - 195px);
+            }
+            .map-wrap img {
+                width: auto;
+                height: 100%;
+            }
         }
         .map-pin {
             position: absolute;
@@ -204,17 +216,16 @@
             </select>
         </div>
 
-        <% /* Check if image exists by rendering it; missing image is a config issue not a code issue */ %>
-        <div style="position:relative; width:100%;">
+        <div class="map-outer">
             <div class="map-wrap" id="mapWrap">
                 <img id="mapImg" src="/images/camp-map.png" alt="Camp Map"
                      onerror="this.style.display='none'; document.getElementById('mapMissing').style.display='block';">
                 <div id="mapMissing" style="display:none;" class="no-map-msg">
                     Map image not found. Upload <code>camp-map.png</code> to <code>public/images/</code>.
                 </div>
-                <!-- Pins injected by JS -->
+                <!-- Pins and tooltip injected/positioned relative to this element -->
+                <div class="map-tooltip" id="tooltip"></div>
             </div>
-            <div class="map-tooltip" id="tooltip"></div>
         </div>
 
         <div class="map-legend">
