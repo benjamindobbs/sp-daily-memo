@@ -1777,7 +1777,9 @@ app.get('/staff', (req, res) => {
         yesterdayWinner, todayWinner, photoPhase,
         todayPickups, todayLateArrivals, todayEarlyDismissals, todayScheduleChanges, today,
         absentByGroup, rosterAbsent, nurseNow, caseNow,
-        staffScheduleFull, staffSide
+        staffSide,
+        sportsScheduleFull:     SPORTS_SCHEDULE_FULL,
+        enrichmentScheduleFull: ENRICHMENT_SCHEDULE_FULL
     });
 });
 

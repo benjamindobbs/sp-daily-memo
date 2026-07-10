@@ -58,63 +58,126 @@
         </header>
 
         <!-- Schedule Bar -->
-        <div style="margin-bottom:16px; padding:14px 18px; background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow);">
-            <div style="font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Now</div>
-            <div id="ss-name" style="font-size:1rem; font-weight:700; color:var(--text); margin-bottom:8px; display:none;"></div>
-            <div id="ss-row" style="display:none; align-items:center; gap:8px;">
-                <span id="ss-start" style="font-size:0.72rem; color:var(--text-muted); min-width:36px; font-variant-numeric:tabular-nums;"></span>
-                <div style="flex:1; height:6px; background:var(--border-color); border-radius:3px; overflow:hidden;">
-                    <div id="ss-fill" style="height:100%; border-radius:3px; width:0%; transition:width 0.5s;"></div>
+        <div style="margin-bottom:16px; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow); overflow:hidden;">
+            <!-- Compact now-bar (always visible) -->
+            <div id="ss-compact" style="padding:14px 18px; background:white; cursor:pointer; user-select:none;" onclick="toggleSchedExpand()">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <div style="font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Now</div>
+                    <span id="ss-chevron" style="font-size:0.7rem; color:var(--text-muted); display:inline-block; transition:transform 0.2s;">&#9660;</span>
                 </div>
-                <span id="ss-end" style="font-size:0.72rem; color:var(--text-muted); min-width:36px; text-align:right; font-variant-numeric:tabular-nums;"></span>
+                <div id="ss-name" style="font-size:1rem; font-weight:700; color:var(--text); margin-bottom:8px; display:none;"></div>
+                <div id="ss-row" style="display:none; align-items:center; gap:8px;">
+                    <span id="ss-start" style="font-size:0.72rem; color:var(--text-muted); min-width:36px; font-variant-numeric:tabular-nums;"></span>
+                    <div style="flex:1; height:6px; background:var(--border-color); border-radius:3px; overflow:hidden;">
+                        <div id="ss-fill" style="height:100%; border-radius:3px; width:0%; transition:width 0.5s;"></div>
+                    </div>
+                    <span id="ss-end" style="font-size:0.72rem; color:var(--text-muted); min-width:36px; text-align:right; font-variant-numeric:tabular-nums;"></span>
+                </div>
+                <div id="ss-status" style="font-size:0.8rem; color:var(--text-muted); font-style:italic;"></div>
             </div>
-            <div id="ss-status" style="font-size:0.8rem; color:var(--text-muted); font-style:italic;"></div>
+            <!-- Expanded full-day timeline -->
+            <div id="ss-expand" style="display:none; padding:14px 18px; border-top:1px solid var(--border-color);">
+                <div style="display:flex; gap:6px; margin-bottom:14px;">
+                    <button id="ss-btn-sports"     onclick="setSchedSide('sports',event)"     style="padding:4px 14px; border:1px solid var(--border-color); border-radius:20px; font-size:0.78rem; font-weight:600; cursor:pointer; background:white; color:var(--text); transition:all 0.15s;">Sports</button>
+                    <button id="ss-btn-enrichment" onclick="setSchedSide('enrichment',event)" style="padding:4px 14px; border:1px solid var(--border-color); border-radius:20px; font-size:0.78rem; font-weight:600; cursor:pointer; background:white; color:var(--text); transition:all 0.15s;">Enrichment</button>
+                </div>
+                <div style="position:relative; padding-top:22px;">
+                    <div id="ss-tl-labels" style="position:absolute; top:0; left:0; right:0; height:20px; pointer-events:none;"></div>
+                    <div style="position:relative;">
+                        <div id="ss-tl-bar" style="display:flex; height:14px; border-radius:7px; overflow:hidden;"></div>
+                        <div id="ss-tl-cursor" style="position:absolute; top:-3px; bottom:-3px; width:2px; background:rgba(0,0,0,0.3); border-radius:1px; display:none; pointer-events:none;"></div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.63rem; color:var(--text-muted); margin-top:4px; padding:0 1px;">
+                        <span>9:00</span><span>12:00</span><span>4:30</span>
+                    </div>
+                </div>
+            </div>
         </div>
+        <style>
+        @media (prefers-color-scheme: dark) { #ss-compact, #ss-expand { background:#1e293b !important; } }
+        :root[data-theme="dark"] #ss-compact, :root[data-theme="dark"] #ss-expand { background:#1e293b !important; }
+        :root[data-theme="dark"] #ss-tl-labels span { color:#94a3b8 !important; }
+        @media (prefers-color-scheme: dark) { #ss-tl-labels span { color:#94a3b8 !important; } #ss-tl-bar > div[style*="#e2e8f0"] { background:#334155 !important; } }
+        </style>
         <script>
         (function() {
-            const SCHED = <%- JSON.stringify(staffScheduleFull) %>;
-            const COLOR = '<%= staffSide %>' === 'sports' ? '#3b82f6' : '#10b981';
+            const SPORTS_S = <%- JSON.stringify(sportsScheduleFull) %>;
+            const ENRICH_S = <%- JSON.stringify(enrichmentScheduleFull) %>;
+            const DEFAULT  = '<%= staffSide %>';
+            const DAY_START=540, DAY_END=990, DAY_SPAN=450;
+            let expanded=false, side=DEFAULT;
+
             function estMins() {
-                const p = new Intl.DateTimeFormat('en-US', { timeZone:'America/New_York', hour:'numeric', minute:'numeric', hour12:false }).formatToParts(new Date());
-                return parseInt(p.find(x=>x.type==='hour').value)*60 + parseInt(p.find(x=>x.type==='minute').value);
+                const p=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'numeric',hour12:false}).formatToParts(new Date());
+                return parseInt(p.find(x=>x.type==='hour').value)*60+parseInt(p.find(x=>x.type==='minute').value);
             }
-            function fmt(m) { const h=Math.floor(m/60), min=m%60, h12=h>12?h-12:(h===0?12:h); return `${h12}:${String(min).padStart(2,'0')}`; }
-            function getState(mins) {
-                for (const b of SCHED) {
-                    const s=b.startH*60+b.startM, e=b.endH*60+b.endM;
-                    if (mins>=s && mins<e) return { type:'active', b, s, e, pct:Math.round((mins-s)/(e-s)*100) };
-                }
-                if (mins < SCHED[0].startH*60+SCHED[0].startM) return { type:'before', next:SCHED[0] };
-                for (let i=0; i<SCHED.length-1; i++) {
-                    const te=SCHED[i].endH*60+SCHED[i].endM, ns=SCHED[i+1].startH*60+SCHED[i+1].startM;
-                    if (mins>=te && mins<ns) return { type:'between', next:SCHED[i+1] };
-                }
-                return { type:'after' };
+            function fmt(m){const h=Math.floor(m/60),mn=m%60,h12=h>12?h-12:(h===0?12:h);return `${h12}:${String(mn).padStart(2,'0')}`;}
+            function getSched(){return side==='sports'?SPORTS_S:ENRICH_S;}
+            function getColor(){return side==='sports'?'#3b82f6':'#10b981';}
+
+            function getState(sched,mins){
+                for(const b of sched){const s=b.startH*60+b.startM,e=b.endH*60+b.endM;if(mins>=s&&mins<e)return{type:'active',b,s,e,pct:Math.round((mins-s)/(e-s)*100)};}
+                if(mins<sched[0].startH*60+sched[0].startM)return{type:'before',next:sched[0]};
+                for(let i=0;i<sched.length-1;i++){const te=sched[i].endH*60+sched[i].endM,ns=sched[i+1].startH*60+sched[i+1].startM;if(mins>=te&&mins<ns)return{type:'between',next:sched[i+1]};}
+                return{type:'after'};
             }
-            function update() {
-                const st = getState(estMins());
-                const nameEl=document.getElementById('ss-name'), rowEl=document.getElementById('ss-row'),
-                      fillEl=document.getElementById('ss-fill'), startEl=document.getElementById('ss-start'),
-                      endEl=document.getElementById('ss-end'), statusEl=document.getElementById('ss-status');
-                if (st.type==='active') {
-                    nameEl.textContent=st.b.label; startEl.textContent=fmt(st.s); endEl.textContent=fmt(st.e);
-                    fillEl.style.width=st.pct+'%'; fillEl.style.background=COLOR;
-                    nameEl.style.display=''; rowEl.style.display='flex'; statusEl.textContent='';
-                } else if (st.type==='between') {
+
+            function updateCompact(){
+                const st=getState(getSched(),estMins()),c=getColor();
+                const nEl=document.getElementById('ss-name'),rEl=document.getElementById('ss-row'),
+                      fEl=document.getElementById('ss-fill'),sEl=document.getElementById('ss-start'),
+                      eEl=document.getElementById('ss-end'),stEl=document.getElementById('ss-status');
+                if(st.type==='active'){
+                    nEl.textContent=st.b.label;sEl.textContent=fmt(st.s);eEl.textContent=fmt(st.e);
+                    fEl.style.width=st.pct+'%';fEl.style.background=c;
+                    nEl.style.display='';rEl.style.display='flex';stEl.textContent='';
+                }else if(st.type==='between'){
                     const ns=st.next.startH*60+st.next.startM;
-                    nameEl.textContent='Next: '+st.next.label; startEl.textContent=''; endEl.textContent=fmt(ns);
-                    fillEl.style.width='0%'; fillEl.style.background=COLOR;
-                    nameEl.style.display=''; rowEl.style.display='flex'; statusEl.textContent='';
-                } else if (st.type==='before') {
-                    nameEl.style.display='none'; rowEl.style.display='none';
-                    statusEl.textContent='Camp starts at '+fmt(st.next.startH*60+st.next.startM);
-                } else {
-                    nameEl.style.display='none'; rowEl.style.display='none';
-                    statusEl.textContent='Camp day complete';
-                }
+                    nEl.textContent='Next: '+st.next.label;sEl.textContent='';eEl.textContent=fmt(ns);
+                    fEl.style.width='0%';fEl.style.background=c;
+                    nEl.style.display='';rEl.style.display='flex';stEl.textContent='';
+                }else if(st.type==='before'){
+                    nEl.style.display='none';rEl.style.display='none';
+                    stEl.textContent='Camp starts at '+fmt(st.next.startH*60+st.next.startM);
+                }else{nEl.style.display='none';rEl.style.display='none';stEl.textContent='Camp day complete';}
             }
-            update();
-            setInterval(update, 30000);
+
+            function blkColor(label,s){
+                if(label==='Lunch')return'#64748b';if(label==='Dismissal')return'#94a3b8';
+                if(['Snack Break','Popsicle Break','Big Game'].includes(label))return'#f59e0b';
+                return s==='sports'?'#3b82f6':'#10b981';
+            }
+            function blkAbbr(l){return l.replace('Sports ','S').replace('Enrichment ','E').replace('Snack Break','Snack').replace('Popsicle Break','PB').replace('Big Game','BG').replace('Dismissal','Dis');}
+
+            function buildTimeline(){
+                const sched=getSched(),barEl=document.getElementById('ss-tl-bar'),
+                      lblEl=document.getElementById('ss-tl-labels'),curEl=document.getElementById('ss-tl-cursor');
+                if(!barEl)return;
+                const segs=[];let cur=DAY_START;
+                for(const b of sched){const s=b.startH*60+b.startM,e=b.endH*60+b.endM;if(s>cur)segs.push({gap:true,mins:s-cur});segs.push({label:b.label,gap:false,mins:e-s});cur=e;}
+                if(cur<DAY_END)segs.push({gap:true,mins:DAY_END-cur});
+                barEl.innerHTML=segs.map(sg=>{const p=(sg.mins/DAY_SPAN*100).toFixed(3),bg=sg.gap?'#e2e8f0':blkColor(sg.label,side);return`<div style="flex:0 0 ${p}%;background:${bg};"></div>`;}).join('');
+                lblEl.innerHTML='';let lp=0;
+                for(const sg of segs){const p=sg.mins/DAY_SPAN*100;if(!sg.gap){const el=document.createElement('span');el.textContent=blkAbbr(sg.label);el.style.cssText=`position:absolute;left:${(lp+p/2).toFixed(2)}%;transform:translateX(-50%);font-size:0.6rem;font-weight:600;color:#64748b;white-space:nowrap;`;lblEl.appendChild(el);}lp+=p;}
+                const now=estMins();
+                if(now>=DAY_START&&now<=DAY_END){curEl.style.left=((now-DAY_START)/DAY_SPAN*100).toFixed(2)+'%';curEl.style.display='block';}else curEl.style.display='none';
+                ['sports','enrichment'].forEach(s=>{
+                    const btn=document.getElementById('ss-btn-'+s);if(!btn)return;
+                    const on=s===side,c=s==='sports'?'#3b82f6':'#10b981';
+                    btn.style.background=on?c:'';btn.style.color=on?'white':'';btn.style.borderColor=on?c:'';
+                });
+            }
+
+            window.toggleSchedExpand=function(){
+                expanded=!expanded;
+                document.getElementById('ss-expand').style.display=expanded?'block':'none';
+                const ch=document.getElementById('ss-chevron');if(ch)ch.style.transform=expanded?'rotate(180deg)':'';
+                if(expanded)buildTimeline();
+            };
+            window.setSchedSide=function(s,e){if(e)e.stopPropagation();side=s;updateCompact();if(expanded)buildTimeline();};
+
+            updateCompact();
+            setInterval(()=>{updateCompact();if(expanded)buildTimeline();},30000);
         })();
         </script>
 
