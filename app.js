@@ -42,19 +42,19 @@ function getMergeGroup(activityName) {
 // Block 3 = Sports only (Green/Navy). Block 4 = S4 (Red/Carolina) + E3 (Green/Navy).
 // Block 6 = Sports only (Red/Carolina). Enrichment runs in blocks 1, 2, 4, 5 only.
 const SPORTS_PERIODS = [
-    { startH: 9,  startM: 0,  label: 'Sports 1', clockBlock: 1 },
-    { startH: 10, startM: 0,  label: 'Sports 2', clockBlock: 2 },
-    { startH: 11, startM: 0,  label: 'Sports 3', clockBlock: 3 },
-    { startH: 13, startM: 0,  label: 'Sports 4', clockBlock: 4 },
-    { startH: 14, startM: 20, label: 'Sports 5', clockBlock: 5 },
-    { startH: 15, startM: 30, label: 'Sports 6', clockBlock: 6 },
+    { startH: 9,  startM: 0,  endH: 9,  endM: 50, label: 'Sports 1', clockBlock: 1 },
+    { startH: 10, startM: 0,  endH: 10, endM: 50, label: 'Sports 2', clockBlock: 2 },
+    { startH: 11, startM: 0,  endH: 11, endM: 50, label: 'Sports 3', clockBlock: 3 },
+    { startH: 13, startM: 0,  endH: 13, endM: 45, label: 'Sports 4', clockBlock: 4 },
+    { startH: 14, startM: 20, endH: 14, endM: 55, label: 'Sports 5', clockBlock: 5 },
+    { startH: 15, startM: 30, endH: 16, endM: 5,  label: 'Sports 6', clockBlock: 6 },
 ];
 
 const ENRICHMENT_PERIODS = [
-    { startH: 9,  startM: 0,  label: 'Enrichment 1', clockBlock: 1 },
-    { startH: 10, startM: 35, label: 'Enrichment 2', clockBlock: 2 },
-    { startH: 13, startM: 0,  label: 'Enrichment 3', clockBlock: 4 },
-    { startH: 14, startM: 40, label: 'Enrichment 4', clockBlock: 5 },
+    { startH: 9,  startM: 0,  endH: 10, endM: 20, label: 'Enrichment 1', clockBlock: 1 },
+    { startH: 10, startM: 35, endH: 12, endM: 0,  label: 'Enrichment 2', clockBlock: 2 },
+    { startH: 13, startM: 0,  endH: 14, endM: 20, label: 'Enrichment 3', clockBlock: 4 },
+    { startH: 14, startM: 40, endH: 16, endM: 0,  label: 'Enrichment 4', clockBlock: 5 },
 ];
 
 const CAMP_DAY_START_MINS = 9 * 60;        // 9:00 AM
@@ -135,6 +135,24 @@ function getActivePeriod(schedule, estMins) {
         else break;
     }
     return active;
+}
+
+// Like getActivePeriod but transitions to the next period once the current one ends,
+// so a viewer sees upcoming class locations before the period officially starts.
+function getActiveBlockForMap(schedule, estMins) {
+    let activeIdx = -1;
+    for (let i = 0; i < schedule.length; i++) {
+        if (estMins >= schedule[i].startH * 60 + schedule[i].startM) activeIdx = i;
+        else break;
+    }
+    if (activeIdx === -1) return null;
+    const cur = schedule[activeIdx];
+    const curEnd = cur.endH * 60 + cur.endM;
+    if (estMins >= curEnd) {
+        const next = schedule[activeIdx + 1];
+        return next ? next.clockBlock : null;
+    }
+    return cur.clockBlock;
 }
 
 // Given a pickup time (HH:MM) and a camper's HomeGroupColor, returns the clock block
@@ -2159,7 +2177,7 @@ app.get('/map', (req, res) => {
               .all(cid, aw)
         : [];
 
-    const activeBlock = getActivePeriod(SPORTS_PERIODS, getESTMins())?.clockBlock ?? null;
+    const activeBlock = getActiveBlockForMap(SPORTS_PERIODS, getESTMins());
 
     // Period labels: combine Sports and Enrichment names per clock block
     const periodLabels = {};

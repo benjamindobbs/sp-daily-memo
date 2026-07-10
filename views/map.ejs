@@ -229,12 +229,17 @@
     const ACTIVE_BLOCK = <%= activeBlock !== null ? activeBlock : 'null' %>;
     const PERIOD_LABELS = <%- JSON.stringify(periodLabels) %>;
 
-    // Build map: buildingName → [{activity, period, enrollment}]
+    // Build map: buildingName → [{activity, period, enrollment, location}]
+    // Match by prefix so "Dana 101" maps to the "Dana" pin.
     const buildingClasses = {};
     for (const b of BUILDINGS) buildingClasses[b.name] = [];
     for (const o of OFFERINGS) {
-        if (buildingClasses[o.location] !== undefined) {
-            buildingClasses[o.location].push(o);
+        const loc = (o.location || '').trim();
+        for (const b of BUILDINGS) {
+            if (loc === b.name || loc.toLowerCase().startsWith(b.name.toLowerCase() + ' ')) {
+                buildingClasses[b.name].push(o);
+                break;
+            }
         }
     }
 
@@ -360,7 +365,8 @@
         } else {
             for (const c of classes) {
                 const lbl = PERIOD_LABELS[c.period] || ('Period ' + c.period);
-                html += `<div class="tt-class">${c.activity}<br><span>${lbl} &middot; ${c.enrollment} enrolled</span></div>`;
+                const room = c.location && c.location !== b.name ? ` &middot; ${c.location}` : '';
+                html += `<div class="tt-class">${c.activity}<br><span>${lbl}${room} &middot; ${c.enrollment} enrolled</span></div>`;
             }
         }
         tooltip.innerHTML  = html;
