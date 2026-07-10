@@ -425,17 +425,30 @@
 
     function showTooltip(e, b, sticky) {
         const buildingClasses = buildBuildingClasses();
-        const period = currentMode === 'mine' ? currentPeriod
-                     : (parseInt(document.getElementById('period-select').value) || currentPeriod);
-        const classes = (buildingClasses[b.name] || []).filter(c => !period || c.period === period);
+        const sel    = parseInt(document.getElementById('period-select').value) || null;
+        const labels = activePeriodLabels();
+
+        let classes, showPeriod = false;
+        if (currentMode === 'all') {
+            classes    = buildingClasses[b.name] || [];
+            showPeriod = true;
+        } else if (currentMode === 'period') {
+            const period = sel || currentPeriod;
+            classes    = (buildingClasses[b.name] || []).filter(c => !period || c.period === period);
+            showPeriod = true;
+        } else {
+            // 'mine'
+            classes = (buildingClasses[b.name] || []).filter(c => c.period === currentPeriod);
+        }
 
         let html = `<div class="tt-title">&#128205; ${b.name}</div>`;
         if (classes.length === 0) {
-            html += `<div class="tt-none">No classes ${period ? 'this period' : 'scheduled'}</div>`;
+            html += `<div class="tt-none">No classes scheduled</div>`;
         } else {
             for (const c of classes) {
-                const room = c.location && c.location !== b.name ? c.location : b.name;
-                html += `<div class="tt-class">${c.activity}<br><span>${room}</span></div>`;
+                const room       = c.location && c.location !== b.name ? c.location : b.name;
+                const periodLabel = showPeriod && labels[c.period] ? `${labels[c.period]} · ` : '';
+                html += `<div class="tt-class">${c.activity}<br><span>${periodLabel}${room}</span></div>`;
             }
         }
         tooltip.innerHTML = html;
