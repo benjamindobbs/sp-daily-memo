@@ -330,6 +330,7 @@
             }
 
             window.openAdminSched=function(s){
+                if(adminExpanded&&adminSide===s){adminExpanded=false;document.getElementById('as-expand').style.display='none';return;}
                 adminSide=s;
                 if(!adminExpanded){adminExpanded=true;document.getElementById('as-expand').style.display='block';}
                 buildTimeline();
