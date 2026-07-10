@@ -699,6 +699,7 @@
                 <thead>
                     <tr style="border-bottom:2px solid var(--border-color);">
                         <th style="text-align:left; padding:6px 10px; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Building Name</th>
+                        <th style="text-align:left; padding:6px 10px; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Map</th>
                         <th style="text-align:center; padding:6px 10px; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">X</th>
                         <th style="text-align:center; padding:6px 10px; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Y</th>
                         <th style="padding:6px 10px;"></th>
@@ -708,6 +709,7 @@
                 <% buildings.forEach(b => { %>
                     <tr style="border-bottom:1px solid #f1f5f9;">
                         <td style="padding:7px 10px; font-weight:600;"><%= b.name %></td>
+                        <td style="padding:7px 10px; color:var(--text-muted); text-transform:capitalize;"><%= b.map %></td>
                         <td style="padding:7px 10px; text-align:center; color:var(--text-muted);"><%= b.x %></td>
                         <td style="padding:7px 10px; text-align:center; color:var(--text-muted);"><%= b.y %></td>
                         <td style="padding:7px 10px; text-align:right;">
@@ -733,6 +735,13 @@
                             style="width:200px; padding:6px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; font-family:inherit;">
                     </div>
                     <div>
+                        <label style="font-size:0.78rem; font-weight:700; display:block; margin-bottom:3px;">Map</label>
+                        <select name="map" required style="padding:6px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; font-family:inherit;">
+                            <option value="enrichment">Enrichment</option>
+                            <option value="sports">Sports</option>
+                        </select>
+                    </div>
+                    <div>
                         <label style="font-size:0.78rem; font-weight:700; display:block; margin-bottom:3px;">X (px)</label>
                         <input type="number" name="x" placeholder="0" required min="0"
                             style="width:90px; padding:6px 10px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; font-family:inherit;">
@@ -744,7 +753,7 @@
                     </div>
                     <button type="submit" class="btn btn-primary" style="padding:7px 18px;">Save Building</button>
                 </div>
-                <p style="font-size:0.75rem; color:var(--text-muted); margin:8px 0 0;">If the name already exists, coordinates will be updated.</p>
+                <p style="font-size:0.75rem; color:var(--text-muted); margin:8px 0 0;">If the name + map combination already exists, coordinates will be updated.</p>
             </form>
         </div>
 

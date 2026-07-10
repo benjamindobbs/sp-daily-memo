@@ -842,18 +842,48 @@ db.exec(`CREATE TABLE IF NOT EXISTS BuildingCoordinates (
     x    INTEGER NOT NULL,
     y    INTEGER NOT NULL
 )`);
-// Seed initial building coordinates (INSERT OR IGNORE — won't overwrite UI edits).
-const _seedBuildings = db.prepare('INSERT INTO BuildingCoordinates (name, x, y) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET x=excluded.x, y=excluded.y');
-for (const [name, x, y] of [
-    ['Dana',        193,  919],
-    ['Art',         272,  618],
-    ['Ceramics',    222,  526],
-    ['Foundations', 134,  534],
-    ['Library',     478,  480],
-    ['Commons',     272,   58],
-    ['Auerbach',    427, 1253],
-    ['Hillyer',     452, 1115],
-]) _seedBuildings.run(name, x, y);
+// Migration: add map column to BuildingCoordinates and change unique key to (name, map)
+try {
+    const bldgCols = db.prepare("PRAGMA table_info(BuildingCoordinates)").all();
+    if (!bldgCols.some(c => c.name === 'map')) {
+        db.exec(`
+            ALTER TABLE BuildingCoordinates RENAME TO BuildingCoordinates_old;
+            CREATE TABLE BuildingCoordinates (
+                id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT    NOT NULL,
+                map  TEXT    NOT NULL DEFAULT 'enrichment',
+                x    INTEGER NOT NULL,
+                y    INTEGER NOT NULL,
+                UNIQUE(name, map)
+            );
+            INSERT INTO BuildingCoordinates (id, name, map, x, y)
+                SELECT id, name, 'enrichment', x, y FROM BuildingCoordinates_old;
+            DROP TABLE BuildingCoordinates_old;
+        `);
+    }
+} catch(e) { console.error('[migration] BuildingCoordinates.map:', e.message); }
+// Seed building coordinates for both maps (upserts so deploys always apply corrected coords).
+const _seedBuildings = db.prepare('INSERT INTO BuildingCoordinates (name, map, x, y) VALUES (?, ?, ?, ?) ON CONFLICT(name, map) DO UPDATE SET x=excluded.x, y=excluded.y');
+for (const [name, map, x, y] of [
+    ['Dana',                  'enrichment',  193,  919],
+    ['Art',                   'enrichment',  272,  618],
+    ['Ceramics',              'enrichment',  222,  526],
+    ['Foundations',           'enrichment',  134,  534],
+    ['Library',               'enrichment',  478,  480],
+    ['Commons',               'enrichment',  272,   58],
+    ['Auerbach',              'enrichment',  427, 1253],
+    ['Hillyer',               'enrichment',  452, 1115],
+    ['Archery Range',         'sports',      352,   33],
+    ['Lot N',                 'sports',      524,   54],
+    ['Track & Field Complex', 'sports',      289,  226],
+    ['Baseball Field',        'sports',      545,  200],
+    ['Al-Marzook',            'sports',      310,  501],
+    ['Softball Field',        'sports',      511,  447],
+    ['Gym',                   'sports',      297,  760],
+    ['Pool',                  'sports',      310,  881],
+    ['Commons',               'sports',      268, 1194],
+    ['Hawk Hall',             'sports',      373, 1269],
+]) _seedBuildings.run(name, map, x, y);
 
 // Migration: add WeekNumber, MaxCapacity, Location to WeeklyOfferings
 try { db.prepare("SELECT WeekNumber FROM WeeklyOfferings LIMIT 1").get(); } catch {
@@ -2148,7 +2178,9 @@ app.get('/map', (req, res) => {
     const aw  = getActiveWeek();
     const cid = parseInt(req.cookies.selectedCounselor) || null;
 
-    const buildings = db.prepare('SELECT id, name, x, y FROM BuildingCoordinates ORDER BY name').all();
+    const allBuildings        = db.prepare('SELECT id, name, map, x, y FROM BuildingCoordinates ORDER BY name').all();
+    const enrichmentBuildings = allBuildings.filter(b => b.map === 'enrichment');
+    const sportsBuildings     = allBuildings.filter(b => b.map === 'sports');
 
     // Resolve location for each offering: Schedules (Instructor) → StaffWeekSchedules → Activities
     const offeringRows = db.prepare(`
@@ -2171,18 +2203,29 @@ app.get('/map', (req, res) => {
         ORDER BY wo.PeriodNumber, wo.ActivityName
     `).all(aw, aw).filter(r => r.location);
 
-    // Counselor's period→activity map for the active week
+    // Counselor's period→activity assignments for the active week
     const myPeriods = cid
         ? db.prepare('SELECT PeriodNumber AS period, ActivityName AS activity FROM CounselorWeekSchedules WHERE CounselorID=? AND WeekNumber=?')
               .all(cid, aw)
         : [];
 
-    const activeBlock = getActiveBlockForMap(ENRICHMENT_PERIODS, getESTMins());
+    // Default map: UL/SL → sports; everyone else → enrichment.
+    // Override if counselor has a sports-only period (3 or 6, which don't exist in enrichment).
+    const SPORTS_ROLES = new Set(['Unit Leader', 'Sports Leader']);
+    const counselor = cid ? db.prepare('SELECT StaffRole FROM Counselors WHERE CounselorID=?').get(cid) : null;
+    let defaultMap = 'enrichment';
+    if (counselor && SPORTS_ROLES.has(counselor.StaffRole)) defaultMap = 'sports';
+    if (myPeriods.some(mp => mp.period === 3 || mp.period === 6)) defaultMap = 'sports';
 
-    const periodLabels = {};
-    for (const p of ENRICHMENT_PERIODS) periodLabels[p.clockBlock] = p.label;
+    const estMins = getESTMins();
+    const enrichmentActiveBlock = getActiveBlockForMap(ENRICHMENT_PERIODS, estMins);
+    const sportsActiveBlock     = getActiveBlockForMap(SPORTS_PERIODS, estMins);
 
-    // Distinct location values already in use (to help with building setup)
+    const enrichmentPeriodLabels = {};
+    for (const p of ENRICHMENT_PERIODS) enrichmentPeriodLabels[p.clockBlock] = p.label;
+    const sportsPeriodLabels = {};
+    for (const p of SPORTS_PERIODS) sportsPeriodLabels[p.clockBlock] = p.label;
+
     const usedLocations = db.prepare(`
         SELECT DISTINCT Location FROM (
             SELECT Location FROM Schedules WHERE PersonType='Instructor' AND Location IS NOT NULL AND Location != ''
@@ -2192,20 +2235,22 @@ app.get('/map', (req, res) => {
     `).all().map(r => r.Location);
 
     res.render('map', {
-        buildings, offerings: offeringRows, myPeriods, activeBlock,
-        periodLabels, usedLocations,
+        enrichmentBuildings, sportsBuildings, offerings: offeringRows, myPeriods,
+        enrichmentActiveBlock, sportsActiveBlock,
+        enrichmentPeriodLabels, sportsPeriodLabels,
+        defaultMap, usedLocations,
         viewMode: req.cookies.viewMode || 'staff',
         isAdmin: req.cookies.adminAuth === 'true'
     });
 });
 
 app.post('/admin/building-coord', (req, res) => {
-    const { name, x, y } = req.body;
-    if (!name || x == null || y == null) return res.redirect('/settings?message=Missing+fields#map');
+    const { name, map, x, y } = req.body;
+    if (!name || !map || x == null || y == null) return res.redirect('/settings?message=Missing+fields#map');
     db.prepare(`
-        INSERT INTO BuildingCoordinates (name, x, y) VALUES (?, ?, ?)
-        ON CONFLICT(name) DO UPDATE SET x=excluded.x, y=excluded.y
-    `).run(name.trim(), parseInt(x), parseInt(y));
+        INSERT INTO BuildingCoordinates (name, map, x, y) VALUES (?, ?, ?, ?)
+        ON CONFLICT(name, map) DO UPDATE SET x=excluded.x, y=excluded.y
+    `).run(name.trim(), map, parseInt(x), parseInt(y));
     res.redirect('/settings?message=Building+saved#map');
 });
 
@@ -2657,7 +2702,7 @@ app.get('/settings', (req, res) => {
     const pdfExists = {};
     PDF_DOCS.forEach(d => { pdfExists[d.slug] = uploadedSlugs.has(d.slug); });
     const prepTargetWeek = getPrepTargetWeek();
-    const mapBuildings = db.prepare('SELECT id, name, x, y FROM BuildingCoordinates ORDER BY name').all();
+    const mapBuildings = db.prepare('SELECT id, name, map, x, y FROM BuildingCoordinates ORDER BY map, name').all();
     const mapUsedLocations = db.prepare(`
         SELECT DISTINCT Location FROM (
             SELECT Location FROM Schedules WHERE PersonType='Instructor' AND Location IS NOT NULL AND Location != ''

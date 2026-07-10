@@ -131,6 +131,12 @@
             color: white;
             border-color: var(--primary);
         }
+        .map-controls .divider {
+            width: 1px;
+            height: 24px;
+            background: var(--border-color);
+            margin: 0 4px;
+        }
         .map-controls select {
             padding: 6px 10px;
             border: 1px solid var(--border-color);
@@ -200,7 +206,8 @@
             <h1 style="margin:0;">Camp Map</h1>
         </div>
 
-        <% if (buildings.length === 0) { %>
+        <% const hasAnyBuildings = enrichmentBuildings.length > 0 || sportsBuildings.length > 0; %>
+        <% if (!hasAnyBuildings) { %>
         <div class="no-map-msg">
             <div style="font-size:2rem;margin-bottom:8px;">&#128205;</div>
             <p>No buildings configured yet.<% if (isAdmin) { %> Add building coordinates in <a href="/settings#map">Settings → Camp Map Buildings</a>.<% } %></p>
@@ -208,27 +215,31 @@
         <% } else { %>
 
         <div class="map-controls">
+            <!-- Map toggle -->
+            <button class="btn-toggle btn-map-toggle" id="btn-map-enrichment" onclick="switchMap('enrichment')">Enrichment</button>
+            <button class="btn-toggle btn-map-toggle" id="btn-map-sports" onclick="switchMap('sports')">Sports</button>
+            <div class="divider"></div>
+            <!-- View toggle -->
             <% if (myPeriods.length > 0) { %>
-            <button class="btn-toggle active" onclick="setMode('mine')" id="btn-mine">My Class</button>
+            <button class="btn-toggle" id="btn-mine" onclick="setMode('mine')">My Class</button>
             <% } %>
-            <button class="btn-toggle <%= myPeriods.length === 0 ? 'active' : '' %>" onclick="setMode('period')" id="btn-period">This Period</button>
-            <button class="btn-toggle" onclick="setMode('all')" id="btn-all">All</button>
+            <button class="btn-toggle" id="btn-period" onclick="setMode('period')">This Period</button>
+            <button class="btn-toggle" id="btn-all" onclick="setMode('all')">All</button>
             <select id="period-select" onchange="onPeriodSelect(this.value)">
                 <option value="">— Select period —</option>
-                <% Object.entries(periodLabels).sort((a,b)=>a[0]-b[0]).forEach(([block, label]) => { %>
-                <option value="<%= block %>"><%= label %></option>
-                <% }) %>
             </select>
         </div>
 
         <div class="map-outer">
             <div class="map-wrap" id="mapWrap">
-                <img id="mapImg" src="/images/camp-map.png" alt="Camp Map"
+                <img id="mapImgEnrichment" src="/images/camp-map-enrichment.png" alt="Enrichment Map"
+                     onerror="this.style.display='none'; document.getElementById('mapMissing').style.display='block';">
+                <img id="mapImgSports" src="/images/camp-map-sports.png" alt="Sports Map" style="display:none;"
                      onerror="this.style.display='none'; document.getElementById('mapMissing').style.display='block';">
                 <div id="mapMissing" style="display:none;" class="no-map-msg">
-                    Map image not found. Upload <code>camp-map.png</code> to <code>public/images/</code>.
+                    Map image not found. Check that <code>camp-map-enrichment.png</code> and <code>camp-map-sports.png</code> exist in <code>public/images/</code>.
                 </div>
-                <!-- Pins and tooltip injected/positioned relative to this element -->
+                <!-- Pins and tooltip positioned relative to this element -->
                 <div class="map-tooltip" id="tooltip"></div>
             </div>
         </div>
@@ -242,61 +253,71 @@
     </div>
 
     <script>
-    const BUILDINGS   = <%- JSON.stringify(buildings) %>;
-    const OFFERINGS   = <%- JSON.stringify(offerings) %>;
-    const MY_PERIODS  = <%- JSON.stringify(myPeriods) %>;
-    const ACTIVE_BLOCK = <%= activeBlock !== null ? activeBlock : 'null' %>;
-    const PERIOD_LABELS = <%- JSON.stringify(periodLabels) %>;
-
-    // Build map: buildingName → [{activity, period, enrollment, location}]
-    // Match by prefix so "Dana 101" maps to the "Dana" pin.
-    const buildingClasses = {};
-    for (const b of BUILDINGS) buildingClasses[b.name] = [];
-    for (const o of OFFERINGS) {
-        const loc = (o.location || '').trim();
-        for (const b of BUILDINGS) {
-            if (loc === b.name || loc.toLowerCase().startsWith(b.name.toLowerCase() + ' ')) {
-                buildingClasses[b.name].push(o);
-                break;
-            }
-        }
-    }
+    const ENRICHMENT_BUILDINGS    = <%- JSON.stringify(enrichmentBuildings) %>;
+    const SPORTS_BUILDINGS        = <%- JSON.stringify(sportsBuildings) %>;
+    const OFFERINGS               = <%- JSON.stringify(offerings) %>;
+    const MY_PERIODS              = <%- JSON.stringify(myPeriods) %>;
+    const ENRICHMENT_ACTIVE_BLOCK = <%= enrichmentActiveBlock !== null ? enrichmentActiveBlock : 'null' %>;
+    const SPORTS_ACTIVE_BLOCK     = <%= sportsActiveBlock !== null ? sportsActiveBlock : 'null' %>;
+    const ENRICHMENT_LABELS       = <%- JSON.stringify(enrichmentPeriodLabels) %>;
+    const SPORTS_LABELS           = <%- JSON.stringify(sportsPeriodLabels) %>;
+    const DEFAULT_MAP             = '<%= defaultMap %>';
 
     // My activities: period → activity name
     const myMap = {};
     for (const mp of MY_PERIODS) myMap[mp.period] = mp.activity;
 
+    let currentMap    = DEFAULT_MAP;
     let currentMode   = MY_PERIODS.length > 0 ? 'mine' : 'period';
-    let currentPeriod = ACTIVE_BLOCK;
+    let currentPeriod = DEFAULT_MAP === 'sports' ? SPORTS_ACTIVE_BLOCK : ENRICHMENT_ACTIVE_BLOCK;
 
-    // --- PIN ELEMENTS ---
-    const img  = document.getElementById('mapImg');
-    const wrap = document.getElementById('mapWrap');
-    const pins = [];
+    function activeBuildings()   { return currentMap === 'enrichment' ? ENRICHMENT_BUILDINGS : SPORTS_BUILDINGS; }
+    function activePeriodLabels(){ return currentMap === 'enrichment' ? ENRICHMENT_LABELS    : SPORTS_LABELS;    }
+    function activeBlock()       { return currentMap === 'enrichment' ? ENRICHMENT_ACTIVE_BLOCK : SPORTS_ACTIVE_BLOCK; }
 
+    // Build map: buildingName → [{activity, period, enrollment, location}]
+    // Match by prefix so "Dana 101" maps to the "Dana" pin.
+    function buildBuildingClasses() {
+        const buildings = activeBuildings();
+        const result = {};
+        for (const b of buildings) result[b.name] = [];
+        for (const o of OFFERINGS) {
+            const loc = (o.location || '').trim();
+            for (const b of buildings) {
+                if (loc === b.name || loc.toLowerCase().startsWith(b.name.toLowerCase() + ' ')) {
+                    result[b.name].push(o);
+                    break;
+                }
+            }
+        }
+        return result;
+    }
+
+    // --- IMAGES ---
+    const imgEnrichment = document.getElementById('mapImgEnrichment');
+    const imgSports     = document.getElementById('mapImgSports');
+    const wrap          = document.getElementById('mapWrap');
+    const pins          = [];
+
+    function activeImg() {
+        return currentMap === 'enrichment' ? imgEnrichment : imgSports;
+    }
+
+    // --- PINS ---
     function buildPins() {
-        // Remove old pins
         wrap.querySelectorAll('.map-pin').forEach(p => p.remove());
         pins.length = 0;
-
-        for (const b of BUILDINGS) {
+        for (const b of activeBuildings()) {
             const pin = document.createElement('div');
             pin.className = 'map-pin';
             pin.dataset.name = b.name;
             pin.dataset.x = b.x;
             pin.dataset.y = b.y;
-
             const initials = b.name.split(/\s+/).slice(0,2).map(w => w[0]).join('');
             pin.innerHTML = `<div class="pin-bubble">${initials}</div>`;
-
-            // Hover / tap events
             pin.addEventListener('mouseenter', e => showTooltip(e, b));
             pin.addEventListener('mouseleave', hideTooltip);
-            pin.addEventListener('click', e => {
-                e.stopPropagation();
-                showTooltip(e, b, true);
-            });
-
+            pin.addEventListener('click', e => { e.stopPropagation(); showTooltip(e, b, true); });
             wrap.appendChild(pin);
             pins.push({ el: pin, b });
         }
@@ -304,6 +325,7 @@
     }
 
     function positionPins() {
+        const img = activeImg();
         if (!img.naturalWidth) return;
         const scaleX = img.clientWidth  / img.naturalWidth;
         const scaleY = img.clientHeight / img.naturalHeight;
@@ -313,46 +335,75 @@
         }
     }
 
-    img.addEventListener('load', () => { buildPins(); applyFilter(); });
-    if (img.complete) { buildPins(); applyFilter(); }
+    imgEnrichment.addEventListener('load', () => { if (currentMap === 'enrichment') { buildPins(); applyFilter(); } });
+    imgSports.addEventListener('load',     () => { if (currentMap === 'sports')     { buildPins(); applyFilter(); } });
+    if (imgEnrichment.complete && currentMap === 'enrichment') { buildPins(); applyFilter(); }
+    if (imgSports.complete     && currentMap === 'sports')     { buildPins(); applyFilter(); }
     window.addEventListener('resize', positionPins);
     document.addEventListener('click', hideTooltip);
 
+    // --- MAP TOGGLE ---
+    function switchMap(map) {
+        currentMap = map;
+        currentPeriod = activeBlock();
+
+        imgEnrichment.style.display = map === 'enrichment' ? 'block' : 'none';
+        imgSports.style.display     = map === 'sports'     ? 'block' : 'none';
+
+        document.querySelectorAll('.btn-map-toggle').forEach(b => b.classList.remove('active'));
+        document.getElementById('btn-map-' + map).classList.add('active');
+
+        rebuildPeriodSelect();
+        buildPins();
+        applyFilter();
+    }
+
+    function rebuildPeriodSelect() {
+        const sel    = document.getElementById('period-select');
+        const labels = activePeriodLabels();
+        sel.innerHTML = '<option value="">— Select period —</option>';
+        Object.entries(labels).sort((a,b) => +a[0] - +b[0]).forEach(([block, label]) => {
+            const opt = document.createElement('option');
+            opt.value = block;
+            opt.textContent = label;
+            sel.appendChild(opt);
+        });
+    }
+
     // --- FILTER ---
     function applyFilter() {
+        const buildingClasses = buildBuildingClasses();
         const sel = parseInt(document.getElementById('period-select').value) || null;
 
         for (const { el, b } of pins) {
             const classes = buildingClasses[b.name] || [];
-
             let show = false, highlight = false;
 
             if (currentMode === 'mine') {
-                const period = currentPeriod;
+                const period    = currentPeriod;
                 const myActivity = period ? myMap[period] : null;
-                // Check if any class at this building matches counselor's assignment this period
                 highlight = classes.some(c => c.activity === myActivity && c.period === period);
                 show = highlight;
             } else if (currentMode === 'period') {
                 const period = sel || currentPeriod;
                 show = classes.some(c => c.period === period);
                 highlight = MY_PERIODS.length > 0 && show && classes.some(c => c.activity === myMap[period] && c.period === period);
-            } else { // all
+            } else {
                 show = classes.length > 0;
                 if (currentPeriod) {
                     highlight = MY_PERIODS.length > 0 && classes.some(c => c.activity === myMap[currentPeriod] && c.period === currentPeriod);
                 }
             }
 
-            el.classList.toggle('hidden', !show);
-            el.classList.toggle('highlighted', highlight && show);
-            el.classList.toggle('dimmed', false);
+            el.classList.toggle('hidden',      !show);
+            el.classList.toggle('highlighted',  highlight && show);
+            el.classList.toggle('dimmed',       false);
         }
     }
 
     function setMode(mode) {
         currentMode = mode;
-        document.querySelectorAll('.btn-toggle').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('#btn-mine, #btn-period, #btn-all').forEach(b => b.classList.remove('active'));
         const id = mode === 'mine' ? 'btn-mine' : mode === 'period' ? 'btn-period' : 'btn-all';
         const btn = document.getElementById(id);
         if (btn) btn.classList.add('active');
@@ -363,7 +414,7 @@
     function onPeriodSelect(val) {
         if (val) {
             currentMode = 'period';
-            document.querySelectorAll('.btn-toggle').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('#btn-mine, #btn-period, #btn-all').forEach(b => b.classList.remove('active'));
             document.getElementById('btn-period').classList.add('active');
         }
         applyFilter();
@@ -373,9 +424,9 @@
     const tooltip = document.getElementById('tooltip');
 
     function showTooltip(e, b, sticky) {
+        const buildingClasses = buildBuildingClasses();
         const period = currentMode === 'mine' ? currentPeriod
                      : (parseInt(document.getElementById('period-select').value) || currentPeriod);
-
         const classes = (buildingClasses[b.name] || []).filter(c => !period || c.period === period);
 
         let html = `<div class="tt-title">&#128205; ${b.name}</div>`;
@@ -387,7 +438,7 @@
                 html += `<div class="tt-class">${c.activity}<br><span>${room}</span></div>`;
             }
         }
-        tooltip.innerHTML  = html;
+        tooltip.innerHTML = html;
         tooltip.classList.add('visible');
         positionTooltip(e);
     }
@@ -402,13 +453,10 @@
         const vpW  = window.innerWidth;
         const vpH  = window.innerHeight;
 
-        // Prefer right of touch point; flip left if it would leave the viewport
         let left = cx + 14;
         if (rect.left + left + tw > vpW - pad) left = cx - tw - 14;
-        // Clamp so the tooltip never exits the left edge of the viewport
         left = Math.max(pad - rect.left, left);
 
-        // Prefer below touch point; flip above if it would leave the viewport
         let top = cy + 10;
         if (rect.top + top + th > vpH - pad) top = cy - th - 14;
         top = Math.max(4, top);
@@ -420,6 +468,19 @@
     function hideTooltip() {
         tooltip.classList.remove('visible');
     }
+
+    // --- INIT ---
+    rebuildPeriodSelect();
+    // Set initial active states
+    document.getElementById('btn-map-' + DEFAULT_MAP).classList.add('active');
+    (() => {
+        const initModeBtn = currentMode === 'mine' ? 'btn-mine' : currentMode === 'period' ? 'btn-period' : 'btn-all';
+        const btn = document.getElementById(initModeBtn);
+        if (btn) btn.classList.add('active');
+    })();
+    // Hide the non-default image immediately
+    if (DEFAULT_MAP === 'enrichment') imgSports.style.display = 'none';
+    else imgEnrichment.style.display = 'none';
     </script>
 </body>
 </html>
