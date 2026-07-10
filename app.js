@@ -1635,9 +1635,18 @@ app.get('/staff', (req, res) => {
     const cRow = cid ? db.prepare('SELECT FirstName, LastName, StaffRole FROM Counselors WHERE CounselorID = ?').get(cid) : null;
     const selectedCounselorName = cRow ? `${cRow.FirstName} ${cRow.LastName}` : null;
     const isHomeCounselor = ['Counselor', 'Swim Counselor'].includes(cRow?.StaffRole);
-    const SPORTS_STAFF_ROLES = new Set(['Unit Leader', 'Sports Leader']);
-    const staffSide = (cRow && SPORTS_STAFF_ROLES.has(cRow.StaffRole)) ? 'sports' : 'enrichment';
-    const staffScheduleFull = staffSide === 'sports' ? SPORTS_SCHEDULE_FULL : ENRICHMENT_SCHEDULE_FULL;
+    let staffSide = 'enrichment';
+    if (cid) {
+        const _staffAw = getActiveWeek();
+        const _sideRow = db.prepare(`
+            SELECT a.SideOfCamp
+            FROM CounselorWeekSchedules cws
+            JOIN Activities a ON a.Name = cws.ActivityName
+            WHERE cws.CounselorID = ? AND cws.WeekNumber = ? AND a.SideOfCamp IS NOT NULL
+            LIMIT 1
+        `).get(cid, _staffAw);
+        if (_sideRow) staffSide = _sideRow.SideOfCamp === 'Sports' ? 'sports' : 'enrichment';
+    }
     const announcement = db.prepare("SELECT content FROM HubContent WHERE id='announcement'").get()?.content || '';
     const released = getReleasedWeek();
     const releasedSchedule = (released && cid)
