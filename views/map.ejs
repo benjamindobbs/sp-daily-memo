@@ -375,19 +375,25 @@
     }
 
     function positionTooltip(e) {
-        const rect  = wrap.getBoundingClientRect();
-        const cx    = e.clientX - rect.left;
-        const cy    = e.clientY - rect.top;
-        const tw    = tooltip.offsetWidth  || 200;
-        const th    = tooltip.offsetHeight || 80;
-        const ww    = wrap.clientWidth;
-        const wh    = wrap.clientHeight;
+        const rect = wrap.getBoundingClientRect();
+        const cx   = e.clientX - rect.left;
+        const cy   = e.clientY - rect.top;
+        const tw   = tooltip.offsetWidth  || 220;
+        const th   = tooltip.offsetHeight || 100;
+        const pad  = 8;
+        const vpW  = window.innerWidth;
+        const vpH  = window.innerHeight;
 
+        // Prefer right of touch point; flip left if it would leave the viewport
         let left = cx + 14;
-        let top  = cy - 10;
-        if (left + tw > ww) left = cx - tw - 14;
-        if (top + th  > wh) top  = cy - th + 10;
-        if (top < 0) top = 4;
+        if (rect.left + left + tw > vpW - pad) left = cx - tw - 14;
+        // Clamp so the tooltip never exits the left edge of the viewport
+        left = Math.max(pad - rect.left, left);
+
+        // Prefer below touch point; flip above if it would leave the viewport
+        let top = cy + 10;
+        if (rect.top + top + th > vpH - pad) top = cy - th - 14;
+        top = Math.max(4, top);
 
         tooltip.style.left = left + 'px';
         tooltip.style.top  = top  + 'px';

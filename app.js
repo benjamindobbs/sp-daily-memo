@@ -845,14 +845,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS BuildingCoordinates (
 // Seed initial building coordinates (INSERT OR IGNORE — won't overwrite UI edits).
 const _seedBuildings = db.prepare('INSERT OR IGNORE INTO BuildingCoordinates (name, x, y) VALUES (?, ?, ?)');
 for (const [name, x, y] of [
-    ['Dana',        46,  220],
-    ['Art',         65,  148],
-    ['Ceramics',    53,  126],
-    ['Foundations', 32,  128],
-    ['Library',    114,  115],
-    ['Commons',     65,   14],
-    ['Auerbach',   102,  300],
-    ['Hillyer',    108,  267],
+    ['Dana',        193,  919],
+    ['Art',         272,  618],
+    ['Ceramics',    222,  526],
+    ['Foundations', 134,  534],
+    ['Library',     478,  480],
+    ['Commons',     272,   58],
+    ['Auerbach',    427, 1253],
+    ['Hillyer',     452, 1115],
 ]) _seedBuildings.run(name, x, y);
 
 // Migration: add WeekNumber, MaxCapacity, Location to WeeklyOfferings
@@ -2177,15 +2177,10 @@ app.get('/map', (req, res) => {
               .all(cid, aw)
         : [];
 
-    const activeBlock = getActiveBlockForMap(SPORTS_PERIODS, getESTMins());
+    const activeBlock = getActiveBlockForMap(ENRICHMENT_PERIODS, getESTMins());
 
-    // Period labels: combine Sports and Enrichment names per clock block
     const periodLabels = {};
-    for (const p of SPORTS_PERIODS)     periodLabels[p.clockBlock] = p.label;
-    for (const p of ENRICHMENT_PERIODS) {
-        if (periodLabels[p.clockBlock]) periodLabels[p.clockBlock] += ' / ' + p.label;
-        else                             periodLabels[p.clockBlock] = p.label;
-    }
+    for (const p of ENRICHMENT_PERIODS) periodLabels[p.clockBlock] = p.label;
 
     // Distinct location values already in use (to help with building setup)
     const usedLocations = db.prepare(`
