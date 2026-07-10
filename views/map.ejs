@@ -65,7 +65,6 @@
         }
         .map-pin.dimmed {
             opacity: 0.25;
-            pointer-events: none;
         }
         .map-pin.hidden {
             display: none;
@@ -377,10 +376,10 @@
 
         for (const { el, b } of pins) {
             const classes = buildingClasses[b.name] || [];
-            let show = false, highlight = false;
+            let show = false, highlight = false, dim = false;
 
             if (currentMode === 'mine') {
-                const period    = currentPeriod;
+                const period     = currentPeriod;
                 const myActivity = period ? myMap[period] : null;
                 highlight = classes.some(c => c.activity === myActivity && c.period === period);
                 show = highlight;
@@ -389,15 +388,17 @@
                 show = classes.some(c => c.period === period);
                 highlight = MY_PERIODS.length > 0 && show && classes.some(c => c.activity === myMap[period] && c.period === period);
             } else {
-                show = classes.length > 0;
-                if (currentPeriod) {
+                // All mode: show every configured building; dim ones with no scheduled classes
+                show = true;
+                dim  = classes.length === 0;
+                if (!dim && currentPeriod) {
                     highlight = MY_PERIODS.length > 0 && classes.some(c => c.activity === myMap[currentPeriod] && c.period === currentPeriod);
                 }
             }
 
             el.classList.toggle('hidden',      !show);
             el.classList.toggle('highlighted',  highlight && show);
-            el.classList.toggle('dimmed',       false);
+            el.classList.toggle('dimmed',       dim);
         }
     }
 

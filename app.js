@@ -908,6 +908,7 @@ for (const [name, map, x, y] of [
     ['Pool',                  'sports',      310,  881],
     ['Commons',               'sports',      268, 1194],
     ['Hawk Hall',             'sports',      373, 1269],
+    ['C Complex',             'sports',       62, 1015],
 ]) _seedBuildings.run(name, map, x, y);
 
 // Migration: add WeekNumber, MaxCapacity, Location to WeeklyOfferings
