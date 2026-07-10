@@ -843,7 +843,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS BuildingCoordinates (
     y    INTEGER NOT NULL
 )`);
 // Seed initial building coordinates (INSERT OR IGNORE — won't overwrite UI edits).
-const _seedBuildings = db.prepare('INSERT OR IGNORE INTO BuildingCoordinates (name, x, y) VALUES (?, ?, ?)');
+const _seedBuildings = db.prepare('INSERT INTO BuildingCoordinates (name, x, y) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET x=excluded.x, y=excluded.y');
 for (const [name, x, y] of [
     ['Dana',        193,  919],
     ['Art',         272,  618],
