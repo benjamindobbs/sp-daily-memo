@@ -57,6 +57,31 @@ const ENRICHMENT_PERIODS = [
     { startH: 14, startM: 40, endH: 16, endM: 0,  label: 'Enrichment 4', clockBlock: 5 },
 ];
 
+// Full schedules including non-class blocks — used for the hub schedule bar widget.
+const SPORTS_SCHEDULE_FULL = [
+    { startH: 9,  startM: 0,  endH: 9,  endM: 50, label: 'Sports 1' },
+    { startH: 10, startM: 0,  endH: 10, endM: 50, label: 'Sports 2' },
+    { startH: 11, startM: 0,  endH: 11, endM: 50, label: 'Sports 3' },
+    { startH: 12, startM: 0,  endH: 12, endM: 50, label: 'Lunch' },
+    { startH: 13, startM: 10, endH: 13, endM: 45, label: 'Sports 4' },
+    { startH: 13, startM: 55, endH: 14, endM: 10, label: 'Big Game' },
+    { startH: 14, startM: 20, endH: 14, endM: 55, label: 'Sports 5' },
+    { startH: 15, startM: 5,  endH: 15, endM: 20, label: 'Popsicle Break' },
+    { startH: 15, startM: 30, endH: 16, endM: 5,  label: 'Sports 6' },
+    { startH: 16, startM: 5,  endH: 16, endM: 30, label: 'Dismissal' },
+];
+
+const ENRICHMENT_SCHEDULE_FULL = [
+    { startH: 9,  startM: 0,  endH: 10, endM: 20, label: 'Enrichment 1' },
+    { startH: 10, startM: 20, endH: 10, endM: 40, label: 'Snack Break' },
+    { startH: 10, startM: 40, endH: 12, endM: 0,  label: 'Enrichment 2' },
+    { startH: 12, startM: 0,  endH: 12, endM: 50, label: 'Lunch' },
+    { startH: 13, startM: 0,  endH: 14, endM: 20, label: 'Enrichment 3' },
+    { startH: 14, startM: 20, endH: 14, endM: 40, label: 'Popsicle Break' },
+    { startH: 14, startM: 40, endH: 16, endM: 0,  label: 'Enrichment 4' },
+    { startH: 16, startM: 0,  endH: 16, endM: 30, label: 'Dismissal' },
+];
+
 const CAMP_DAY_START_MINS = 9 * 60;        // 9:00 AM
 const CAMP_DAY_END_MINS   = 16 * 60 + 5;   // 4:05 PM (after Sports 6 ends)
 
@@ -1609,6 +1634,9 @@ app.get('/staff', (req, res) => {
     const cRow = cid ? db.prepare('SELECT FirstName, LastName, StaffRole FROM Counselors WHERE CounselorID = ?').get(cid) : null;
     const selectedCounselorName = cRow ? `${cRow.FirstName} ${cRow.LastName}` : null;
     const isHomeCounselor = ['Counselor', 'Swim Counselor'].includes(cRow?.StaffRole);
+    const SPORTS_STAFF_ROLES = new Set(['Unit Leader', 'Sports Leader']);
+    const staffSide = (cRow && SPORTS_STAFF_ROLES.has(cRow.StaffRole)) ? 'sports' : 'enrichment';
+    const staffScheduleFull = staffSide === 'sports' ? SPORTS_SCHEDULE_FULL : ENRICHMENT_SCHEDULE_FULL;
     const announcement = db.prepare("SELECT content FROM HubContent WHERE id='announcement'").get()?.content || '';
     const released = getReleasedWeek();
     const releasedSchedule = (released && cid)
@@ -1747,7 +1775,8 @@ app.get('/staff', (req, res) => {
         selectedCounselorName, announcement, releasedSchedule, releasedSessionLabel,
         yesterdayWinner, todayWinner, photoPhase,
         todayPickups, todayLateArrivals, todayEarlyDismissals, todayScheduleChanges, today,
-        absentByGroup, rosterAbsent, nurseNow, caseNow
+        absentByGroup, rosterAbsent, nurseNow, caseNow,
+        staffScheduleFull, staffSide
     });
 });
 
@@ -1864,7 +1893,9 @@ app.get('/admin', (req, res) => {
         hubStats, today,
         alertMessage: req.query.message,
         announcement, directorNotes, sessions,
-        adminName, adminUsers, absentByGroup
+        adminName, adminUsers, absentByGroup,
+        sportsScheduleFull: SPORTS_SCHEDULE_FULL,
+        enrichmentScheduleFull: ENRICHMENT_SCHEDULE_FULL
     });
 });
 

@@ -219,6 +219,90 @@
 
         </div>
 
+        <!-- Schedule Bars -->
+        <div class="admin-sched-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px;">
+            <div style="padding:14px 18px; background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow);">
+                <div style="font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#3b82f6; margin-bottom:6px;">Sports</div>
+                <div id="as-name" style="font-size:1rem; font-weight:700; color:var(--text); margin-bottom:8px; display:none;"></div>
+                <div id="as-row" style="display:none; align-items:center; gap:8px;">
+                    <span id="as-start" style="font-size:0.72rem; color:var(--text-muted); min-width:36px; font-variant-numeric:tabular-nums;"></span>
+                    <div style="flex:1; height:6px; background:var(--border-color); border-radius:3px; overflow:hidden;">
+                        <div id="as-fill" style="height:100%; border-radius:3px; background:#3b82f6; width:0%; transition:width 0.5s;"></div>
+                    </div>
+                    <span id="as-end" style="font-size:0.72rem; color:var(--text-muted); min-width:36px; text-align:right; font-variant-numeric:tabular-nums;"></span>
+                </div>
+                <div id="as-status" style="font-size:0.8rem; color:var(--text-muted); font-style:italic;"></div>
+            </div>
+            <div style="padding:14px 18px; background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow);">
+                <div style="font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#10b981; margin-bottom:6px;">Enrichment</div>
+                <div id="ae-name" style="font-size:1rem; font-weight:700; color:var(--text); margin-bottom:8px; display:none;"></div>
+                <div id="ae-row" style="display:none; align-items:center; gap:8px;">
+                    <span id="ae-start" style="font-size:0.72rem; color:var(--text-muted); min-width:36px; font-variant-numeric:tabular-nums;"></span>
+                    <div style="flex:1; height:6px; background:var(--border-color); border-radius:3px; overflow:hidden;">
+                        <div id="ae-fill" style="height:100%; border-radius:3px; background:#10b981; width:0%; transition:width 0.5s;"></div>
+                    </div>
+                    <span id="ae-end" style="font-size:0.72rem; color:var(--text-muted); min-width:36px; text-align:right; font-variant-numeric:tabular-nums;"></span>
+                </div>
+                <div id="ae-status" style="font-size:0.8rem; color:var(--text-muted); font-style:italic;"></div>
+            </div>
+        </div>
+        <script>
+        (function() {
+            const SPORTS_SCHED     = <%- JSON.stringify(sportsScheduleFull) %>;
+            const ENRICHMENT_SCHED = <%- JSON.stringify(enrichmentScheduleFull) %>;
+            function estMins() {
+                const p = new Intl.DateTimeFormat('en-US', { timeZone:'America/New_York', hour:'numeric', minute:'numeric', hour12:false }).formatToParts(new Date());
+                return parseInt(p.find(x=>x.type==='hour').value)*60 + parseInt(p.find(x=>x.type==='minute').value);
+            }
+            function fmt(m) { const h=Math.floor(m/60), min=m%60, h12=h>12?h-12:(h===0?12:h); return `${h12}:${String(min).padStart(2,'0')}`; }
+            function getState(sched, mins) {
+                for (const b of sched) {
+                    const s=b.startH*60+b.startM, e=b.endH*60+b.endM;
+                    if (mins>=s && mins<e) return { type:'active', b, s, e, pct:Math.round((mins-s)/(e-s)*100) };
+                }
+                if (mins < sched[0].startH*60+sched[0].startM) return { type:'before', next:sched[0] };
+                for (let i=0; i<sched.length-1; i++) {
+                    const te=sched[i].endH*60+sched[i].endM, ns=sched[i+1].startH*60+sched[i+1].startM;
+                    if (mins>=te && mins<ns) return { type:'between', next:sched[i+1] };
+                }
+                return { type:'after' };
+            }
+            function renderBar(prefix, sched, color) {
+                const st = getState(sched, estMins());
+                const nameEl=document.getElementById(prefix+'-name'), rowEl=document.getElementById(prefix+'-row'),
+                      fillEl=document.getElementById(prefix+'-fill'), startEl=document.getElementById(prefix+'-start'),
+                      endEl=document.getElementById(prefix+'-end'), statusEl=document.getElementById(prefix+'-status');
+                if (st.type==='active') {
+                    nameEl.textContent=st.b.label; startEl.textContent=fmt(st.s); endEl.textContent=fmt(st.e);
+                    fillEl.style.width=st.pct+'%';
+                    nameEl.style.display=''; rowEl.style.display='flex'; statusEl.textContent='';
+                } else if (st.type==='between') {
+                    const ns=st.next.startH*60+st.next.startM;
+                    nameEl.textContent='Next: '+st.next.label; startEl.textContent=''; endEl.textContent=fmt(ns);
+                    fillEl.style.width='0%';
+                    nameEl.style.display=''; rowEl.style.display='flex'; statusEl.textContent='';
+                } else if (st.type==='before') {
+                    nameEl.style.display='none'; rowEl.style.display='none';
+                    statusEl.textContent='Camp starts at '+fmt(st.next.startH*60+st.next.startM);
+                } else {
+                    nameEl.style.display='none'; rowEl.style.display='none';
+                    statusEl.textContent='Camp day complete';
+                }
+            }
+            function updateAll() {
+                renderBar('as', SPORTS_SCHED,     '#3b82f6');
+                renderBar('ae', ENRICHMENT_SCHED, '#10b981');
+            }
+            updateAll();
+            setInterval(updateAll, 30000);
+        })();
+        </script>
+        <style>
+        @media (max-width: 600px) { .admin-sched-grid { grid-template-columns: 1fr !important; } }
+        @media (prefers-color-scheme: dark) { .admin-sched-grid > div { background: #1e293b !important; } }
+        :root[data-theme="dark"] .admin-sched-grid > div { background: #1e293b !important; }
+        </style>
+
         <%
         const anyAbsent = Object.values(absentByGroup).some(arr => arr.length > 0);
         %>

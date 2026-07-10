@@ -57,6 +57,67 @@
             </div>
         </header>
 
+        <!-- Schedule Bar -->
+        <div style="margin-bottom:16px; padding:14px 18px; background:white; border:1px solid var(--border-color); border-radius:12px; box-shadow:var(--shadow);">
+            <div style="font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Now</div>
+            <div id="ss-name" style="font-size:1rem; font-weight:700; color:var(--text); margin-bottom:8px; display:none;"></div>
+            <div id="ss-row" style="display:none; align-items:center; gap:8px;">
+                <span id="ss-start" style="font-size:0.72rem; color:var(--text-muted); min-width:36px; font-variant-numeric:tabular-nums;"></span>
+                <div style="flex:1; height:6px; background:var(--border-color); border-radius:3px; overflow:hidden;">
+                    <div id="ss-fill" style="height:100%; border-radius:3px; width:0%; transition:width 0.5s;"></div>
+                </div>
+                <span id="ss-end" style="font-size:0.72rem; color:var(--text-muted); min-width:36px; text-align:right; font-variant-numeric:tabular-nums;"></span>
+            </div>
+            <div id="ss-status" style="font-size:0.8rem; color:var(--text-muted); font-style:italic;"></div>
+        </div>
+        <script>
+        (function() {
+            const SCHED = <%- JSON.stringify(staffScheduleFull) %>;
+            const COLOR = '<%= staffSide %>' === 'sports' ? '#3b82f6' : '#10b981';
+            function estMins() {
+                const p = new Intl.DateTimeFormat('en-US', { timeZone:'America/New_York', hour:'numeric', minute:'numeric', hour12:false }).formatToParts(new Date());
+                return parseInt(p.find(x=>x.type==='hour').value)*60 + parseInt(p.find(x=>x.type==='minute').value);
+            }
+            function fmt(m) { const h=Math.floor(m/60), min=m%60, h12=h>12?h-12:(h===0?12:h); return `${h12}:${String(min).padStart(2,'0')}`; }
+            function getState(mins) {
+                for (const b of SCHED) {
+                    const s=b.startH*60+b.startM, e=b.endH*60+b.endM;
+                    if (mins>=s && mins<e) return { type:'active', b, s, e, pct:Math.round((mins-s)/(e-s)*100) };
+                }
+                if (mins < SCHED[0].startH*60+SCHED[0].startM) return { type:'before', next:SCHED[0] };
+                for (let i=0; i<SCHED.length-1; i++) {
+                    const te=SCHED[i].endH*60+SCHED[i].endM, ns=SCHED[i+1].startH*60+SCHED[i+1].startM;
+                    if (mins>=te && mins<ns) return { type:'between', next:SCHED[i+1] };
+                }
+                return { type:'after' };
+            }
+            function update() {
+                const st = getState(estMins());
+                const nameEl=document.getElementById('ss-name'), rowEl=document.getElementById('ss-row'),
+                      fillEl=document.getElementById('ss-fill'), startEl=document.getElementById('ss-start'),
+                      endEl=document.getElementById('ss-end'), statusEl=document.getElementById('ss-status');
+                if (st.type==='active') {
+                    nameEl.textContent=st.b.label; startEl.textContent=fmt(st.s); endEl.textContent=fmt(st.e);
+                    fillEl.style.width=st.pct+'%'; fillEl.style.background=COLOR;
+                    nameEl.style.display=''; rowEl.style.display='flex'; statusEl.textContent='';
+                } else if (st.type==='between') {
+                    const ns=st.next.startH*60+st.next.startM;
+                    nameEl.textContent='Next: '+st.next.label; startEl.textContent=''; endEl.textContent=fmt(ns);
+                    fillEl.style.width='0%'; fillEl.style.background=COLOR;
+                    nameEl.style.display=''; rowEl.style.display='flex'; statusEl.textContent='';
+                } else if (st.type==='before') {
+                    nameEl.style.display='none'; rowEl.style.display='none';
+                    statusEl.textContent='Camp starts at '+fmt(st.next.startH*60+st.next.startM);
+                } else {
+                    nameEl.style.display='none'; rowEl.style.display='none';
+                    statusEl.textContent='Camp day complete';
+                }
+            }
+            update();
+            setInterval(update, 30000);
+        })();
+        </script>
+
         <% if (releasedSchedule && releasedSchedule.length > 0) { %>
         <div class="card" style="margin-bottom:20px; border-left:4px solid var(--primary);">
             <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
