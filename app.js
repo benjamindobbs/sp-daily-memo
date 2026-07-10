@@ -444,6 +444,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/create-staff', '/create-camper', '/assign-camper-schedule', '/get-new-camper-options', '/assign-camper-class',
     '/alerts', '/api/alerts',
     '/photo-gallery/all', '/photo-download',
+    '/admin/building-coord', '/admin/delete-building-coord',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -815,6 +816,26 @@ db.exec(`
         FOREIGN KEY (CamperID) REFERENCES Campers(CamperID) ON DELETE CASCADE
     );
 `);
+
+// Building coordinate store for the interactive camp map.
+db.exec(`CREATE TABLE IF NOT EXISTS BuildingCoordinates (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT    NOT NULL UNIQUE,
+    x    INTEGER NOT NULL,
+    y    INTEGER NOT NULL
+)`);
+// Seed initial building coordinates (INSERT OR IGNORE — won't overwrite UI edits).
+const _seedBuildings = db.prepare('INSERT OR IGNORE INTO BuildingCoordinates (name, x, y) VALUES (?, ?, ?)');
+for (const [name, x, y] of [
+    ['Dana',        46,  220],
+    ['Art',         65,  148],
+    ['Ceramics',    53,  126],
+    ['Foundations', 32,  128],
+    ['Library',    114,  115],
+    ['Commons',     65,   14],
+    ['Auerbach',   102,  300],
+    ['Hillyer',    108,  267],
+]) _seedBuildings.run(name, x, y);
 
 // Migration: add WeekNumber, MaxCapacity, Location to WeeklyOfferings
 try { db.prepare("SELECT WeekNumber FROM WeeklyOfferings LIMIT 1").get(); } catch {
@@ -2104,6 +2125,83 @@ app.get('/master-schedule', (req, res) => {
     }
 });
 
+// --- CAMP MAP ---
+app.get('/map', (req, res) => {
+    const aw  = getActiveWeek();
+    const cid = parseInt(req.cookies.selectedCounselor) || null;
+
+    const buildings = db.prepare('SELECT id, name, x, y FROM BuildingCoordinates ORDER BY name').all();
+
+    // Resolve location for each offering: Schedules (Instructor) → StaffWeekSchedules → Activities
+    const offeringRows = db.prepare(`
+        SELECT wo.ActivityName AS activity, wo.PeriodNumber AS period,
+               wo.PreliminaryEnrollment AS enrollment,
+               COALESCE(
+                   (SELECT s.Location FROM Schedules s
+                    WHERE s.PersonType='Instructor' AND s.PeriodNumber=wo.PeriodNumber
+                      AND s.ActivityName=wo.ActivityName AND s.Location IS NOT NULL AND s.Location != ''
+                    LIMIT 1),
+                   (SELECT sws.Location FROM StaffWeekSchedules sws
+                    WHERE sws.WeekNumber=? AND sws.PeriodNumber=wo.PeriodNumber
+                      AND sws.ActivityName=wo.ActivityName COLLATE NOCASE AND sws.Location IS NOT NULL AND sws.Location != ''
+                    LIMIT 1),
+                   a.Location
+               ) AS location
+        FROM WeeklyOfferings wo
+        LEFT JOIN Activities a ON a.Name = wo.ActivityName
+        WHERE wo.WeekNumber = ?
+        ORDER BY wo.PeriodNumber, wo.ActivityName
+    `).all(aw, aw).filter(r => r.location);
+
+    // Counselor's period→activity map for the active week
+    const myPeriods = cid
+        ? db.prepare('SELECT PeriodNumber AS period, ActivityName AS activity FROM CounselorWeekSchedules WHERE CounselorID=? AND WeekNumber=?')
+              .all(cid, aw)
+        : [];
+
+    const activeBlock = getActivePeriod(SPORTS_PERIODS, getESTMins())?.clockBlock ?? null;
+
+    // Period labels: combine Sports and Enrichment names per clock block
+    const periodLabels = {};
+    for (const p of SPORTS_PERIODS)     periodLabels[p.clockBlock] = p.label;
+    for (const p of ENRICHMENT_PERIODS) {
+        if (periodLabels[p.clockBlock]) periodLabels[p.clockBlock] += ' / ' + p.label;
+        else                             periodLabels[p.clockBlock] = p.label;
+    }
+
+    // Distinct location values already in use (to help with building setup)
+    const usedLocations = db.prepare(`
+        SELECT DISTINCT Location FROM (
+            SELECT Location FROM Schedules WHERE PersonType='Instructor' AND Location IS NOT NULL AND Location != ''
+            UNION SELECT Location FROM StaffWeekSchedules WHERE Location IS NOT NULL AND Location != ''
+            UNION SELECT Location FROM Activities WHERE Location IS NOT NULL AND Location != ''
+        ) ORDER BY Location
+    `).all().map(r => r.Location);
+
+    res.render('map', {
+        buildings, offerings: offeringRows, myPeriods, activeBlock,
+        periodLabels, usedLocations,
+        viewMode: req.cookies.viewMode || 'staff',
+        isAdmin: req.cookies.adminAuth === 'true'
+    });
+});
+
+app.post('/admin/building-coord', (req, res) => {
+    const { name, x, y } = req.body;
+    if (!name || x == null || y == null) return res.redirect('/settings?message=Missing+fields#map');
+    db.prepare(`
+        INSERT INTO BuildingCoordinates (name, x, y) VALUES (?, ?, ?)
+        ON CONFLICT(name) DO UPDATE SET x=excluded.x, y=excluded.y
+    `).run(name.trim(), parseInt(x), parseInt(y));
+    res.redirect('/settings?message=Building+saved#map');
+});
+
+app.post('/admin/delete-building-coord', (req, res) => {
+    const id = parseInt(req.body.id);
+    if (id) db.prepare('DELETE FROM BuildingCoordinates WHERE id=?').run(id);
+    res.redirect('/settings?message=Building+deleted#map');
+});
+
 // --- CLASS ROSTER ---
 app.get('/class-roster/:period/:activity', (req, res) => {
     try {
@@ -2546,12 +2644,21 @@ app.get('/settings', (req, res) => {
     const pdfExists = {};
     PDF_DOCS.forEach(d => { pdfExists[d.slug] = uploadedSlugs.has(d.slug); });
     const prepTargetWeek = getPrepTargetWeek();
+    const mapBuildings = db.prepare('SELECT id, name, x, y FROM BuildingCoordinates ORDER BY name').all();
+    const mapUsedLocations = db.prepare(`
+        SELECT DISTINCT Location FROM (
+            SELECT Location FROM Schedules WHERE PersonType='Instructor' AND Location IS NOT NULL AND Location != ''
+            UNION SELECT Location FROM StaffWeekSchedules WHERE Location IS NOT NULL AND Location != ''
+            UNION SELECT Location FROM Activities WHERE Location IS NOT NULL AND Location != ''
+        ) ORDER BY Location
+    `).all().map(r => r.Location);
     res.render('settings', {
         activities, activeActivityNames, activeWeek: aw,
         periodOverrides, sessions, alertMessage: req.query.message,
         confirmWeek: req.query.confirmWeek || null, weekCount: req.query.weekCount || null,
         confirmOfferWeek: req.query.confirmOfferWeek || null, offerCount: req.query.offerCount || null,
-        pdfExists, docs: PDF_DOCS, prepTargetWeek
+        pdfExists, docs: PDF_DOCS, prepTargetWeek,
+        buildings: mapBuildings, usedLocations: mapUsedLocations
     });
 });
 // --- CREATE STAFF ---
