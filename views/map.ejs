@@ -364,9 +364,8 @@
             html += `<div class="tt-none">No classes ${period ? 'this period' : 'scheduled'}</div>`;
         } else {
             for (const c of classes) {
-                const lbl = PERIOD_LABELS[c.period] || ('Period ' + c.period);
-                const room = c.location && c.location !== b.name ? ` &middot; ${c.location}` : '';
-                html += `<div class="tt-class">${c.activity}<br><span>${lbl}${room} &middot; ${c.enrollment} enrolled</span></div>`;
+                const room = c.location && c.location !== b.name ? c.location : b.name;
+                html += `<div class="tt-class">${c.activity}<br><span>${room}</span></div>`;
             }
         }
         tooltip.innerHTML  = html;
