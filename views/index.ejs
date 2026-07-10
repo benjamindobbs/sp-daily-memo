@@ -272,6 +272,10 @@
                     <div style="position:relative;">
                         <div id="as-tl-bar" style="display:flex; height:14px; border-radius:7px; overflow:hidden;"></div>
                         <div id="as-tl-cursor" style="position:absolute; top:-3px; bottom:-3px; width:2px; background:rgba(0,0,0,0.3); border-radius:1px; display:none; pointer-events:none;"></div>
+                        <div id="as-tl-tooltip" style="position:absolute; bottom:calc(100% + 8px); background:#1e293b; color:#fff; border-radius:7px; padding:6px 10px; font-size:0.75rem; white-space:nowrap; display:none; pointer-events:none; transform:translateX(-50%); z-index:20; box-shadow:0 2px 8px rgba(0,0,0,0.25);">
+                            <div id="as-tl-tt-name" style="font-weight:700;"></div>
+                            <div id="as-tl-tt-time" style="color:#94a3b8; font-size:0.7rem; margin-top:1px;"></div>
+                        </div>
                     </div>
                     <div style="display:flex; justify-content:space-between; font-size:0.63rem; color:var(--text-muted); margin-top:4px; padding:0 1px;">
                         <span>9:00</span><span>12:00</span><span>4:30</span>
@@ -314,9 +318,12 @@
                 const barEl=document.getElementById('as-tl-bar'),lblEl=document.getElementById('as-tl-labels'),curEl=document.getElementById('as-tl-cursor');
                 if(!barEl)return;
                 const segs=[];let cur=DAY_START;
-                for(const b of sched){const s=b.startH*60+b.startM,e=b.endH*60+b.endM;if(s>cur)segs.push({gap:true,mins:s-cur});segs.push({label:b.label,gap:false,mins:e-s});cur=e;}
-                if(cur<DAY_END)segs.push({gap:true,mins:DAY_END-cur});
-                barEl.innerHTML=segs.map(sg=>{const p=(sg.mins/DAY_SPAN*100).toFixed(3),bg=sg.gap?'#e2e8f0':blkColor(sg.label,adminSide);return`<div style="flex:0 0 ${p}%;background:${bg};"></div>`;}).join('');
+                for(const b of sched){const s=b.startH*60+b.startM,e=b.endH*60+b.endM;if(s>cur)segs.push({gap:true,mins:s-cur,s:cur,e:s});segs.push({label:b.label,gap:false,mins:e-s,s,e});cur=e;}
+                if(cur<DAY_END)segs.push({gap:true,mins:DAY_END-cur,s:cur,e:DAY_END});
+                barEl.innerHTML=segs.map(sg=>{const p=(sg.mins/DAY_SPAN*100).toFixed(3),bg=sg.gap?'#e2e8f0':blkColor(sg.label,adminSide);if(sg.gap)return`<div style="flex:0 0 ${p}%;background:${bg};"></div>`;return`<div style="flex:0 0 ${p}%;background:${bg};cursor:pointer;" data-label="${sg.label}" data-s="${sg.s}" data-e="${sg.e}"></div>`;}).join('');
+                barEl.onmousemove=ev=>{const t=ev.target;if(t===barEl||!t.dataset.label)return;const br=barEl.getBoundingClientRect(),sr=t.getBoundingClientRect(),pct=(sr.left-br.left+sr.width/2)/br.width*100,tt=document.getElementById('as-tl-tooltip');if(!tt)return;document.getElementById('as-tl-tt-name').textContent=t.dataset.label;document.getElementById('as-tl-tt-time').textContent=fmt(+t.dataset.s)+' – '+fmt(+t.dataset.e);tt.style.left=pct+'%';tt.style.display='block';};
+                barEl.onmouseleave=()=>{const tt=document.getElementById('as-tl-tooltip');if(tt)tt.style.display='none';};
+                barEl.onclick=ev=>{const t=ev.target;if(t===barEl||!t.dataset.label)return;const br=barEl.getBoundingClientRect(),sr=t.getBoundingClientRect(),pct=(sr.left-br.left+sr.width/2)/br.width*100,tt=document.getElementById('as-tl-tooltip');if(!tt)return;document.getElementById('as-tl-tt-name').textContent=t.dataset.label;document.getElementById('as-tl-tt-time').textContent=fmt(+t.dataset.s)+' – '+fmt(+t.dataset.e);tt.style.left=pct+'%';tt.style.display=tt.style.display==='block'?'none':'block';};
                 lblEl.innerHTML='';let lp=0;
                 for(const sg of segs){const p=sg.mins/DAY_SPAN*100;if(!sg.gap){const el=document.createElement('span');el.textContent=blkAbbr(sg.label);el.style.cssText=`position:absolute;left:${(lp+p/2).toFixed(2)}%;transform:translateX(-50%);font-size:0.6rem;font-weight:600;color:#64748b;white-space:nowrap;`;lblEl.appendChild(el);}lp+=p;}
                 const now=estMins();
