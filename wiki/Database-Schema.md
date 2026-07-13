@@ -566,3 +566,104 @@ Junction table recording which individual counselors were targeted by each alert
 |---|---|---|
 | `AlertID` | INTEGER PK | FK → `AlertLog.AlertID` ON DELETE CASCADE |
 | `CounselorID` | INTEGER PK | FK → `Counselors.CounselorID` ON DELETE CASCADE |
+
+---
+
+## BuildingCoordinates
+
+Maps building/location names to pixel coordinates on the interactive camp map (`/map`). Coordinates use natural image pixels; the client scales to the rendered image size.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | INTEGER | PK, AUTOINCREMENT | |
+| `name` | TEXT | NOT NULL, UNIQUE(name, map) | Must match `Location` values in schedule tables |
+| `map` | TEXT | NOT NULL | `enrichment` or `sports` |
+| `x` | INTEGER | NOT NULL | Pixel X from top-left of natural image |
+| `y` | INTEGER | NOT NULL | Pixel Y from top-left of natural image |
+
+Managed via `POST /admin/building-coord` (upsert) and `POST /admin/delete-building-coord`.
+
+---
+
+## LockedOfferings
+
+Server-persistent lock state for the counselor scheduling page. Locked offerings are skipped by the auto-builder and all rebuild passes. Survives page refreshes.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `WeekNumber` | INTEGER | PK (composite with PeriodNumber, ActivityName) | |
+| `PeriodNumber` | INTEGER | PK | |
+| `ActivityName` | TEXT | PK | |
+
+Managed via `POST /api/toggle-lock`; read on page load via `GET /api/locked-offerings?week=N`.
+
+---
+
+## SpartanEvents
+
+One row per Spartan Games event. Seeded with 12 events on first run; editable by admin.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `name` | TEXT | Event name |
+| `date` | TEXT | Display date string (e.g. `"7/23"`) |
+| `block` | TEXT | Time block label (e.g. `"Lunch"`, `"Big Game"`) |
+| `participant_count` | INTEGER | Max participants per sign-up entry |
+| `subtext` | TEXT | **[migrated]** — optional secondary label shown under the event name |
+
+---
+
+## SpartanSignups
+
+One row per counselor sign-up for a Spartan Games event.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `event_id` | INTEGER | FK → `SpartanEvents.id` ON DELETE CASCADE |
+| `participants` | TEXT | JSON array of participant name strings, stored sorted |
+
+---
+
+## SpartanGamesMeta
+
+Single-row config table for Spartan Games global state.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER | PK, `CHECK(id = 1)` |
+| `submissions_open` | INTEGER | `1` = open, `0` = closed |
+
+Toggled via `POST /admin/spartan-games/toggle-submissions`.
+
+---
+
+## TalentSubmissions
+
+One row per counselor talent show submission per week. Resets visually when the week rolls over (old rows are retained but filtered out by `week_number`).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER | PK, AUTOINCREMENT |
+| `counselor_id` | INTEGER | FK → `Counselors.CounselorID` (soft reference) |
+| `counselor_name` | TEXT | NOT NULL — name snapshot at time of submission |
+| `description` | TEXT | NOT NULL — brief act description (max 200 chars) |
+| `week_number` | INTEGER | NOT NULL — active week at submission time |
+| `status` | TEXT | NOT NULL DEFAULT `'pending'` — `pending`, `approved`, or `denied` |
+| `submitted_at` | TEXT | NOT NULL DEFAULT `datetime('now')` |
+
+Counselors may re-submit to update their description (status resets to `pending`). Managed via `POST /talent-show/submit`, `POST /admin/talent-show/review`, and `POST /admin/talent-show/delete`.
+
+---
+
+## TalentMeta
+
+Single-row config table for the Counselor Talent Show submissions state.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER | PK, `CHECK(id = 1)` |
+| `submissions_open` | INTEGER | `1` = open, `0` = closed (default) |
+
+Toggled via `POST /admin/talent-show/toggle-submissions`. Automatically reset to `0` on week rollover.

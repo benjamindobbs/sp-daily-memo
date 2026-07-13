@@ -934,6 +934,22 @@ db.exec(`CREATE TABLE IF NOT EXISTS SpartanGamesMeta (
 if (!db.prepare('SELECT id FROM SpartanGamesMeta WHERE id=1').get()) {
     db.prepare('INSERT INTO SpartanGamesMeta (id, submissions_open) VALUES (1, 1)').run();
 }
+db.exec(`CREATE TABLE IF NOT EXISTS TalentSubmissions (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    counselor_id   INTEGER,
+    counselor_name TEXT NOT NULL,
+    description    TEXT NOT NULL,
+    week_number    INTEGER NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'pending',
+    submitted_at   TEXT NOT NULL DEFAULT (datetime('now'))
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS TalentMeta (
+    id               INTEGER PRIMARY KEY CHECK(id = 1),
+    submissions_open INTEGER NOT NULL DEFAULT 0
+)`);
+if (!db.prepare('SELECT id FROM TalentMeta WHERE id=1').get()) {
+    db.prepare('INSERT INTO TalentMeta (id, submissions_open) VALUES (1, 0)').run();
+}
 if (db.prepare('SELECT COUNT(*) AS c FROM SpartanEvents').get().c === 0) {
     const _seedEvt = db.prepare('INSERT INTO SpartanEvents (name, date, block, participant_count) VALUES (?, ?, ?, ?)');
     for (const [name, date, block, cnt] of [
@@ -1620,6 +1636,7 @@ function checkWeekRollover() {
     if (nextSession) {
         db.exec('UPDATE Sessions SET isActive = 0');
         db.prepare('UPDATE Sessions SET isActive = 1 WHERE weekNumber = ?').run(nextSession.weekNumber);
+        db.prepare('UPDATE TalentMeta SET submissions_open=0 WHERE id=1').run();
         console.log(`[auto-rollover] Week ${activeSession.weekNumber} → Week ${nextSession.weekNumber}`);
         const synced = syncActivityGroups(nextSession.weekNumber);
         console.log(`[auto-rollover] Synced group assignments for ${synced} activities from Week ${nextSession.weekNumber}`);
@@ -1822,12 +1839,15 @@ app.get('/staff', (req, res) => {
         ORDER BY cl.CheckInTime
     `).all(getActiveWeek(), today);
 
+    const _talentMeta = db.prepare('SELECT submissions_open FROM TalentMeta WHERE id=1').get();
+    const talentOpen = _talentMeta ? _talentMeta.submissions_open === 1 : false;
+
     res.render('staff-hub', {
         selectedCounselorName, announcement, releasedSchedule, releasedSessionLabel,
         yesterdayWinner, todayWinner, photoPhase,
         todayPickups, todayLateArrivals, todayEarlyDismissals, todayScheduleChanges, today,
         absentByGroup, rosterAbsent, nurseNow, caseNow,
-        staffSide,
+        staffSide, talentOpen,
         sportsScheduleFull:     SPORTS_SCHEDULE_FULL,
         enrichmentScheduleFull: ENRICHMENT_SCHEDULE_FULL
     });
@@ -1940,6 +1960,10 @@ app.get('/admin', (req, res) => {
         "SELECT COUNT(*) AS count FROM Attendance WHERE Date=? AND SessionType IN ('homegroup_am','specialty_am') AND Status='nurse'"
     ).get(today).count;
 
+    const talentMeta = db.prepare('SELECT submissions_open FROM TalentMeta WHERE id=1').get();
+    const talentOpen = talentMeta ? talentMeta.submissions_open === 1 : false;
+    const talentSubmissions = db.prepare('SELECT * FROM TalentSubmissions WHERE week_number=? ORDER BY submitted_at ASC').all(aw);
+
     res.render('index', {
         camperTotal, activityCount, groupCounts,
         pendingChanges, waitlistCount, nurseCount,
@@ -1947,6 +1971,7 @@ app.get('/admin', (req, res) => {
         alertMessage: req.query.message,
         announcement, directorNotes, sessions,
         adminName, adminUsers, absentByGroup,
+        talentOpen, talentSubmissions,
         sportsScheduleFull: SPORTS_SCHEDULE_FULL,
         enrichmentScheduleFull: ENRICHMENT_SCHEDULE_FULL
     });
@@ -2480,6 +2505,59 @@ app.post('/admin/spartan-games/delete-signup', (req, res) => {
     if (!id) return res.redirect('/spartan-games');
     db.prepare('DELETE FROM SpartanSignups WHERE id=?').run(parseInt(id));
     res.redirect('/spartan-games?message=Signup+deleted');
+});
+
+// --- TALENT SHOW ---
+app.get('/talent-show', (req, res) => {
+    const cid = parseInt(req.cookies.selectedCounselor) || null;
+    const isAdmin = req.cookies.adminAuth === 'true';
+    const counselorRow = cid ? db.prepare('SELECT FirstName, LastName FROM Counselors WHERE CounselorID=?').get(cid) : null;
+    const myName = counselorRow ? `${counselorRow.FirstName} ${counselorRow.LastName}` : null;
+    const aw = getActiveWeek();
+    const meta = db.prepare('SELECT submissions_open FROM TalentMeta WHERE id=1').get();
+    const submissionsOpen = meta ? meta.submissions_open === 1 : false;
+    const mySubmission = cid ? db.prepare('SELECT * FROM TalentSubmissions WHERE counselor_id=? AND week_number=?').get(cid, aw) : null;
+    res.render('talent-show', { myName, mySubmission, submissionsOpen, isAdmin, activeWeek: aw, message: req.query.message || null, viewMode: req.cookies.viewMode || 'staff' });
+});
+
+app.post('/talent-show/submit', (req, res) => {
+    const meta = db.prepare('SELECT submissions_open FROM TalentMeta WHERE id=1').get();
+    if (!meta || meta.submissions_open !== 1) return res.redirect('/talent-show?message=Submissions+are+currently+closed');
+    const cid = parseInt(req.cookies.selectedCounselor) || null;
+    if (!cid) return res.redirect('/talent-show?message=Please+select+your+name+first');
+    const { description } = req.body;
+    if (!description || !description.trim()) return res.redirect('/talent-show?message=Please+enter+a+description');
+    const counselorRow = db.prepare('SELECT FirstName, LastName FROM Counselors WHERE CounselorID=?').get(cid);
+    const counselorName = counselorRow ? `${counselorRow.FirstName} ${counselorRow.LastName}` : 'Unknown';
+    const aw = getActiveWeek();
+    const existing = db.prepare('SELECT id FROM TalentSubmissions WHERE counselor_id=? AND week_number=?').get(cid, aw);
+    if (existing) {
+        db.prepare("UPDATE TalentSubmissions SET description=?, status='pending', submitted_at=datetime('now') WHERE id=?").run(description.trim(), existing.id);
+    } else {
+        db.prepare('INSERT INTO TalentSubmissions (counselor_id, counselor_name, description, week_number) VALUES (?, ?, ?, ?)').run(cid, counselorName, description.trim(), aw);
+    }
+    res.redirect('/talent-show?message=Submitted');
+});
+
+app.post('/admin/talent-show/toggle-submissions', (req, res) => {
+    const meta = db.prepare('SELECT submissions_open FROM TalentMeta WHERE id=1').get();
+    const current = meta ? meta.submissions_open : 0;
+    db.prepare('UPDATE TalentMeta SET submissions_open=? WHERE id=1').run(current === 1 ? 0 : 1);
+    res.redirect('/admin#talent-show');
+});
+
+app.post('/admin/talent-show/review', (req, res) => {
+    const { id, action } = req.body;
+    if (!id || !['approve', 'deny'].includes(action)) return res.redirect('/admin#talent-show');
+    db.prepare('UPDATE TalentSubmissions SET status=? WHERE id=?').run(action === 'approve' ? 'approved' : 'denied', parseInt(id));
+    res.redirect('/admin#talent-show');
+});
+
+app.post('/admin/talent-show/delete', (req, res) => {
+    const { id } = req.body;
+    if (!id) return res.redirect('/admin#talent-show');
+    db.prepare('DELETE FROM TalentSubmissions WHERE id=?').run(parseInt(id));
+    res.redirect('/admin#talent-show');
 });
 
 // --- CLASS ROSTER ---

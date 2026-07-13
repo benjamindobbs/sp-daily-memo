@@ -32,8 +32,8 @@ Relevant wiki pages by change type:
 After updating any `wiki/*.md` file, push to the wiki repo:
 
 ```powershell
-cp "c:/Users/benja/Documents/GitHub/sp-daily-memo/wiki/*.md" "c:/Users/benja/Documents/GitHub/sp-daily-memo.wiki/"
-cd "c:/Users/benja/Documents/GitHub/sp-daily-memo.wiki"
+Copy-Item "c:/Users/Scene Shop/Documents/Github/sp-daily-memo/wiki/*.md" "c:/Users/Scene Shop/Documents/Github/sp-daily-memo.wiki/" -Force
+Set-Location "c:/Users/Scene Shop/Documents/Github/sp-daily-memo.wiki"
 git add .
 git commit -m "Update wiki: <brief description>"
 git push
