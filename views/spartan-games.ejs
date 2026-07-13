@@ -136,14 +136,14 @@
     </nav>
 
     <div class="container">
-        <h1>&#127942; Spartan Games<% if (isAdmin) { %><span class="admin-badge">Admin</span><% } %></h1>
+        <h1>&#127942; Spartan Games<% if (isAdmin && viewMode === 'admin') { %><span class="admin-badge">Admin</span><% } %></h1>
 
         <% if (message) { %>
         <div class="sg-message"><%= message %></div>
         <% } %>
 
         <%/* ── ADMIN PANEL ── */%>
-        <% if (isAdmin) { %>
+        <% if (isAdmin && viewMode === 'admin') { %>
 
         <div class="card" style="margin-bottom: 24px;">
             <h2 style="margin: 0 0 16px;">Event Management</h2>
