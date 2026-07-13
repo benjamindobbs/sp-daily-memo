@@ -34,8 +34,9 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 
 | Method | Path | Admin only | Description |
 |---|---|:---:|---|
-| GET | `/master-schedule` | | All classes by period. Filterable by period, side, group. Uses the prep target week if one is set, otherwise the active week. |
-| GET | `/class-roster/:period/:activity` | | Camper list for one class/period. Respects prep mode (uses prep target week when admin is in prep mode). Dance & Cheerleading merge detected at query time — both activities served under one roster when they share a period. |
+| GET | `/master-schedule` | | All classes by period. Filterable by period, side, group. Searchable by class name or camper name. Uses the prep target week if one is set, otherwise the active week. |
+| GET | `/class-roster/:period/:activity` | | Camper list for one class/period. Respects prep mode (uses prep target week when admin is in prep mode). Dance & Cheerleading merge detected at query time — both activities served under one roster when they share a period. Camper names link to camper profiles. |
+| GET | `/map` | | Interactive camp map. Two maps (enrichment/sports) with building pins; toggles for My Class / This Period / All / period selector. |
 | POST | `/update-class-location` | ✓ | Update location on a class roster |
 | GET | `/search` | | Camper search by name |
 | GET | `/counselor-directory` | | Staff directory grouped by role |
@@ -67,6 +68,8 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/promote-all` | ✓ | Promote all eligible waitlist entries |
 | POST | `/remove-waitlist/:id` | ✓ | Remove a waitlist entry |
 | GET | `/counselor-scheduling` | ✓ | Counselor schedule builder |
+| GET | `/api/locked-offerings` | ✓ | Ajax: `?week=N` → array of locked `{PeriodNumber, ActivityName}` rows from `LockedOfferings` |
+| POST | `/api/toggle-lock` | ✓ | Body `{weekNumber, periodNumber, activityName, locked}` — insert or delete a row in `LockedOfferings` |
 | POST | `/save-counselor-assignments` | ✓ | Persist assignment state → `CounselorScheduleAssignments` + `CounselorWeekSchedules` |
 | POST | `/backup-counselor-assignments` | ✓ | Create a named backup snapshot |
 | GET | `/counselor-schedule-backups` | ✓ | View and manage backups |
@@ -95,6 +98,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/clear-weekly-offerings` | ✓ | Remove offerings for the active week |
 | POST | `/api/sync-offerings` | ✓ | Alias for sync (JSON response) |
 | POST | `/sync-offerings-from-schedule` | ✓ | Rebuild `WeeklyOfferings` from `Schedules` for the active week |
+| POST | `/sync-activity-groups` | ✓ | Analyze actual camper enrollment to derive correct `AllowedGroups` values (and per-period exceptions) for all activities in the active week. Also runs automatically on week rollover. |
 
 ---
 
@@ -218,6 +222,8 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/update-activity` | ✓ | Update activity fields |
 | POST | `/add-activity-period-group` | ✓ | Add a per-period group override for an activity |
 | POST | `/delete-activity-period-group` | ✓ | Remove a per-period group override |
+| POST | `/admin/building-coord` | ✓ | Upsert a building pin: body `{name, map, x, y}`. `map` must be `enrichment` or `sports`. Redirects to `/settings#map`. |
+| POST | `/admin/delete-building-coord` | ✓ | Delete a building pin by `id`. Redirects to `/settings#map`. |
 | POST | `/upload-campers` | ✓ | CSV import for camper roster (ACR-005). Sets color, shirt, lunch, and home group — does not touch bus data. Targets the prep target week if set, otherwise the active week. |
 | POST | `/upload-campers-schedule` | ✓ | CSV import for master schedule (ACR-255). Sets grade, extended hours, and class schedule — does not touch bus data |
 | POST | `/upload-bus-am` | ✓ | CSV import of ACR-132 (AM Bus Attendance). Sets `BusRoute` + `BusRidesAM` per camper from the report's bus sections |
@@ -264,6 +270,20 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/photo-vote/:id` | | Cast or remove a vote |
 | GET | `/photo-gallery/all` | ✓ | All photos across all dates; sortable by `?sort=date` (default) or `?sort=likes` |
 | GET | `/photo-download` | ✓ | Download photos by ID: `?ids=1,2,3`. Single photo → image file; multiple → `camp-photos.zip` fetched from Cloudinary |
+
+---
+
+## Spartan Games
+
+| Method | Path | Admin only | Description |
+|---|---|:---:|---|
+| GET | `/spartan-games` | | Spartan Games signup page. Counselors see event cards (checkbox for solo, checkbox + partner panel for group events). Admin panel (admin view only) shows event management and all signups. |
+| POST | `/spartan-games/signup` | | JSON body `{entries: [{eventId, partners:[]}]}`. Returns `{results:[{eventId, success, error?, conflictName?, eventName?}]}`. Returns 403 if submissions are closed. |
+| POST | `/admin/spartan-games/toggle-submissions` | ✓ | Flip the `submissions_open` flag in `SpartanGamesMeta`. Redirects to `/spartan-games`. |
+| POST | `/admin/spartan-games/add-event` | ✓ | Create a new event. Body: `name, date, block, participant_count, subtext`. |
+| POST | `/admin/spartan-games/update-event` | ✓ | Edit an existing event. Body: `id, name, date, block, participant_count, subtext`. |
+| POST | `/admin/spartan-games/delete-event` | ✓ | Delete an event and all its signups. Body: `id`. |
+| POST | `/admin/spartan-games/delete-signup` | ✓ | Delete a single signup entry. Body: `id`. |
 
 ---
 

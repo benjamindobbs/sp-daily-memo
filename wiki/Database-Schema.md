@@ -566,3 +566,72 @@ Junction table recording which individual counselors were targeted by each alert
 |---|---|---|
 | `AlertID` | INTEGER PK | FK → `AlertLog.AlertID` ON DELETE CASCADE |
 | `CounselorID` | INTEGER PK | FK → `Counselors.CounselorID` ON DELETE CASCADE |
+
+---
+
+## BuildingCoordinates
+
+Pixel coordinates for building pins on the interactive camp map. Two maps are supported (`enrichment` and `sports`). Coordinates are in natural image pixels with origin at the top-left corner.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | INTEGER | PK, AUTOINCREMENT | |
+| `name` | TEXT | NOT NULL | Must match a `Location` value used in the schedule |
+| `map` | TEXT | NOT NULL, DEFAULT `'enrichment'` | `enrichment` or `sports` |
+| `x` | INTEGER | NOT NULL | Horizontal position in image pixels |
+| `y` | INTEGER | NOT NULL | Vertical position in image pixels |
+| UNIQUE | | `(name, map)` | |
+
+Default coordinates for both maps are seeded (and re-applied via upsert) on every server start, so coordinate corrections in code take effect on next deploy.
+
+---
+
+## LockedOfferings
+
+Server-side persistence for locked class offerings in the counselor scheduler. A locked offering is excluded from auto-build and rebuild passes. Previously lock state lived only in client-side JavaScript; this table makes locks survive page refreshes.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `WeekNumber` | INTEGER | PK part |
+| `PeriodNumber` | INTEGER | PK part |
+| `ActivityName` | TEXT | PK part |
+
+---
+
+## SpartanEvents
+
+Definitions of events in the annual Spartan Games counselor competition.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | INTEGER | PK, AUTOINCREMENT | |
+| `name` | TEXT | NOT NULL | |
+| `date` | TEXT | NOT NULL | Display date string, e.g. `7/23` |
+| `block` | TEXT | NOT NULL | Block name, e.g. `Lunch`, `Big Game`, `Dismissal` |
+| `participant_count` | INTEGER | NOT NULL, DEFAULT `1` | `1` = solo event; `>1` = group event requiring partner selection |
+| `subtext` | TEXT | | **[migrated]** — optional description shown below the event name on the signup form |
+
+12 events are seeded on first startup (when the table is empty).
+
+---
+
+## SpartanSignups
+
+Records of counselor registrations for Spartan Games events.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | INTEGER | PK, AUTOINCREMENT | |
+| `event_id` | INTEGER | NOT NULL, FK → `SpartanEvents.id` ON DELETE CASCADE | |
+| `participants` | TEXT | NOT NULL | JSON array of participant full names, sorted alphabetically (e.g. `["Alice Smith","Bob Jones"]`). Sorting makes order-insensitive group comparison possible with a simple string equality check. |
+
+---
+
+## SpartanGamesMeta
+
+Single-row configuration table for Spartan Games global settings.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | INTEGER | PK, CHECK(`id = 1`) | Always exactly one row |
+| `submissions_open` | INTEGER | NOT NULL, DEFAULT `1` | `1` = signups are open; `0` = closed. When closed, counselors can view the form and existing registrations but cannot submit new entries. |

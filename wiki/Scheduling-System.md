@@ -155,6 +155,28 @@ Key constants available to the builder at page load:
 
 Both are replaced (DELETE + INSERT) for the active week on each save.
 
+### Locked Offerings
+
+Locking a class card on the counselor scheduling page excludes that offering from all auto-build and rebuild passes. Lock state is now persisted server-side in `LockedOfferings` via `POST /api/toggle-lock`, so locks survive page refreshes. On page load, `GET /api/locked-offerings?week=N` hydrates the client state from the database.
+
+---
+
+## Activity Group Sync
+
+`POST /sync-activity-groups` analyzes the current camper enrollment in `Schedules` for the active week and derives the correct `AllowedGroups` value for each activity, including per-period exceptions in `ActivityPeriodGroups`.
+
+**Logic:**
+
+1. For each `(ActivityName, PeriodNumber)` pair that has camper rows, collect the distinct `HomeGroupColor` values from `CamperWeekData`.
+2. Map those colors to the appropriate `AllowedGroups` label:
+   - Green/Navy only → `Green-Navy`
+   - Red/Carolina only → `Red-Carolina`, `Red`, or `Carolina` depending on which are present
+   - Both camps mixed → `null` (open to all)
+3. Compare against the "universal" group for that side+period (the combined set of colors attending any activity on that side during that period). If the activity's group matches the universal, no explicit restriction is needed.
+4. When all periods of an activity share the same group, set it at the activity level. When periods differ, write per-period rows to `ActivityPeriodGroups` only where the activity deviates from the universal.
+
+This runs automatically on week rollover (inside `checkWeekRollover`) and can be triggered manually from the Activity Manager in Settings.
+
 ---
 
 ## Counselor Schedule Backups
