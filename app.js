@@ -927,6 +927,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS SpartanSignups (
 try { db.prepare('SELECT subtext FROM SpartanEvents LIMIT 1').get(); } catch {
     db.exec('ALTER TABLE SpartanEvents ADD COLUMN subtext TEXT');
 }
+db.exec(`CREATE TABLE IF NOT EXISTS SpartanGamesMeta (
+    id               INTEGER PRIMARY KEY CHECK(id = 1),
+    submissions_open INTEGER NOT NULL DEFAULT 1
+)`);
+if (!db.prepare('SELECT id FROM SpartanGamesMeta WHERE id=1').get()) {
+    db.prepare('INSERT INTO SpartanGamesMeta (id, submissions_open) VALUES (1, 1)').run();
+}
 if (db.prepare('SELECT COUNT(*) AS c FROM SpartanEvents').get().c === 0) {
     const _seedEvt = db.prepare('INSERT INTO SpartanEvents (name, date, block, participant_count) VALUES (?, ?, ?, ?)');
     for (const [name, date, block, cnt] of [
@@ -2376,15 +2383,21 @@ app.get('/spartan-games', (req, res) => {
         return am - bm || ad - bd;
     });
 
+    const meta = db.prepare('SELECT submissions_open FROM SpartanGamesMeta WHERE id=1').get();
+    const submissionsOpen = meta ? meta.submissions_open === 1 : true;
+
     const message = req.query.message || null;
     res.render('spartan-games', {
         events, eventsByDate, dates, signupsByEvent, mySignups,
-        allCounselors, myName, isAdmin, message,
+        allCounselors, myName, isAdmin, message, submissionsOpen,
         viewMode: req.cookies.viewMode || 'staff'
     });
 });
 
 app.post('/spartan-games/signup', (req, res) => {
+    const meta = db.prepare('SELECT submissions_open FROM SpartanGamesMeta WHERE id=1').get();
+    if (meta && meta.submissions_open !== 1) return res.status(403).json({ error: 'Submissions are currently closed.' });
+
     const cid = parseInt(req.cookies.selectedCounselor) || null;
     if (!cid) return res.status(401).json({ error: 'Not logged in' });
     const counselorRow = db.prepare('SELECT FirstName, LastName FROM Counselors WHERE CounselorID=?').get(cid);
@@ -2431,6 +2444,13 @@ app.post('/spartan-games/signup', (req, res) => {
     }
 
     res.json({ results });
+});
+
+app.post('/admin/spartan-games/toggle-submissions', (req, res) => {
+    const meta = db.prepare('SELECT submissions_open FROM SpartanGamesMeta WHERE id=1').get();
+    const current = meta ? meta.submissions_open : 1;
+    db.prepare('UPDATE SpartanGamesMeta SET submissions_open=? WHERE id=1').run(current === 1 ? 0 : 1);
+    res.redirect('/spartan-games');
 });
 
 app.post('/admin/spartan-games/add-event', (req, res) => {

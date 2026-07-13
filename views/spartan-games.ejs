@@ -159,6 +159,20 @@
         <%/* ── ADMIN PANEL ── */%>
         <% if (isAdmin && viewMode === 'admin') { %>
 
+        <div class="card" style="margin-bottom: 16px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+            <div>
+                <strong>Submissions:</strong>
+                <span style="margin-left:6px; font-weight:700; color:<%= submissionsOpen ? '#166534' : '#991b1b' %>;">
+                    <%= submissionsOpen ? 'Open' : 'Closed' %>
+                </span>
+            </div>
+            <form method="POST" action="/admin/spartan-games/toggle-submissions">
+                <button class="btn <%= submissionsOpen ? 'btn-danger' : 'btn-primary' %> btn-small" type="submit">
+                    <%= submissionsOpen ? 'Close Submissions' : 'Open Submissions' %>
+                </button>
+            </form>
+        </div>
+
         <div class="card" style="margin-bottom: 24px;">
             <h2 style="margin: 0 0 16px;">Event Management</h2>
             <div style="overflow-x: auto;">
@@ -291,10 +305,15 @@
 
         <%/* ── COUNSELOR SIGNUP FORM ── */%>
         <h2 style="margin: 0 0 4px;">Sign Up</h2>
+        <% if (!submissionsOpen) { %>
+        <div style="background:#fee2e2; color:#991b1b; border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:0.88rem; font-weight:600;">
+            &#128274; Signups are currently closed.
+        </div>
+        <% } %>
         <% if (!myName) { %>
             <div class="card"><p class="text-muted" style="margin:0;">Please <a href="/staff">select a counselor</a> before signing up.</p></div>
         <% } else { %>
-            <p class="text-muted" style="margin: 0 0 16px; font-size: 0.88rem;">Signing up as <strong><%= myName %></strong>. Check the events you want to join, then tap Sign Up.</p>
+            <p class="text-muted" style="margin: 0 0 16px; font-size: 0.88rem;">Signing up as <strong><%= myName %></strong>.<% if (submissionsOpen) { %> Check the events you want to join, then tap Sign Up.<% } %></p>
 
             <% if (events.length === 0) { %>
             <div class="card"><p class="text-muted" style="margin:0;">No events available yet.</p></div>
@@ -308,7 +327,7 @@
                     const slotsNeeded = ev.participant_count - 1;
                 %><div class="sg-event-card" data-event-id="<%= ev.id %>">
                     <div class="sg-event-header">
-                        <% if (!mySignup) { %>
+                        <% if (!mySignup && submissionsOpen) { %>
                         <input type="checkbox"
                                class="sg-event-checkbox"
                                id="chk-<%= ev.id %>"
@@ -368,10 +387,12 @@
                 <% }) %>
             <% }) %>
 
+            <% if (submissionsOpen) { %>
             <div class="sg-submit-bar">
                 <button class="btn btn-primary" id="sg-submit-btn" onclick="submitSignups()">Sign Up for Selected Events</button>
                 <span id="sg-submit-status" style="display:none; margin-left:12px; font-size:0.85rem; color:var(--text-muted);">Submitting…</span>
             </div>
+            <% } %>
 
             <% } %>
         <% } %>
@@ -484,6 +505,13 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ entries })
                 });
+                if (resp.status === 403) {
+                    const data = await resp.json();
+                    alert(data.error || 'Submissions are currently closed.');
+                    btn.disabled = false;
+                    statusEl.style.display = 'none';
+                    return;
+                }
                 const data = await resp.json();
 
                 const errors = (data.results || []).filter(r => !r.success);
