@@ -28,7 +28,7 @@
         <% if (message) { %>
         <div class="card" style="margin-bottom:16px; border-left:4px solid <%= message === 'Submitted' ? '#16a34a' : '#ef4444' %>; padding:12px 16px;">
             <span style="font-size:0.9rem; font-weight:600; color:<%= message === 'Submitted' ? '#166534' : '#991b1b' %>;">
-                <%= message === 'Submitted' ? '&#10003; Submission saved!' : message %>
+                <%- message === 'Submitted' ? '&#10003; Submission saved!' : message %>
             </span>
         </div>
         <% } %>
@@ -55,7 +55,7 @@
                     <span style="font-size:0.78rem; font-weight:700; padding:2px 10px; border-radius:20px;
                         background:<%= mySubmission.status === 'approved' ? '#dcfce7' : mySubmission.status === 'denied' ? '#fee2e2' : '#fef9c3' %>;
                         color:<%= mySubmission.status === 'approved' ? '#166534' : mySubmission.status === 'denied' ? '#991b1b' : '#92400e' %>;">
-                        <%= mySubmission.status === 'approved' ? '&#10003; Approved' : mySubmission.status === 'denied' ? '&#10007; Denied' : '&#9679; Pending Review' %>
+                        <%- mySubmission.status === 'approved' ? '&#10003; Approved' : mySubmission.status === 'denied' ? '&#10007; Denied' : '&#9679; Pending Review' %>
                     </span>
                 </div>
             </div>
