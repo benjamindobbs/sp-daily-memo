@@ -531,6 +531,76 @@
             <div id="announceEditor" style="min-height:120px;"></div>
         </div>
 
+        <%/* ── Talent Show ── */%>
+        <div class="card" id="talent-show" style="margin-bottom:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <h3 style="margin:0;">&#127929; Counselor Talent Show</h3>
+                    <span style="font-size:0.78rem; font-weight:700; padding:3px 10px; border-radius:20px;
+                        background:<%= talentOpen ? '#dcfce7' : '#fee2e2' %>;
+                        color:<%= talentOpen ? '#166534' : '#991b1b' %>;">
+                        <%= talentOpen ? 'Open' : 'Closed' %>
+                    </span>
+                </div>
+                <form method="POST" action="/admin/talent-show/toggle-submissions">
+                    <button class="btn <%= talentOpen ? 'btn-danger' : 'btn-primary' %> btn-small" type="submit">
+                        <%= talentOpen ? 'Close Submissions' : 'Open Submissions' %>
+                    </button>
+                </form>
+            </div>
+
+            <% if (talentSubmissions.length === 0) { %>
+            <p style="color:var(--text-muted); font-size:0.875rem; margin:0;">No submissions yet this week.</p>
+            <% } else { %>
+            <table style="width:100%; border-collapse:collapse; font-size:0.875rem;">
+                <thead>
+                    <tr style="border-bottom:2px solid var(--border-color);">
+                        <th style="text-align:left; padding:6px 10px; color:var(--text-muted); font-weight:600;">Counselor</th>
+                        <th style="text-align:left; padding:6px 10px; color:var(--text-muted); font-weight:600;">Act Description</th>
+                        <th style="text-align:center; padding:6px 10px; color:var(--text-muted); font-weight:600;">Status</th>
+                        <th style="padding:6px 10px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <% talentSubmissions.forEach(function(sub) { %>
+                    <tr style="border-bottom:1px solid var(--border-color);">
+                        <td style="padding:8px 10px; font-weight:600; white-space:nowrap;"><%= sub.counselor_name %></td>
+                        <td style="padding:8px 10px;"><%= sub.description %></td>
+                        <td style="padding:8px 10px; text-align:center;">
+                            <span style="font-size:0.75rem; font-weight:700; padding:2px 9px; border-radius:20px;
+                                background:<%= sub.status === 'approved' ? '#dcfce7' : sub.status === 'denied' ? '#fee2e2' : '#fef9c3' %>;
+                                color:<%= sub.status === 'approved' ? '#166534' : sub.status === 'denied' ? '#991b1b' : '#92400e' %>;">
+                                <%= sub.status === 'approved' ? 'Approved' : sub.status === 'denied' ? 'Denied' : 'Pending' %>
+                            </span>
+                        </td>
+                        <td style="padding:8px 10px; text-align:right; white-space:nowrap;">
+                            <% if (sub.status !== 'approved') { %>
+                            <form method="POST" action="/admin/talent-show/review" style="display:inline; margin-right:4px;">
+                                <input type="hidden" name="id" value="<%= sub.id %>">
+                                <input type="hidden" name="action" value="approve">
+                                <button class="btn btn-small" style="background:#dcfce7; color:#166534; border-color:#bbf7d0;" type="submit">Approve</button>
+                            </form>
+                            <% } %>
+                            <% if (sub.status !== 'denied') { %>
+                            <form method="POST" action="/admin/talent-show/review" style="display:inline; margin-right:4px;">
+                                <input type="hidden" name="id" value="<%= sub.id %>">
+                                <input type="hidden" name="action" value="deny">
+                                <button class="btn btn-small btn-danger" type="submit">Deny</button>
+                            </form>
+                            <% } %>
+                            <form method="POST" action="/admin/talent-show/delete" style="display:inline;"
+                                  onsubmit="return confirm('Delete this submission?')">
+                                <input type="hidden" name="id" value="<%= sub.id %>">
+                                <button class="btn btn-small" style="color:#94a3b8; border-color:#e2e8f0;" type="submit">&#10005;</button>
+                            </form>
+                        </td>
+                    </tr>
+                <% }); %>
+                </tbody>
+            </table>
+            <% } %>
+        </div>
+
         <%/* ── Quick Tasks + System Status ── */%>
         <div class="quick-tasks">
             <div class="card">
@@ -546,6 +616,7 @@
                     <li><a href="/reports/attendance-rosters" target="_blank">Print Attendance Rosters &rarr;</a></li>
                     <li><a href="/reports/name-cards" target="_blank">Print Camper Name Cards &rarr;</a></li>
                     <li><a href="/spartan-games">Manage Spartan Games &rarr;</a></li>
+                    <li><a href="#talent-show">Manage Talent Show &rarr;</a></li>
                 </ul>
             </div>
             <div class="card">

@@ -287,6 +287,18 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 
 ---
 
+## Counselor Talent Show
+
+| Method | Path | Admin only | Description |
+|---|---|:---:|---|
+| GET | `/talent-show` | | Counselor submission form; shows existing submission and status |
+| POST | `/talent-show/submit` | | Submit or update an act description. Redirects with error if submissions are closed or no counselor is selected. Re-submission resets status to `pending`. |
+| POST | `/admin/talent-show/toggle-submissions` | ✓ | Toggle `TalentMeta.submissions_open`; redirects to `/admin#talent-show` |
+| POST | `/admin/talent-show/review` | ✓ | Approve or deny a submission (`action=approve` or `action=deny`); redirects to `/admin#talent-show` |
+| POST | `/admin/talent-show/delete` | ✓ | Delete a submission permanently; redirects to `/admin#talent-show` |
+
+---
+
 ## Debug
 
 | Method | Path | Admin only | Description |

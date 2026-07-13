@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talent Show | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+</head>
+<body>
+    <nav class="nav-bar">
+        <% if (isAdmin) { %>
+        <a href="/admin" class="nav-btn primary">&#127968; Hub</a>
+        <% } else { %>
+        <a href="/staff" class="nav-btn primary">&#127968; Hub</a>
+        <% } %>
+        <a href="/talent-show" class="nav-btn">&#127929; Talent Show</a>
+    </nav>
+
+    <div class="container">
+        <header class="header-flex" style="margin-bottom:24px;">
+            <div>
+                <h1>&#127929; Counselor Talent Show</h1>
+                <p class="text-muted">Sign up to perform in the counselor talent show!</p>
+            </div>
+        </header>
+
+        <% if (message) { %>
+        <div class="card" style="margin-bottom:16px; border-left:4px solid <%= message === 'Submitted' ? '#16a34a' : '#ef4444' %>; padding:12px 16px;">
+            <span style="font-size:0.9rem; font-weight:600; color:<%= message === 'Submitted' ? '#166534' : '#991b1b' %>;">
+                <%- message === 'Submitted' ? '&#10003; Submission saved!' : message %>
+            </span>
+        </div>
+        <% } %>
+
+        <% if (!submissionsOpen) { %>
+        <div style="background:#fee2e2; color:#991b1b; border-radius:8px; padding:12px 16px; margin-bottom:20px; font-size:0.9rem; font-weight:600;">
+            &#128274; Talent show sign-ups are currently closed.
+        </div>
+        <% } %>
+
+        <% if (!myName) { %>
+        <div class="card" style="margin-bottom:20px;">
+            <p style="color:var(--text-muted); margin:0;">Select your name on the <a href="/counselor-preferences">My Preferences</a> page to submit an act.</p>
+        </div>
+        <% } else { %>
+
+        <% if (mySubmission) { %>
+        <div class="card" style="margin-bottom:20px; border-left:4px solid
+            <%= mySubmission.status === 'approved' ? '#16a34a' : mySubmission.status === 'denied' ? '#ef4444' : '#f59e0b' %>;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                <div>
+                    <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:4px;">Your Submission</div>
+                    <div style="font-size:1rem; font-weight:600; margin-bottom:6px;"><%= mySubmission.description %></div>
+                    <span style="font-size:0.78rem; font-weight:700; padding:2px 10px; border-radius:20px;
+                        background:<%= mySubmission.status === 'approved' ? '#dcfce7' : mySubmission.status === 'denied' ? '#fee2e2' : '#fef9c3' %>;
+                        color:<%= mySubmission.status === 'approved' ? '#166534' : mySubmission.status === 'denied' ? '#991b1b' : '#92400e' %>;">
+                        <%- mySubmission.status === 'approved' ? '&#10003; Approved' : mySubmission.status === 'denied' ? '&#10007; Denied' : '&#9679; Pending Review' %>
+                    </span>
+                </div>
+            </div>
+        </div>
+        <% } %>
+
+        <% if (submissionsOpen) { %>
+        <div class="card">
+            <h3 style="margin:0 0 14px;"><%= mySubmission ? 'Update Your Act' : 'Submit Your Act' %></h3>
+            <form method="POST" action="/talent-show/submit" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                <div style="flex:1; min-width:200px;">
+                    <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:6px; color:var(--text-muted);">Brief Description</label>
+                    <input type="text" name="description"
+                           value="<%= mySubmission ? mySubmission.description : '' %>"
+                           placeholder="e.g. Stand-up comedy, magic tricks, dancing..."
+                           maxlength="200"
+                           style="width:100%; box-sizing:border-box; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-size:0.95rem; font-family:inherit;"
+                           required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="padding:9px 20px; white-space:nowrap;">
+                    <%= mySubmission ? 'Update' : 'Submit' %>
+                </button>
+            </form>
+        </div>
+        <% } %>
+
+        <% } %>
+    </div>
+</body>
+</html>

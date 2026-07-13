@@ -582,7 +582,7 @@ Pixel coordinates for building pins on the interactive camp map. Two maps are su
 | `y` | INTEGER | NOT NULL | Vertical position in image pixels |
 | UNIQUE | | `(name, map)` | |
 
-Default coordinates for both maps are seeded (and re-applied via upsert) on every server start, so coordinate corrections in code take effect on next deploy.
+Default coordinates for both maps are seeded (and re-applied via upsert) on every server start, so coordinate corrections in code take effect on next deploy. Managed via `POST /admin/building-coord` (upsert) and `POST /admin/delete-building-coord`.
 
 ---
 
@@ -596,11 +596,13 @@ Server-side persistence for locked class offerings in the counselor scheduler. A
 | `PeriodNumber` | INTEGER | PK part |
 | `ActivityName` | TEXT | PK part |
 
+Managed via `POST /api/toggle-lock`; read on page load via `GET /api/locked-offerings?week=N`.
+
 ---
 
 ## SpartanEvents
 
-Definitions of events in the annual Spartan Games counselor competition.
+Definitions of events in the annual Spartan Games counselor competition. 12 events are seeded on first startup (when the table is empty); editable by admin.
 
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
@@ -610,8 +612,6 @@ Definitions of events in the annual Spartan Games counselor competition.
 | `block` | TEXT | NOT NULL | Block name, e.g. `Lunch`, `Big Game`, `Dismissal` |
 | `participant_count` | INTEGER | NOT NULL, DEFAULT `1` | `1` = solo event; `>1` = group event requiring partner selection |
 | `subtext` | TEXT | | **[migrated]** — optional description shown below the event name on the signup form |
-
-12 events are seeded on first startup (when the table is empty).
 
 ---
 
@@ -635,3 +635,36 @@ Single-row configuration table for Spartan Games global settings.
 |---|---|---|---|
 | `id` | INTEGER | PK, CHECK(`id = 1`) | Always exactly one row |
 | `submissions_open` | INTEGER | NOT NULL, DEFAULT `1` | `1` = signups are open; `0` = closed. When closed, counselors can view the form and existing registrations but cannot submit new entries. |
+
+Toggled via `POST /admin/spartan-games/toggle-submissions`.
+
+---
+
+## TalentSubmissions
+
+One row per counselor talent show submission per week. Resets visually when the week rolls over (old rows are retained but filtered out by `week_number`).
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | INTEGER | PK, AUTOINCREMENT | |
+| `counselor_id` | INTEGER | | FK → `Counselors.CounselorID` (soft reference) |
+| `counselor_name` | TEXT | NOT NULL | Name snapshot at time of submission |
+| `description` | TEXT | NOT NULL | Brief act description (max 200 chars) |
+| `week_number` | INTEGER | NOT NULL | Active week at submission time |
+| `status` | TEXT | NOT NULL, DEFAULT `'pending'` | `pending`, `approved`, or `denied` |
+| `submitted_at` | TEXT | NOT NULL, DEFAULT `datetime('now')` | |
+
+Counselors may re-submit to update their description (status resets to `pending`). Managed via `POST /talent-show/submit`, `POST /admin/talent-show/review`, and `POST /admin/talent-show/delete`.
+
+---
+
+## TalentMeta
+
+Single-row config table for the Counselor Talent Show submissions state.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | INTEGER | PK, CHECK(`id = 1`) | Always exactly one row |
+| `submissions_open` | INTEGER | NOT NULL, DEFAULT `0` | `1` = open, `0` = closed |
+
+Toggled via `POST /admin/talent-show/toggle-submissions`. Automatically reset to `0` on week rollover.

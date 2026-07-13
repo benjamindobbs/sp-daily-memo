@@ -348,6 +348,8 @@ All at `/settings`.
 | Export Counselor Schedule | `/export-counselor-schedule` | Download current counselor assignments as CSV |
 | Export Staff Schedule | `/export-staff-schedule` | Download instructor/unit leader assignments as CSV |
 | Export Master Schedule | `/export-master-schedule` | Download the full class-by-period master schedule as CSV |
+| Spartan Games | `/spartan-games` | Counselor sign-up sheet for Spartan Games events. Admin can add/edit/delete events, view all sign-ups, and toggle submissions open or closed. When closed, counselors can still view the page and see their existing registrations but cannot submit new entries. |
+| Counselor Talent Show | `/talent-show` (staff) · `/admin#talent-show` (admin hub) | Counselors submit a one-line description of their act. Submissions are weekly (reset on week rollover). The admin hub shows all submissions for the current week with Approve / Deny / Delete actions and an Open/Close toggle. When submissions are closed the card does not appear in the Staff Hub. |
 
 ---
 
