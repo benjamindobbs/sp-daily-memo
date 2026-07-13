@@ -4003,7 +4003,7 @@ app.get('/get-options/:camperId/:period', (req, res) => {
     const options = db.prepare(`
         WITH effective AS (
             SELECT wo.ActivityName AS Name, wo.SideOfCamp,
-                   COALESCE(wo.MaxCapacity, a.MaxCapacity) AS MaxCapacity,
+                   a.MaxCapacity,
                    COALESCE(apg.AllowedGroups, a.AllowedGroups) AS EffectiveGroups,
                    (SELECT COUNT(*) FROM Schedules s
                     WHERE s.ActivityName = wo.ActivityName AND s.PeriodNumber = @period
@@ -4039,15 +4039,7 @@ app.get('/process-swap', (req, res) => {
         return res.redirect('/swap-tool?error=Missing+parameters');
     }
 
-    // Use effective capacity: WeeklyOfferings override takes precedence over Activities default,
-    // matching the same COALESCE logic used by the get-options display.
-    const activity = db.prepare(`
-        SELECT a.Name,
-               COALESCE(wo.MaxCapacity, a.MaxCapacity) AS EffectiveCapacity
-        FROM Activities a
-        LEFT JOIN WeeklyOfferings wo ON wo.ActivityName = a.Name AND wo.PeriodNumber = ? AND wo.WeekNumber = ?
-        WHERE a.Name = ?
-    `).get(period, aw, newActivity);
+    const activity = db.prepare('SELECT * FROM Activities WHERE Name = ?').get(newActivity);
     if (!activity) return res.redirect('/swap-tool?error=Activity+not+found');
 
     const currentEnrollment = db.prepare(`
@@ -4063,7 +4055,7 @@ app.get('/process-swap', (req, res) => {
         WHERE c.CamperID = ?
     `).get(aw, camperId);
 
-    if (currentEnrollment.count >= activity.EffectiveCapacity) {
+    if (currentEnrollment.count >= activity.MaxCapacity) {
         // Activity is full — add to waitlist instead
         db.prepare(`
             INSERT INTO Waitlists (CamperID, PeriodNumber, RequestedActivity, WeekNumber)
