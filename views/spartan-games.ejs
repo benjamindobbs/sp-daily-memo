@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spartan Games | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .sg-section-title {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            margin: 28px 0 10px;
+        }
+        .sg-event-card {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            box-shadow: var(--shadow);
+        }
+        .sg-event-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .sg-event-info { flex: 1; min-width: 0; }
+        .sg-event-name { font-weight: 700; font-size: 1rem; margin-bottom: 2px; }
+        .sg-event-meta { font-size: 0.78rem; color: var(--text-muted); }
+        .sg-registered {
+            font-size: 0.82rem;
+            background: #dcfce7;
+            color: #166534;
+            border-radius: 6px;
+            padding: 6px 10px;
+            margin-top: 10px;
+        }
+        .sg-registered strong { font-weight: 700; }
+
+        /* Partner selector */
+        .sg-partner-panel {
+            margin-top: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .sg-partner-you {
+            padding: 8px 12px;
+            background: #f8fafc;
+            font-size: 0.83rem;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border-color);
+        }
+        .sg-partner-you strong { color: var(--text); }
+        .sg-partner-list {
+            max-height: 180px;
+            overflow-y: auto;
+            padding: 6px 0;
+        }
+        .sg-partner-list label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 12px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .sg-partner-list label:hover { background: #f1f5f9; }
+        .sg-partner-list input[type="checkbox"] { flex-shrink: 0; }
+        .sg-partner-count {
+            padding: 6px 12px;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            background: #f8fafc;
+            border-top: 1px solid var(--border-color);
+        }
+        .sg-partner-count.ready { color: #166534; font-weight: 600; }
+
+        /* Event checkbox */
+        .sg-event-checkbox { margin-top: 3px; width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; }
+
+        /* Admin section */
+        .admin-badge {
+            display: inline-block;
+            background: #fef3c7;
+            color: #92400e;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            padding: 2px 7px;
+            border-radius: 20px;
+            text-transform: uppercase;
+            vertical-align: middle;
+            margin-left: 8px;
+        }
+        .sg-admin-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .sg-admin-table th { text-align: left; padding: 6px 10px; border-bottom: 2px solid var(--border-color); font-weight: 700; color: var(--text-muted); }
+        .sg-admin-table td { padding: 8px 10px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+        .sg-admin-table tr:last-child td { border-bottom: none; }
+        .sg-edit-form { display: none; background: #f8fafc; border-top: 1px solid var(--border-color); padding: 12px; }
+        .sg-edit-form.open { display: block; }
+        .sg-edit-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+        .sg-edit-field { display: flex; flex-direction: column; gap: 4px; }
+        .sg-edit-field label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); }
+        .sg-edit-field input { font-size: 0.85rem; padding: 5px 8px; border: 1px solid var(--border-color); border-radius: 6px; width: 120px; }
+        .sg-edit-field input[name="participant_count"] { width: 60px; }
+
+        .sg-signup-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.84rem;
+        }
+        .sg-signup-group:last-child { border-bottom: none; }
+
+        .sg-submit-bar { margin-top: 24px; }
+
+        /* message banner */
+        .sg-message { background: #dcfce7; color: #166534; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.88rem; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <nav class="nav-bar">
+        <a href="<%= viewMode === 'admin' ? '/admin' : '/staff' %>" class="nav-btn">&#127968; Hub</a>
+        <a href="/spartan-games" class="nav-btn primary">&#127942; Spartan Games</a>
+        <% if (viewMode === 'admin') { %>
+        <a href="/settings" class="nav-btn">&#9881;&#65039; Settings</a>
+        <% } %>
+    </nav>
+
+    <div class="container">
+        <h1>&#127942; Spartan Games<% if (isAdmin) { %><span class="admin-badge">Admin</span><% } %></h1>
+
+        <% if (message) { %>
+        <div class="sg-message"><%= message %></div>
+        <% } %>
+
+        <%/* ── ADMIN PANEL ── */%>
+        <% if (isAdmin) { %>
+
+        <div class="card" style="margin-bottom: 24px;">
+            <h2 style="margin: 0 0 16px;">Event Management</h2>
+            <div style="overflow-x: auto;">
+                <table class="sg-admin-table">
+                    <thead>
+                        <tr>
+                            <th>Event</th>
+                            <th>Date</th>
+                            <th>Block</th>
+                            <th style="text-align:center;">Count</th>
+                            <th style="text-align:center;">Signups</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <% events.forEach(ev => { %>
+                        <tr id="evrow-<%= ev.id %>">
+                            <td><strong><%= ev.name %></strong></td>
+                            <td><%= ev.date %></td>
+                            <td><%= ev.block %></td>
+                            <td style="text-align:center;"><%= ev.participant_count %></td>
+                            <td style="text-align:center;"><%= (signupsByEvent[ev.id] || []).length %></td>
+                            <td style="white-space:nowrap;">
+                                <button class="btn btn-small" onclick="toggleEdit(<%= ev.id %>)" style="margin-right:4px;">Edit</button>
+                                <form method="POST" action="/admin/spartan-games/delete-event" style="display:inline;" onsubmit="return confirm('Delete event and all its signups?');">
+                                    <input type="hidden" name="id" value="<%= ev.id %>">
+                                    <button class="btn btn-small btn-danger">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        <tr id="evedit-<%= ev.id %>" style="display:none;">
+                            <td colspan="6" style="padding:0;">
+                                <form method="POST" action="/admin/spartan-games/update-event" class="sg-edit-form open">
+                                    <input type="hidden" name="id" value="<%= ev.id %>">
+                                    <div class="sg-edit-row">
+                                        <div class="sg-edit-field" style="flex:1; min-width:140px;">
+                                            <label>Event Name</label>
+                                            <input type="text" name="name" value="<%= ev.name %>" required style="width:100%;">
+                                        </div>
+                                        <div class="sg-edit-field">
+                                            <label>Date</label>
+                                            <input type="text" name="date" value="<%= ev.date %>" placeholder="7/23" required>
+                                        </div>
+                                        <div class="sg-edit-field">
+                                            <label>Block</label>
+                                            <input type="text" name="block" value="<%= ev.block %>" placeholder="Lunch" required>
+                                        </div>
+                                        <div class="sg-edit-field">
+                                            <label>Count</label>
+                                            <input type="number" name="participant_count" value="<%= ev.participant_count %>" min="1" max="10" required>
+                                        </div>
+                                        <div style="display:flex; gap:6px; align-items:flex-end;">
+                                            <button class="btn btn-primary btn-small" type="submit">Save</button>
+                                            <button class="btn btn-small" type="button" onclick="toggleEdit(<%= ev.id %>)">Cancel</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </td>
+                        </tr>
+                    <% }) %>
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="border-top: 1px solid var(--border-color); margin-top: 16px; padding-top: 16px;">
+                <h3 style="margin: 0 0 12px; font-size: 0.95rem;">Add New Event</h3>
+                <form method="POST" action="/admin/spartan-games/add-event">
+                    <div class="sg-edit-row">
+                        <div class="sg-edit-field" style="flex:1; min-width:140px;">
+                            <label>Event Name</label>
+                            <input type="text" name="name" placeholder="Event name" required style="width:100%;">
+                        </div>
+                        <div class="sg-edit-field">
+                            <label>Date</label>
+                            <input type="text" name="date" placeholder="7/23" required>
+                        </div>
+                        <div class="sg-edit-field">
+                            <label>Block</label>
+                            <input type="text" name="block" placeholder="Lunch" required>
+                        </div>
+                        <div class="sg-edit-field">
+                            <label>Count</label>
+                            <input type="number" name="participant_count" value="1" min="1" max="10" required>
+                        </div>
+                        <div style="align-self:flex-end;">
+                            <button class="btn btn-primary btn-small" type="submit">Add Event</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 24px;">
+            <h2 style="margin: 0 0 16px;">Signups</h2>
+            <% if (events.length === 0) { %>
+                <p class="text-muted">No events yet.</p>
+            <% } else { %>
+            <% let hasAnySignup = false; %>
+            <% events.forEach(ev => { const sups = signupsByEvent[ev.id] || []; if (sups.length) hasAnySignup = true; }) %>
+            <% if (!hasAnySignup) { %>
+                <p class="text-muted" style="font-style:italic;">No signups yet.</p>
+            <% } else { %>
+            <% events.forEach(ev => { const sups = signupsByEvent[ev.id] || []; if (!sups.length) return; %>
+                <div style="margin-bottom: 16px;">
+                    <div style="font-weight:700; font-size:0.9rem; margin-bottom:6px;"><%= ev.name %> <span style="font-weight:400; color:var(--text-muted); font-size:0.8rem;"><%= ev.date %> &bull; <%= ev.block %></span></div>
+                    <% sups.forEach(s => { %>
+                    <div class="sg-signup-group">
+                        <span><%= s.participants.join(', ') %></span>
+                        <form method="POST" action="/admin/spartan-games/delete-signup" style="margin:0;" onsubmit="return confirm('Remove this signup?');">
+                            <input type="hidden" name="id" value="<%= s.id %>">
+                            <button class="btn btn-small btn-danger">Remove</button>
+                        </form>
+                    </div>
+                    <% }) %>
+                </div>
+            <% }) %>
+            <% } %>
+            <% } %>
+        </div>
+
+        <% } %>
+
+        <%/* ── COUNSELOR SIGNUP FORM ── */%>
+        <h2 style="margin: 0 0 4px;">Sign Up</h2>
+        <% if (!myName) { %>
+            <div class="card"><p class="text-muted" style="margin:0;">Please <a href="/staff">select a counselor</a> before signing up.</p></div>
+        <% } else { %>
+            <p class="text-muted" style="margin: 0 0 16px; font-size: 0.88rem;">Signing up as <strong><%= myName %></strong>. Check the events you want to join, then tap Sign Up.</p>
+
+            <% if (events.length === 0) { %>
+            <div class="card"><p class="text-muted" style="margin:0;">No events available yet.</p></div>
+            <% } else { %>
+
+            <% dates.forEach(date => { %>
+                <div class="sg-section-title">&#128197; <%= date %></div>
+                <% eventsByDate[date].forEach(ev => {
+                    const mySignup = mySignups[ev.id];
+                    const needPartners = ev.participant_count > 1;
+                    const slotsNeeded = ev.participant_count - 1;
+                %><div class="sg-event-card" data-event-id="<%= ev.id %>">
+                    <div class="sg-event-header">
+                        <% if (!mySignup) { %>
+                        <input type="checkbox"
+                               class="sg-event-checkbox"
+                               id="chk-<%= ev.id %>"
+                               data-event-id="<%= ev.id %>"
+                               data-needs-partners="<%= needPartners ? 'true' : 'false' %>"
+                               onchange="onEventCheck(this)">
+                        <% } else { %>
+                        <div style="width:18px; flex-shrink:0;"></div>
+                        <% } %>
+                        <div class="sg-event-info">
+                            <label for="chk-<%= ev.id %>" style="cursor:<%= mySignup ? 'default' : 'pointer' %>;">
+                                <div class="sg-event-name"><%= ev.name %></div>
+                            </label>
+                            <div class="sg-event-meta">
+                                <%= ev.block %>
+                                <% if (ev.participant_count > 1) { %>&bull; Group of <%= ev.participant_count %><% } %>
+                            </div>
+                        </div>
+                    </div>
+
+                    <% if (mySignup) { %>
+                    <div class="sg-registered">
+                        &#10003; Registered &mdash; <strong><%= mySignup.participants.join(', ') %></strong>
+                    </div>
+                    <% } else if (needPartners) { %>
+                    <div class="sg-partner-panel" id="partners-<%= ev.id %>" style="display:none;">
+                        <div class="sg-partner-you">You: <strong><%= myName %></strong></div>
+                        <div class="sg-partner-list" id="partner-list-<%= ev.id %>">
+                            <% allCounselors.forEach(c => {
+                                const fullName = c.FirstName + ' ' + c.LastName;
+                                if (fullName === myName) return;
+                            %><label>
+                                <input type="checkbox"
+                                       class="partner-check"
+                                       data-event-id="<%= ev.id %>"
+                                       data-slots="<%= slotsNeeded %>"
+                                       value="<%= fullName %>"
+                                       onchange="onPartnerCheck(this)">
+                                <%= fullName %>
+                            </label><% }) %>
+                        </div>
+                        <div class="sg-partner-count" id="partner-count-<%= ev.id %>">
+                            Select <%= slotsNeeded %> partner<%= slotsNeeded > 1 ? 's' : '' %>
+                        </div>
+                    </div>
+                    <% } %>
+                </div>
+                <% }) %>
+            <% }) %>
+
+            <div class="sg-submit-bar">
+                <button class="btn btn-primary" id="sg-submit-btn" onclick="submitSignups()">Sign Up for Selected Events</button>
+                <span id="sg-submit-status" style="display:none; margin-left:12px; font-size:0.85rem; color:var(--text-muted);">Submitting…</span>
+            </div>
+
+            <% } %>
+        <% } %>
+    </div>
+
+    <script>
+        // Toggle admin edit row
+        function toggleEdit(id) {
+            const editRow = document.getElementById('evedit-' + id);
+            if (!editRow) return;
+            editRow.style.display = editRow.style.display === 'none' ? '' : 'none';
+        }
+
+        // Show/hide partner panel when event checkbox changes
+        function onEventCheck(chk) {
+            const eid = chk.dataset.eventId;
+            const panel = document.getElementById('partners-' + eid);
+            if (!panel) return;
+            if (chk.checked) {
+                panel.style.display = 'block';
+            } else {
+                panel.style.display = 'none';
+                // uncheck all partners
+                panel.querySelectorAll('.partner-check').forEach(c => c.checked = false);
+                updatePartnerCount(eid);
+            }
+        }
+
+        // Update partner count display and enforce max selection
+        function onPartnerCheck(chk) {
+            const eid = chk.dataset.eventId;
+            const slotsNeeded = parseInt(chk.dataset.slots);
+            const allChecks = document.querySelectorAll(`.partner-check[data-event-id="${eid}"]`);
+            const selected = Array.from(allChecks).filter(c => c.checked).length;
+
+            // Prevent selecting more than allowed
+            if (selected > slotsNeeded) {
+                chk.checked = false;
+                return;
+            }
+
+            updatePartnerCount(eid, selected, slotsNeeded);
+        }
+
+        function updatePartnerCount(eid, selected, slotsNeeded) {
+            const countEl = document.getElementById('partner-count-' + eid);
+            if (!countEl) return;
+            if (selected === undefined) {
+                const allChecks = document.querySelectorAll(`.partner-check[data-event-id="${eid}"]`);
+                selected = Array.from(allChecks).filter(c => c.checked).length;
+                const firstCheck = document.querySelector(`.partner-check[data-event-id="${eid}"]`);
+                slotsNeeded = firstCheck ? parseInt(firstCheck.dataset.slots) : 0;
+            }
+            if (selected === slotsNeeded) {
+                countEl.textContent = '✓ Group ready';
+                countEl.className = 'sg-partner-count ready';
+            } else {
+                const remaining = slotsNeeded - selected;
+                countEl.textContent = `Select ${remaining} more partner${remaining !== 1 ? 's' : ''}`;
+                countEl.className = 'sg-partner-count';
+            }
+        }
+
+        async function submitSignups() {
+            const checkedBoxes = document.querySelectorAll('.sg-event-checkbox:checked');
+            if (checkedBoxes.length === 0) {
+                alert('Please check at least one event before submitting.');
+                return;
+            }
+
+            const entries = [];
+            for (const chk of checkedBoxes) {
+                const eid = parseInt(chk.dataset.eventId);
+                const needsPartners = chk.dataset.needsPartners === 'true';
+                let partners = [];
+                if (needsPartners) {
+                    const partnerChecks = document.querySelectorAll(`.partner-check[data-event-id="${eid}"]:checked`);
+                    partners = Array.from(partnerChecks).map(c => c.value);
+                    const slotsNeeded = parseInt(document.querySelector(`.partner-check[data-event-id="${eid}"]`)?.dataset.slots || '0');
+                    if (partners.length !== slotsNeeded) {
+                        const eventName = chk.closest('.sg-event-card')?.querySelector('.sg-event-name')?.textContent || 'that event';
+                        alert(`Please select exactly ${slotsNeeded} partner${slotsNeeded !== 1 ? 's' : ''} for ${eventName}.`);
+                        return;
+                    }
+                }
+                entries.push({ eventId: eid, partners });
+            }
+
+            const btn = document.getElementById('sg-submit-btn');
+            const statusEl = document.getElementById('sg-submit-status');
+            btn.disabled = true;
+            statusEl.style.display = 'inline';
+
+            try {
+                const resp = await fetch('/spartan-games/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ entries })
+                });
+                const data = await resp.json();
+
+                const errors = (data.results || []).filter(r => !r.success);
+                const successes = (data.results || []).filter(r => r.success);
+
+                if (errors.length > 0) {
+                    const msgs = errors.map(r => {
+                        if (r.error === 'group_exists') return `"${r.eventName}" — this exact group is already registered.`;
+                        if (r.error === 'name_conflict') return `"${r.eventName}" — ${r.conflictName} is already registered for this event.`;
+                        return `"${r.eventName || 'Event'}" — ${r.error}`;
+                    });
+                    alert(msgs.join('\n\n'));
+                }
+
+                if (successes.length > 0) {
+                    window.location.reload();
+                } else {
+                    btn.disabled = false;
+                    statusEl.style.display = 'none';
+                }
+            } catch (err) {
+                alert('Something went wrong. Please try again.');
+                btn.disabled = false;
+                statusEl.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

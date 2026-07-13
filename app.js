@@ -911,6 +911,37 @@ for (const [name, map, x, y] of [
     ['C Complex',             'sports',       62, 1015],
 ]) _seedBuildings.run(name, map, x, y);
 
+// Spartan Games — annual counselor signup event
+db.exec(`CREATE TABLE IF NOT EXISTS SpartanEvents (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    name              TEXT    NOT NULL,
+    date              TEXT    NOT NULL,
+    block             TEXT    NOT NULL,
+    participant_count INTEGER NOT NULL DEFAULT 1
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS SpartanSignups (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id     INTEGER NOT NULL REFERENCES SpartanEvents(id) ON DELETE CASCADE,
+    participants TEXT    NOT NULL
+)`);
+if (db.prepare('SELECT COUNT(*) AS c FROM SpartanEvents').get().c === 0) {
+    const _seedEvt = db.prepare('INSERT INTO SpartanEvents (name, date, block, participant_count) VALUES (?, ?, ?, ?)');
+    for (const [name, date, block, cnt] of [
+        ['Tug of War',              '7/23', 'Lunch',      3],
+        ['Human Wheel Barrel',      '7/23', 'Lunch',      2],
+        ['Hula Hoop',               '7/23', 'Dismissal',  1],
+        ['Knock Out',               '7/24', 'Big Game',   1],
+        ['1 Minute Pushups',        '7/24', 'Dismissal',  1],
+        ['Dizzy Bat',               '7/29', 'Lunch',      1],
+        ['Water Buckets Challenge', '7/29', 'Lunch',      2],
+        ['100m Dash',               '7/29', 'Big Game',   1],
+        ['Golf Cart Push',          '7/23', 'Pop Break',  2],
+        ['T-Shirt Challenge',       '7/29', 'Dismissal',  1],
+        ['History Geek',            '7/31', 'Lunch',      1],
+        ['2 Week Step Challenge',   '7/31', 'Dismissal',  1],
+    ]) _seedEvt.run(name, date, block, cnt);
+}
+
 // Migration: add WeekNumber, MaxCapacity, Location to WeeklyOfferings
 try { db.prepare("SELECT WeekNumber FROM WeeklyOfferings LIMIT 1").get(); } catch {
     db.exec("ALTER TABLE WeeklyOfferings ADD COLUMN WeekNumber INTEGER NOT NULL DEFAULT 1");
@@ -2301,6 +2332,131 @@ app.post('/admin/delete-building-coord', (req, res) => {
     const id = parseInt(req.body.id);
     if (id) db.prepare('DELETE FROM BuildingCoordinates WHERE id=?').run(id);
     res.redirect('/settings?message=Building+deleted#map');
+});
+
+// --- SPARTAN GAMES ---
+app.get('/spartan-games', (req, res) => {
+    const cid = parseInt(req.cookies.selectedCounselor) || null;
+    const isAdmin = req.cookies.adminAuth === 'true';
+    const counselorRow = cid ? db.prepare('SELECT FirstName, LastName FROM Counselors WHERE CounselorID=?').get(cid) : null;
+    const myName = counselorRow ? `${counselorRow.FirstName} ${counselorRow.LastName}` : null;
+
+    const events = db.prepare('SELECT * FROM SpartanEvents ORDER BY date, block, name').all();
+    const allSignups = db.prepare('SELECT * FROM SpartanSignups ORDER BY id').all();
+    const allCounselors = db.prepare('SELECT CounselorID, FirstName, LastName FROM Counselors ORDER BY LastName, FirstName').all();
+
+    // Group signups by event, parsing JSON participant arrays
+    const signupsByEvent = {};
+    for (const s of allSignups) {
+        if (!signupsByEvent[s.event_id]) signupsByEvent[s.event_id] = [];
+        signupsByEvent[s.event_id].push({ id: s.id, participants: JSON.parse(s.participants) });
+    }
+
+    // Map of eventId -> signup object for the current counselor
+    const mySignups = {};
+    if (myName) {
+        for (const [eid, sups] of Object.entries(signupsByEvent)) {
+            const mine = sups.find(s => s.participants.includes(myName));
+            if (mine) mySignups[eid] = mine;
+        }
+    }
+
+    // Group events by date (sorted chronologically)
+    const eventsByDate = {};
+    for (const ev of events) {
+        if (!eventsByDate[ev.date]) eventsByDate[ev.date] = [];
+        eventsByDate[ev.date].push(ev);
+    }
+    const dates = Object.keys(eventsByDate).sort((a, b) => {
+        const [am, ad] = a.split('/').map(Number);
+        const [bm, bd] = b.split('/').map(Number);
+        return am - bm || ad - bd;
+    });
+
+    const message = req.query.message || null;
+    res.render('spartan-games', {
+        events, eventsByDate, dates, signupsByEvent, mySignups,
+        allCounselors, myName, isAdmin, message,
+        viewMode: req.cookies.viewMode || 'staff'
+    });
+});
+
+app.post('/spartan-games/signup', (req, res) => {
+    const cid = parseInt(req.cookies.selectedCounselor) || null;
+    if (!cid) return res.status(401).json({ error: 'Not logged in' });
+    const counselorRow = db.prepare('SELECT FirstName, LastName FROM Counselors WHERE CounselorID=?').get(cid);
+    if (!counselorRow) return res.status(401).json({ error: 'Counselor not found' });
+    const myName = `${counselorRow.FirstName} ${counselorRow.LastName}`;
+
+    const { entries } = req.body;
+    if (!Array.isArray(entries) || entries.length === 0) return res.json({ results: [] });
+
+    const results = [];
+    for (const entry of entries) {
+        const event = db.prepare('SELECT * FROM SpartanEvents WHERE id=?').get(entry.eventId);
+        if (!event) { results.push({ eventId: entry.eventId, success: false, error: 'Event not found' }); continue; }
+
+        const partners = Array.isArray(entry.partners) ? entry.partners.map(p => String(p).trim()).filter(Boolean) : [];
+        const participants = [myName, ...partners].sort();
+
+        if (participants.length !== event.participant_count) {
+            results.push({ eventId: entry.eventId, success: false, error: `Select exactly ${event.participant_count - 1} partner(s) for ${event.name}`, eventName: event.name });
+            continue;
+        }
+
+        const existing = db.prepare('SELECT id, participants FROM SpartanSignups WHERE event_id=?').all(event.id);
+        const participantsStr = JSON.stringify(participants);
+
+        if (existing.some(s => s.participants === participantsStr)) {
+            results.push({ eventId: entry.eventId, success: false, error: 'group_exists', eventName: event.name });
+            continue;
+        }
+
+        let conflictName = null;
+        for (const s of existing) {
+            const existingParts = JSON.parse(s.participants);
+            const hit = participants.find(p => existingParts.includes(p));
+            if (hit) { conflictName = hit; break; }
+        }
+        if (conflictName) {
+            results.push({ eventId: entry.eventId, success: false, error: 'name_conflict', conflictName, eventName: event.name });
+            continue;
+        }
+
+        db.prepare('INSERT INTO SpartanSignups (event_id, participants) VALUES (?, ?)').run(event.id, participantsStr);
+        results.push({ eventId: entry.eventId, success: true, eventName: event.name });
+    }
+
+    res.json({ results });
+});
+
+app.post('/admin/spartan-games/add-event', (req, res) => {
+    const { name, date, block, participant_count } = req.body;
+    if (!name || !date || !block || !participant_count) return res.redirect('/spartan-games?message=Missing+fields');
+    db.prepare('INSERT INTO SpartanEvents (name, date, block, participant_count) VALUES (?, ?, ?, ?)').run(name.trim(), date.trim(), block.trim(), parseInt(participant_count));
+    res.redirect('/spartan-games?message=Event+added');
+});
+
+app.post('/admin/spartan-games/update-event', (req, res) => {
+    const { id, name, date, block, participant_count } = req.body;
+    if (!id || !name || !date || !block || !participant_count) return res.redirect('/spartan-games?message=Missing+fields');
+    db.prepare('UPDATE SpartanEvents SET name=?, date=?, block=?, participant_count=? WHERE id=?').run(name.trim(), date.trim(), block.trim(), parseInt(participant_count), parseInt(id));
+    res.redirect('/spartan-games?message=Event+updated');
+});
+
+app.post('/admin/spartan-games/delete-event', (req, res) => {
+    const { id } = req.body;
+    if (!id) return res.redirect('/spartan-games');
+    db.prepare('DELETE FROM SpartanSignups WHERE event_id=?').run(parseInt(id));
+    db.prepare('DELETE FROM SpartanEvents WHERE id=?').run(parseInt(id));
+    res.redirect('/spartan-games?message=Event+deleted');
+});
+
+app.post('/admin/spartan-games/delete-signup', (req, res) => {
+    const { id } = req.body;
+    if (!id) return res.redirect('/spartan-games');
+    db.prepare('DELETE FROM SpartanSignups WHERE id=?').run(parseInt(id));
+    res.redirect('/spartan-games?message=Signup+deleted');
 });
 
 // --- CLASS ROSTER ---
