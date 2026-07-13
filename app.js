@@ -924,6 +924,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS SpartanSignups (
     event_id     INTEGER NOT NULL REFERENCES SpartanEvents(id) ON DELETE CASCADE,
     participants TEXT    NOT NULL
 )`);
+try { db.prepare('SELECT subtext FROM SpartanEvents LIMIT 1').get(); } catch {
+    db.exec('ALTER TABLE SpartanEvents ADD COLUMN subtext TEXT');
+}
 if (db.prepare('SELECT COUNT(*) AS c FROM SpartanEvents').get().c === 0) {
     const _seedEvt = db.prepare('INSERT INTO SpartanEvents (name, date, block, participant_count) VALUES (?, ?, ?, ?)');
     for (const [name, date, block, cnt] of [
@@ -2431,16 +2434,16 @@ app.post('/spartan-games/signup', (req, res) => {
 });
 
 app.post('/admin/spartan-games/add-event', (req, res) => {
-    const { name, date, block, participant_count } = req.body;
+    const { name, date, block, participant_count, subtext } = req.body;
     if (!name || !date || !block || !participant_count) return res.redirect('/spartan-games?message=Missing+fields');
-    db.prepare('INSERT INTO SpartanEvents (name, date, block, participant_count) VALUES (?, ?, ?, ?)').run(name.trim(), date.trim(), block.trim(), parseInt(participant_count));
+    db.prepare('INSERT INTO SpartanEvents (name, date, block, participant_count, subtext) VALUES (?, ?, ?, ?, ?)').run(name.trim(), date.trim(), block.trim(), parseInt(participant_count), (subtext || '').trim() || null);
     res.redirect('/spartan-games?message=Event+added');
 });
 
 app.post('/admin/spartan-games/update-event', (req, res) => {
-    const { id, name, date, block, participant_count } = req.body;
+    const { id, name, date, block, participant_count, subtext } = req.body;
     if (!id || !name || !date || !block || !participant_count) return res.redirect('/spartan-games?message=Missing+fields');
-    db.prepare('UPDATE SpartanEvents SET name=?, date=?, block=?, participant_count=? WHERE id=?').run(name.trim(), date.trim(), block.trim(), parseInt(participant_count), parseInt(id));
+    db.prepare('UPDATE SpartanEvents SET name=?, date=?, block=?, participant_count=?, subtext=? WHERE id=?').run(name.trim(), date.trim(), block.trim(), parseInt(participant_count), (subtext || '').trim() || null, parseInt(id));
     res.redirect('/spartan-games?message=Event+updated');
 });
 

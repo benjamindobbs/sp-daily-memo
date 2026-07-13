@@ -56,6 +56,20 @@
             border-bottom: 1px solid var(--border-color);
         }
         .sg-partner-you strong { color: var(--text); }
+        .sg-partner-search {
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .sg-partner-search input {
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 0.83rem;
+            padding: 5px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            outline: none;
+        }
+        .sg-partner-search input:focus { border-color: var(--accent); }
         .sg-partner-list {
             max-height: 180px;
             overflow-y: auto;
@@ -184,6 +198,10 @@
                                             <label>Event Name</label>
                                             <input type="text" name="name" value="<%= ev.name %>" required style="width:100%;">
                                         </div>
+                                        <div class="sg-edit-field" style="flex:2; min-width:160px;">
+                                            <label>Subtext</label>
+                                            <input type="text" name="subtext" value="<%= ev.subtext || '' %>" placeholder="Optional description…" style="width:100%;">
+                                        </div>
                                         <div class="sg-edit-field">
                                             <label>Date</label>
                                             <input type="text" name="date" value="<%= ev.date %>" placeholder="7/23" required>
@@ -216,6 +234,10 @@
                         <div class="sg-edit-field" style="flex:1; min-width:140px;">
                             <label>Event Name</label>
                             <input type="text" name="name" placeholder="Event name" required style="width:100%;">
+                        </div>
+                        <div class="sg-edit-field" style="flex:2; min-width:160px;">
+                            <label>Subtext</label>
+                            <input type="text" name="subtext" placeholder="Optional description…" style="width:100%;">
                         </div>
                         <div class="sg-edit-field">
                             <label>Date</label>
@@ -300,6 +322,9 @@
                             <label for="chk-<%= ev.id %>" style="cursor:<%= mySignup ? 'default' : 'pointer' %>;">
                                 <div class="sg-event-name"><%= ev.name %></div>
                             </label>
+                            <% if (ev.subtext) { %>
+                            <div style="font-size:0.8rem; color:var(--text); margin-bottom:2px;"><%= ev.subtext %></div>
+                            <% } %>
                             <div class="sg-event-meta">
                                 <%= ev.block %>
                                 <% if (ev.participant_count > 1) { %>&bull; Group of <%= ev.participant_count %><% } %>
@@ -314,6 +339,12 @@
                     <% } else if (needPartners) { %>
                     <div class="sg-partner-panel" id="partners-<%= ev.id %>" style="display:none;">
                         <div class="sg-partner-you">You: <strong><%= myName %></strong></div>
+                        <div class="sg-partner-search">
+                            <input type="text"
+                                   id="partner-search-<%= ev.id %>"
+                                   placeholder="Search counselors…"
+                                   oninput="filterPartners('<%= ev.id %>', this.value)">
+                        </div>
                         <div class="sg-partner-list" id="partner-list-<%= ev.id %>">
                             <% allCounselors.forEach(c => {
                                 const fullName = c.FirstName + ' ' + c.LastName;
@@ -354,6 +385,17 @@
             editRow.style.display = editRow.style.display === 'none' ? '' : 'none';
         }
 
+        // Filter partner list by search query
+        function filterPartners(eid, query) {
+            const q = query.trim().toLowerCase();
+            const list = document.getElementById('partner-list-' + eid);
+            if (!list) return;
+            list.querySelectorAll('label').forEach(lbl => {
+                const name = lbl.textContent.trim().toLowerCase();
+                lbl.style.display = (!q || name.includes(q)) ? '' : 'none';
+            });
+        }
+
         // Show/hide partner panel when event checkbox changes
         function onEventCheck(chk) {
             const eid = chk.dataset.eventId;
@@ -363,8 +405,10 @@
                 panel.style.display = 'block';
             } else {
                 panel.style.display = 'none';
-                // uncheck all partners
+                // uncheck all partners and clear search
                 panel.querySelectorAll('.partner-check').forEach(c => c.checked = false);
+                const searchEl = document.getElementById('partner-search-' + eid);
+                if (searchEl) { searchEl.value = ''; filterPartners(eid, ''); }
                 updatePartnerCount(eid);
             }
         }
