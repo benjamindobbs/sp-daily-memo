@@ -2584,7 +2584,7 @@ app.get('/camper-attendance', (req, res) => {
     const camperId = parseInt(req.query.camperId) || null;
     const weeksParam = req.query.weeks;
     const selectedWeeks = weeksParam
-        ? weeksParam.split(',').map(Number).filter(n => n >= 1 && n <= 6)
+        ? (Array.isArray(weeksParam) ? weeksParam : weeksParam.split(',')).map(Number).filter(n => n >= 1 && n <= 6)
         : null;
 
     const sessions = db.prepare('SELECT weekNumber, label, startDate FROM Sessions ORDER BY weekNumber').all();
