@@ -293,6 +293,14 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 
 ---
 
+## Camper Attendance History
+
+| Method | Path | Admin only | Description |
+|---|---|:---:|---|
+| GET | `/camper-attendance` | ✓ | Render the attendance history page. Query params: `camperId` (integer) selects a camper; `weeks` (comma-separated week numbers, e.g. `1,3,5`) filters which sessions to display. When `weeks` is omitted all sessions are shown. |
+
+---
+
 ## Debug
 
 | Method | Path | Admin only | Description |
