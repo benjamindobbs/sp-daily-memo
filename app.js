@@ -488,6 +488,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/alerts', '/api/alerts',
     '/photo-gallery/all', '/photo-download',
     '/admin/building-coord', '/admin/delete-building-coord',
+    '/camper-attendance',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -2558,6 +2559,93 @@ app.post('/admin/talent-show/delete', (req, res) => {
     if (!id) return res.redirect('/admin#talent-show');
     db.prepare('DELETE FROM TalentSubmissions WHERE id=?').run(parseInt(id));
     res.redirect('/admin#talent-show');
+});
+
+// --- CAMPER ATTENDANCE HISTORY ---
+function addDaysToDate(dateStr, days) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + days);
+    return dt.toISOString().slice(0, 10);
+}
+
+function getDayStatus(attRows, hasDismissal) {
+    const morning = attRows.find(r => r.SessionType === 'homegroup_am' || r.SessionType === 'specialty_am');
+    const classRows = attRows.filter(r => r.SessionType === 'class');
+    if (morning?.Status === 'late' || hasDismissal) return 'yellow';
+    const anyPresent = morning?.Status === 'present' || classRows.some(r => r.Status === 'present');
+    if (anyPresent) return 'green';
+    const anyAbsentSignal = morning?.Status === 'absent' || (classRows.length > 0 && classRows.every(r => r.Status === 'absent'));
+    if (anyAbsentSignal) return 'red';
+    return 'none';
+}
+
+app.get('/camper-attendance', (req, res) => {
+    const camperId = parseInt(req.query.camperId) || null;
+    const weeksParam = req.query.weeks;
+    const selectedWeeks = weeksParam
+        ? (Array.isArray(weeksParam) ? weeksParam : weeksParam.split(',')).map(Number).filter(n => n >= 1 && n <= 6)
+        : null;
+
+    const sessions = db.prepare('SELECT weekNumber, label, startDate FROM Sessions ORDER BY weekNumber').all();
+    const campers = db.prepare('SELECT CamperID, FirstName, LastName, PreferredName FROM Campers ORDER BY LastName, FirstName').all();
+
+    let camper = null;
+    let weekData = [];
+
+    if (camperId) {
+        camper = db.prepare('SELECT CamperID, FirstName, LastName, PreferredName FROM Campers WHERE CamperID=?').get(camperId);
+
+        if (camper) {
+            const weeksToShow = sessions.filter(s =>
+                s.startDate && (!selectedWeeks || selectedWeeks.includes(s.weekNumber))
+            );
+
+            if (weeksToShow.length > 0) {
+                const firstDate = weeksToShow[0].startDate;
+                const lastDate = addDaysToDate(weeksToShow[weeksToShow.length - 1].startDate, 4);
+
+                const allAtt = db.prepare(`
+                    SELECT Date, SessionType, Status
+                    FROM Attendance
+                    WHERE CamperID = ? AND Date >= ? AND Date <= ?
+                `).all(camperId, firstDate, lastDate);
+
+                const dismissalDates = new Set(
+                    db.prepare(`
+                        SELECT Date FROM EarlyDismissals WHERE CamperID = ? AND Date >= ? AND Date <= ?
+                    `).all(camperId, firstDate, lastDate).map(r => r.Date)
+                );
+
+                const attByDate = {};
+                for (const row of allAtt) {
+                    (attByDate[row.Date] = attByDate[row.Date] || []).push(row);
+                }
+
+                const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+                for (const s of weeksToShow) {
+                    const days = [];
+                    let presentCount = 0, absentCount = 0;
+                    for (let d = 0; d < 5; d++) {
+                        const date = addDaysToDate(s.startDate, d);
+                        const status = getDayStatus(attByDate[date] || [], dismissalDates.has(date));
+                        if (status === 'green' || status === 'yellow') presentCount++;
+                        else if (status === 'red') absentCount++;
+                        const [, m, day] = date.split('-').map(Number);
+                        days.push({ date, status, label: `${m}/${day}`, dow: DOW[d] });
+                    }
+                    weekData.push({ weekNumber: s.weekNumber, label: s.label, startDate: s.startDate, days, presentCount, absentCount });
+                }
+            }
+        }
+    }
+
+    res.render('camper-attendance', {
+        camper, campers, sessions, weekData,
+        selectedWeeks: selectedWeeks || sessions.map(s => s.weekNumber),
+        camperId,
+        viewMode: req.cookies.viewMode || 'admin'
+    });
 });
 
 // --- CLASS ROSTER ---
