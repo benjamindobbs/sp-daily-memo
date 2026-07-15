@@ -933,6 +933,7 @@
                         if (a.PeriodNumber === period && a.SideOfCamp === side) renderSlots(i, type);
                     });
                     updateCounter(period, side);
+                    refreshBuildFlags();
                 });
 
                 container.appendChild(sel);
@@ -949,7 +950,7 @@
             renderSlots(offerIdx, type);
             const act = OFFERINGS[offerIdx];
             updateCounter(act.PeriodNumber, act.SideOfCamp);
-            if (type === 'counselors') updateGroupCounters();
+            if (type === 'counselors') { updateGroupCounters(); refreshBuildFlags(); }
         }
 
         // ── Counselor availability per schedule type ─────────────────────────────
@@ -2221,6 +2222,37 @@
             });
         }
 
+        // Flags are derived from current state so they survive save/refresh and
+        // clear automatically once the conflict is actually resolved.
+        function computeGenderViolations() {
+            const v = [];
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber || !act.SideOfCamp) return;
+                if (missingGender(idx)) v.push(idx);
+            });
+            return v;
+        }
+
+        function computeShortIdxs() {
+            const s = [];
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber || !act.SideOfCamp) return;
+                if (lockedOfferings.has(idx)) return;
+                const placed = state[idx].counselors.filter(id => id).length;
+                const hasNulls = state[idx].counselors.some(id => id === null);
+                const required = manualCounts[idx]?.counselors ?? calcSlotCount(act);
+                if (hasNulls || placed < required) s.push(idx);
+            });
+            return s;
+        }
+
+        function refreshBuildFlags() {
+            // An untouched week (no assignments at all) shouldn't paint everything red
+            const anyPlaced = OFFERINGS.some((a, i) => a.PeriodNumber && state[i].counselors.some(id => id));
+            if (!anyPlaced) { applyCardFlags([], []); return; }
+            applyCardFlags(computeGenderViolations(), computeShortIdxs());
+        }
+
         function fillExtraCounselors() {
             const statusEl = document.getElementById('autoStatus');
             statusEl.textContent = 'Placing extra counselors…';
@@ -2465,13 +2497,11 @@
             // Drop blank slots no remaining counselor can legally fill — otherwise they
             // linger with nobody left to assign. Reported in the status line instead.
             let dropped = 0;
-            const shortIdxs = new Set();
             OFFERINGS.forEach((act, idx) => {
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
                 if (lockedOfferings.has(idx)) return;
                 const nulls = state[idx].counselors.filter(id => id === null).length;
                 if (nulls === 0) return;
-                shortIdxs.add(idx); // any unfilled required slot = short on staff
                 const usedNow = new Set();
                 OFFERINGS.forEach((a, i) => {
                     if (a.PeriodNumber !== act.PeriodNumber) return;
@@ -2503,7 +2533,7 @@
             renderAllFromState();
             updateAllCounters();
             updateGroupCounters();
-            applyCardFlags(genderViolations, [...shortIdxs]);
+            refreshBuildFlags();
 
             let doneMsg = totalAdded > 0
                 ? `Done! ${totalAdded} extra counselor slot${totalAdded !== 1 ? 's' : ''} added.`
@@ -2984,6 +3014,7 @@
                 });
                 updateAllCounters();
                 updateGroupCounters();
+                refreshBuildFlags(); // restore flags from saved state on page load
                 document.querySelectorAll('.cg-schedule').forEach(sel => {
                     sel.addEventListener('change', () => { updateAllCounters(); updateGroupCounters(); });
                 });
