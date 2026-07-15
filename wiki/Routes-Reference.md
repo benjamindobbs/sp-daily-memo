@@ -56,7 +56,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 
 | Method | Path | Admin only | Description |
 |---|---|:---:|---|
-| GET | `/swap-tool` | | Class swap interface |
+| GET | `/swap-tool` | | Class swap interface; accepts `?camperId=` (exact, from autocomplete) or `?name=` (LIKE search) |
 | GET | `/get-options/:camperId/:period` | | Ajax: available classes for a camper/period swap |
 | GET | `/process-swap` | ✓ | Execute a class swap; writes `Schedules` and `ScheduleChanges` |
 | GET | `/schedule-history` | ✓ | Swap log viewer |
@@ -167,7 +167,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 
 | Method | Path | Admin only | Description |
 |---|---|:---:|---|
-| GET | `/dismissals` | | Today's pending dismissals |
+| GET | `/dismissals` | | Today's pending dismissals; camper picked via client-side autocomplete (`?camperId=`), `?q=` server search kept as fallback |
 | POST | `/dismissals/schedule` | | Create a scheduled pickup |
 | POST | `/dismissals/cancel` | | Cancel a scheduled pickup |
 | POST | `/dismissals/update` | | Mark a dismissal as completed |
