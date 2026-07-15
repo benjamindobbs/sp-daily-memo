@@ -20,8 +20,19 @@
         .period-body { padding: 16px 20px 20px; border-top: 1px solid var(--border-color); }
         .side-heading { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9; }
         .offering-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 20px; }
-        .offering-card { border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; background: #fafafa; }
+        .offering-card { border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; background: #fafafa; position: relative; }
         .offering-card.locked { border-color: #f59e0b; background: #fffbeb; }
+        /* Build-result flags: gender imbalance (pink = all female, blue = all male) and staffing shortage (red) */
+        .offering-card.flag-all-f { background: #fdf2f8; border-color: #f9a8d4; }
+        .offering-card.flag-all-m { background: #eff6ff; border-color: #93c5fd; }
+        .offering-card.flag-short { background: #fef2f2; border-color: #fca5a5; }
+        .flag-ignore-btn {
+            position: absolute; bottom: 6px; right: 6px; z-index: 5;
+            font-size: 0.68rem; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+            border: 1px solid var(--border-color); background: white; cursor: pointer;
+            color: var(--text-muted); font-family: inherit;
+        }
+        .flag-ignore-btn:hover { background: #f1f5f9; color: var(--text); }
         .offering-card-header { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
         .offering-name-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; }
         .lock-btn { font-size: 0.9rem; background: none; border: none; cursor: pointer; padding: 0 2px; line-height: 1; opacity: 0.35; flex-shrink: 0; margin-top: 1px; }
@@ -51,6 +62,16 @@
         .search-select-item { padding: 5px 8px; font-size: 0.82rem; font-family: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .search-select-item:hover, .search-select-item.highlighted { background: #eff6ff; }
         .search-select-item.selected { background: #dbeafe; font-weight: 600; }
+        /* Counselor listed this class in their preferences */
+        .search-select-item.pref-match { background: #dcfce7; }
+        .search-select-item.pref-match:hover, .search-select-item.pref-match.highlighted { background: #bbf7d0; }
+        .search-select-item.pref-match.selected { background: #86efac; }
+        .search-select-input.pref-input { background: #dcfce7; border-color: #86efac; }
+        /* Schedule-type vs. counselor's stated preference */
+        .cg-schedule.st-green  { background: #dcfce7; }
+        .cg-schedule.st-yellow { background: #fef9c3; }
+        .cg-schedule.st-red    { background: #fee2e2; }
+        .cg-schedule option.pref-opt { background: #dcfce7; font-weight: 700; }
     </style>
 </head>
 <body>
@@ -778,7 +799,9 @@
                 options.forEach(opt => {
                     if (lower && !opt.label.toLowerCase().includes(lower)) return;
                     const el = document.createElement('div');
-                    el.className = 'search-select-item' + (opt.value === currentValue ? ' selected' : '');
+                    el.className = 'search-select-item'
+                        + (opt.value === currentValue ? ' selected' : '')
+                        + (opt.pref ? ' pref-match' : '');
                     el.textContent = opt.label;
                     el.dataset.val = String(opt.value);
                     dropdown.appendChild(el);
@@ -798,15 +821,23 @@
                 input.value = getLabel(currentValue);
             }
 
+            // Tint the closed input green when the selected person prefers this class
+            function updateInputPref() {
+                const opt = currentValue != null ? options.find(o => o.value === currentValue) : null;
+                input.classList.toggle('pref-input', !!(opt && opt.pref));
+            }
+
             function choose(val) {
                 currentValue = val !== '' ? parseInt(val) : null;
                 close();
+                updateInputPref();
                 wrap.dispatchEvent(new CustomEvent('change'));
             }
 
             Object.defineProperty(wrap, 'value', { get: () => currentValue });
             input.value = getLabel(currentValue);
             if (currentValue == null) input.placeholder = '— Select —';
+            updateInputPref();
 
             input.addEventListener('focus', () => { input.select(); open(); });
 
@@ -885,6 +916,13 @@
             });
             container.innerHTML = '';
 
+            // Names this offering answers to, for the preference highlight
+            const prefNames = act.mergedNames || [act.ActivityName];
+            const prefersThisClass = cid => {
+                const p = PREF_BY_ID[cid]?.ActivityPreferences;
+                return !!p && prefNames.some(n => p.includes(n));
+            };
+
             arr.forEach((selectedId, slotIdx) => {
                 const usedElsewhere = getUsedElsewhere(offerIdx, type, slotIdx);
 
@@ -896,7 +934,7 @@
                     const label = type === 'counselors'
                         ? `${person.FirstName} ${person.LastName}${person.HomeGroupColor ? ` (${person.HomeGroupColor})` : ''}`
                         : `${person.FirstName} ${person.LastName} — ${person.StaffType}`;
-                    opts.push({ value: id, label });
+                    opts.push({ value: id, label, pref: type === 'counselors' && prefersThisClass(id) });
                     addedIds.add(id);
                 });
 
@@ -910,7 +948,7 @@
                         const label = type === 'counselors'
                             ? `${saved.FirstName} ${saved.LastName}${saved.HomeGroupColor ? ` (${saved.HomeGroupColor})` : ''}`
                             : `${saved.FirstName} ${saved.LastName} — ${saved.StaffType}`;
-                        opts.push({ value: selectedId, label });
+                        opts.push({ value: selectedId, label, pref: type === 'counselors' && prefersThisClass(selectedId) });
                     }
                 }
 
@@ -922,6 +960,7 @@
                         if (a.PeriodNumber === period && a.SideOfCamp === side) renderSlots(i, type);
                     });
                     updateCounter(period, side);
+                    refreshBuildFlags();
                 });
 
                 container.appendChild(sel);
@@ -938,7 +977,7 @@
             renderSlots(offerIdx, type);
             const act = OFFERINGS[offerIdx];
             updateCounter(act.PeriodNumber, act.SideOfCamp);
-            if (type === 'counselors') updateGroupCounters();
+            if (type === 'counselors') { updateGroupCounters(); refreshBuildFlags(); }
         }
 
         // ── Counselor availability per schedule type ─────────────────────────────
@@ -1138,6 +1177,39 @@
                     chip.classList.toggle('sports',     !warn && !isEnrich);
                     chip.classList.toggle('enrichment', !warn && isEnrich);
                 }
+            });
+        }
+
+        // ── Schedule-type preference colors ──────────────────────────────────────
+        // Green = got their preferred type. Yellow = wanted full-day, got a split
+        // (or wanted a split, got a full day — half right). Red = wanted full-day,
+        // got the opposite full day, or wanted a split and got the inverse split.
+        const FULL_DAY_TYPES  = ['All Sports', 'All Enrichment'];
+        const SPLIT_DAY_TYPES = ['AM Sports / PM Enrichment', 'AM Enrichment / PM Sports'];
+        function schedTypeMatch(pref, val) {
+            if (!pref || pref === 'No Preference' || !val) return null;
+            if (val === pref) return 'st-green';
+            const prefFull  = FULL_DAY_TYPES.includes(pref);
+            const valFull   = FULL_DAY_TYPES.includes(val);
+            const prefSplit = SPLIT_DAY_TYPES.includes(pref);
+            const valSplit  = SPLIT_DAY_TYPES.includes(val);
+            if (prefFull && valSplit)  return 'st-yellow';
+            if (prefFull && valFull)   return 'st-red';
+            if (prefSplit && valSplit) return 'st-red';
+            if (prefSplit && valFull)  return 'st-yellow';
+            return null;
+        }
+
+        function updateScheduleTypeColors() {
+            document.querySelectorAll('.cg-schedule').forEach(sel => {
+                const cid  = parseInt(sel.dataset.cid);
+                const pref = PREF_BY_ID[cid]?.SchedulePreference;
+                sel.classList.remove('st-green', 'st-yellow', 'st-red');
+                const cls = schedTypeMatch(pref, sel.value);
+                if (cls) sel.classList.add(cls);
+                // Highlight their preferred value inside the open dropdown
+                [...sel.options].forEach(o =>
+                    o.classList.toggle('pref-opt', !!pref && pref !== 'No Preference' && o.value === pref));
             });
         }
 
@@ -1370,33 +1442,14 @@
             const prefMap = {};
             PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
 
-            const sMin = parseInt(document.getElementById('sportsMin').value)       || 2;
-            const sThr = parseInt(document.getElementById('sportsThreshold').value) || 16;
-            const sPer = parseInt(document.getElementById('sportsPer').value)       || 8;
-            const eRed = parseInt(document.getElementById('enrichRed').value)       || 2;
-            const eCar = parseInt(document.getElementById('enrichCarolina').value)  || 1;
-            const eRC  = parseInt(document.getElementById('enrichRC').value)        || 2;
-            const eGN  = parseInt(document.getElementById('enrichGN').value)        || 1;
-
+            // Demand uses the same slot formula as autoCalculateSlots (calcSlotCount)
+            // so the type balancer and the slot calculator can never disagree.
             const demand = { amSports: 0, pmSports: 0, amEnrich: 0, pmEnrich: 0 };
             const slotTotals = {};
             OFFERINGS.forEach(act => {
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
                 const key = `${act.PeriodNumber}_${act.SideOfCamp}`;
-                let cnt;
-                if (/hartt.+chamber/i.test(act.ActivityName)) {
-                    cnt = 0;
-                } else if (/archery/i.test(act.ActivityName)) {
-                    cnt = 2;
-                } else if (act.SideOfCamp === 'Sports') {
-                    const enr = act.PreliminaryEnrollment || 0;
-                    cnt = sMin + Math.ceil(Math.max(0, enr - sThr) / sPer);
-                    if (/swim/i.test(act.ActivityName)) cnt = Math.min(cnt, 2);
-                } else {
-                    const ag = act.AllowedGroups || '';
-                    cnt = ag === 'Red' ? eRed : ag === 'Carolina' ? eCar : ag === 'Red-Carolina' ? eRC : ag === 'Green-Navy' ? eGN : eRC;
-                }
-                slotTotals[key] = (slotTotals[key] || 0) + cnt;
+                slotTotals[key] = (slotTotals[key] || 0) + calcSlotCount(act);
             });
             Object.entries(slotTotals).forEach(([key, total]) => {
                 const [p, side] = key.split('_');
@@ -1410,8 +1463,14 @@
                 'All Enrichment':            { amSports: 0, pmSports: 0, amEnrich: 1, pmEnrich: 1 },
                 'AM Sports / PM Enrichment': { amSports: 1, pmSports: 0, amEnrich: 0, pmEnrich: 1 },
                 'AM Enrichment / PM Sports': { amSports: 0, pmSports: 1, amEnrich: 1, pmEnrich: 0 },
+                // Partial types are never auto-assigned, but saved ones must count
+                // toward supply with their true (half-day) coverage.
+                'AM Sports Only':            { amSports: 1, pmSports: 0, amEnrich: 0, pmEnrich: 0 },
+                'PM Sports Only':            { amSports: 0, pmSports: 1, amEnrich: 0, pmEnrich: 0 },
+                'AM Enrichment Only':        { amSports: 0, pmSports: 0, amEnrich: 1, pmEnrich: 0 },
+                'PM Enrichment Only':        { amSports: 0, pmSports: 0, amEnrich: 0, pmEnrich: 1 },
             };
-            const VALID_TYPES = Object.keys(COVERS);
+            const ASSIGNABLE_TYPES = ['All Sports', 'All Enrichment', 'AM Sports / PM Enrichment', 'AM Enrichment / PM Sports'];
 
             function supplyFrom(typeMap) {
                 const s = { amSports: 0, pmSports: 0, amEnrich: 0, pmEnrich: 0 };
@@ -1426,7 +1485,8 @@
             }
             function mostNeededType(supply) {
                 let best = null, bestScore = -1;
-                for (const [type, cov] of Object.entries(COVERS)) {
+                for (const type of ASSIGNABLE_TYPES) {
+                    const cov = COVERS[type];
                     const score = Object.keys(supply).reduce((acc, q) => acc + (cov[q] > 0 ? Math.max(0, demand[q] - supply[q]) : 0), 0);
                     if (score > bestScore) { bestScore = score; best = type; }
                 }
@@ -1439,12 +1499,15 @@
             const prefCids = [];
             MAIN_COUNSELORS.forEach(c => {
                 const cid = String(c.CounselorID);
+                // Non-working counselors contribute no supply and get no assignment
+                const wcb = document.querySelector(`.cg-working[data-cid="${c.CounselorID}"]:not(.cg-specialty-working)`);
+                if (wcb && !wcb.checked) return;
                 const saved = savedTypes[cid];
-                if (saved && VALID_TYPES.includes(saved)) {
+                if (saved && COVERS[saved]) {
                     typeAssignments[cid] = saved; // locked — do not change
                 } else {
                     const schedPref = prefMap[c.CounselorID]?.SchedulePreference;
-                    if (schedPref && schedPref !== 'No Preference' && VALID_TYPES.includes(schedPref)) {
+                    if (schedPref && schedPref !== 'No Preference' && COVERS[schedPref]) {
                         typeAssignments[cid] = schedPref;
                         prefCids.push(cid);
                     } else {
@@ -1453,18 +1516,98 @@
                 }
             });
 
+            // Specialty counselors with a schedule type set are part of the assignable
+            // pool, so they must count toward supply — as fixed (never auto-typed) entries.
+            const mainIdSet = new Set(MAIN_COUNSELORS.map(c => String(c.CounselorID)));
+            SPECIALTY_COUNSELORS.forEach(c => {
+                const cid = String(c.CounselorID);
+                if (mainIdSet.has(cid)) return; // dual-assigned, already counted
+                const wcb = document.querySelector(`.cg-working[data-cid="${c.CounselorID}"]`);
+                if (wcb && !wcb.checked) return;
+                const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                const t = sel ? sel.value : (c.ScheduleType || '');
+                if (t && COVERS[t]) typeAssignments[cid] = t;
+            });
+
             // Assign free counselors demand-first
             freeCids.forEach(cid => {
                 typeAssignments[cid] = mostNeededType(supplyFrom(typeAssignments)) || 'All Sports';
             });
 
-            // If supply still can't meet demand, override preference-only counselors
+            // If supply still can't meet demand, override preference-based counselors.
+            // At each step, flip the counselor whose ACTIVITY preferences best align
+            // with the type being forced (least disruption), instead of picking randomly.
             if (!scheduleIsValid(supplyFrom(typeAssignments))) {
-                for (const cid of shuffle(prefCids)) {
-                    if (scheduleIsValid(supplyFrom(typeAssignments))) break;
+                const sideOf = {};
+                OFFERINGS.forEach(a => { if (a.SideOfCamp) sideOf[a.ActivityName] = a.SideOfCamp; });
+                const TYPE_SIDES = {
+                    'All Sports':                ['Sports', 'Sports'],
+                    'All Enrichment':            ['Enrichment', 'Enrichment'],
+                    'AM Sports / PM Enrichment': ['Sports', 'Enrichment'],
+                    'AM Enrichment / PM Sports': ['Enrichment', 'Sports'],
+                    'AM Sports Only':            ['Sports', null],
+                    'PM Sports Only':            [null, 'Sports'],
+                    'AM Enrichment Only':        ['Enrichment', null],
+                    'PM Enrichment Only':        [null, 'Enrichment'],
+                };
+                const sidePrefCount = cid => {
+                    const cnt = { Sports: 0, Enrichment: 0 };
+                    (prefMap[cid]?.ActivityPreferences || []).forEach(n => { const s = sideOf[n]; if (s) cnt[s]++; });
+                    return cnt;
+                };
+                const remaining = [...prefCids];
+                while (!scheduleIsValid(supplyFrom(typeAssignments)) && remaining.length > 0) {
                     const needed = mostNeededType(supplyFrom(typeAssignments));
-                    if (needed) typeAssignments[cid] = needed;
+                    if (!needed) break;
+                    let bestI = -1, bestNet = -Infinity;
+                    remaining.forEach((cid, i) => {
+                        const cur = typeAssignments[cid];
+                        if (cur === needed) return; // flipping changes nothing
+                        const cnt = sidePrefCount(cid);
+                        const curSides = TYPE_SIDES[cur] || [null, null];
+                        const newSides = TYPE_SIDES[needed];
+                        let net = 0;
+                        for (let b = 0; b < 2; b++) {
+                            net += (newSides[b] ? cnt[newSides[b]] : 0) - (curSides[b] ? cnt[curSides[b]] : 0);
+                        }
+                        if (net > bestNet) { bestNet = net; bestI = i; }
+                    });
+                    if (bestI === -1) break;
+                    typeAssignments[remaining[bestI]] = needed;
+                    remaining.splice(bestI, 1);
                 }
+            }
+
+            // Mutual-preference swap pass: if counselor A holds the type counselor B
+            // wants and B holds the type A wants, trade them 1:1. Both get their
+            // preference and quadrant supply is untouched (the multiset of assigned
+            // types doesn't change). Covers opposite full-days, inverse splits, and
+            // full↔split mutual trades. Saved (partial) types and specialty
+            // counselors are never traded.
+            {
+                const swappableIds = new Set(MAIN_COUNSELORS.map(c => String(c.CounselorID)));
+                const unsatisfied = Object.keys(typeAssignments).filter(cid => {
+                    if (savedTypes[cid]) return false;
+                    if (!swappableIds.has(cid)) return false;
+                    const pref = prefMap[cid]?.SchedulePreference;
+                    return pref && pref !== 'No Preference' && COVERS[pref] && typeAssignments[cid] !== pref;
+                });
+                const swapBuckets = {};
+                unsatisfied.forEach(cid => {
+                    const key = typeAssignments[cid] + '→' + prefMap[cid].SchedulePreference;
+                    (swapBuckets[key] = swapBuckets[key] || []).push(cid);
+                });
+                Object.keys(swapBuckets).forEach(key => {
+                    const [have, want] = key.split('→');
+                    const revKey = want + '→' + have;
+                    if (!(revKey in swapBuckets) || key > revKey) return; // handle each pair once
+                    const a = swapBuckets[key], b = swapBuckets[revKey];
+                    while (a.length && b.length) {
+                        const cidA = a.pop(), cidB = b.pop();
+                        typeAssignments[cidA] = want;
+                        typeAssignments[cidB] = have;
+                    }
+                });
             }
 
             // If still invalid after all free reassignments, show shortfall modal
@@ -1487,6 +1630,7 @@
             });
 
             updateGroupCounters();
+            updateScheduleTypeColors();
         }
 
         // Canonical block-used key: rec swim and swim lessons are the same class for scheduling purposes
@@ -1510,15 +1654,97 @@
             return eRC;
         }
 
-        function autoCalculateSlots() {
-            const sportsMin       = parseInt(document.getElementById('sportsMin').value)       || 2;
-            const sportsThreshold = parseInt(document.getElementById('sportsThreshold').value) || 16;
-            const sportsPer       = parseInt(document.getElementById('sportsPer').value)       || 8;
-            const enrichRed       = parseInt(document.getElementById('enrichRed').value)       || 2;
-            const enrichCarolina  = parseInt(document.getElementById('enrichCarolina').value)  || 2;
-            const enrichRC        = parseInt(document.getElementById('enrichRC').value)        || 2;
-            const enrichGN        = parseInt(document.getElementById('enrichGN').value)        || 2;
+        // Slot count for one offering — single source of truth shared by the demand
+        // model (autoAssignScheduleTypes) and the slot calculator (autoCalculateSlots).
+        function calcSlotCount(act) {
+            if (/hartt.+chamber/i.test(act.ActivityName) || /learning.zone/i.test(act.ActivityName)) return 0;
+            if (/archery/i.test(act.ActivityName)) return 2;
+            if (act.SideOfCamp === 'Sports') {
+                const sMin = parseInt(document.getElementById('sportsMin').value)       || 2;
+                const sThr = parseInt(document.getElementById('sportsThreshold').value) || 16;
+                const sPer = parseInt(document.getElementById('sportsPer').value)       || 8;
+                let cnt = sMin + Math.ceil(Math.max(0, (act.PreliminaryEnrollment || 0) - sThr) / sPer);
+                if (/swim/i.test(act.ActivityName)) cnt = Math.min(cnt, 2);
+                return cnt;
+            }
+            return getEnrichMin(act);
+        }
 
+        // Day-level variety: true if the counselor already has this activity in EITHER block
+        function usedEitherBlock(blockUsedMap, cid, name) {
+            const bu = blockUsedMap[cid];
+            return !!bu && (bu.am.has(blockKey(name)) || bu.pm.has(blockKey(name)));
+        }
+
+        // ── Gender rules ─────────────────────────────────────────────────────────
+        const GENDER_BY_ID = {};
+        COUNSELORS.forEach(c => { GENDER_BY_ID[c.CounselorID] = c.Gender || null; });
+
+        // Preference lookup shared by the UI highlights
+        const PREF_BY_ID = {};
+        PREFERENCES.forEach(p => { PREF_BY_ID[p.CounselorID] = p; });
+
+        // Go Girl is the only class that requires female staff exclusively
+        function isFemaleOnlyClass(name) { return /go.?girl/i.test(name); }
+
+        // Gender counts among the placed (non-null) counselors of an offering
+        function genderMix(idx) {
+            let m = 0, f = 0;
+            state[idx].counselors.forEach(id => {
+                if (!id || id === -1) return;
+                const g = GENDER_BY_ID[id];
+                if (g === 'M') m++; else if (g === 'F') f++;
+            });
+            return { m, f };
+        }
+
+        // The gender an offering is missing under the split rule (2+ counselors →
+        // min one of each). Returns 'M', 'F', or null if satisfied / not applicable.
+        // Unknown-gender counselors count as neither, so all-unknown classes never flag.
+        function missingGender(idx) {
+            const act = OFFERINGS[idx];
+            if (isFemaleOnlyClass(act.ActivityName)) return null;
+            if (state[idx].counselors.filter(id => id && id !== -1).length < 2) return null;
+            const { m, f } = genderMix(idx);
+            if (m > 0 && f === 0) return 'F';
+            if (f > 0 && m === 0) return 'M';
+            return null;
+        }
+
+        // True if the counselor has this activity name in any OTHER offering today
+        function hasActivityElsewhere(cid, name, excludeIdx) {
+            const key = blockKey(name);
+            return OFFERINGS.some((a, i) =>
+                i !== excludeIdx && a.PeriodNumber &&
+                blockKey(a.ActivityName) === key &&
+                state[i].counselors.includes(cid)
+            );
+        }
+
+        // Count of already-assigned classes matching each counselor's activity
+        // preferences — used to break "coin tosses" in favor of counselors with
+        // fewer preferred assignments so wins spread evenly.
+        function buildPrefWins(prefMap) {
+            const wins = {};
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber) return;
+                state[idx].counselors.forEach(id => {
+                    if (!id || id === -1) return;
+                    if (prefMap[id]?.ActivityPreferences?.includes(act.ActivityName)) {
+                        wins[id] = (wins[id] || 0) + 1;
+                    }
+                });
+            });
+            return wins;
+        }
+
+        // Shuffle, then order ascending by preferred-class wins. The sort is stable,
+        // so the shuffle remains the tiebreak among counselors with equal wins.
+        function orderByFewestWins(arr, wins, getId) {
+            return shuffle(arr).sort((a, b) => (wins[getId(a)] || 0) - (wins[getId(b)] || 0));
+        }
+
+        function autoCalculateSlots() {
             // Step 1: Compute raw slot counts (skip offerings already manually set)
             const rawCounts = {};
             OFFERINGS.forEach((act, idx) => {
@@ -1566,28 +1792,7 @@
                     return;
                 }
 
-                let count;
-                if (/archery/i.test(act.ActivityName)) {
-                    count = 2;
-                } else if (act.SideOfCamp === 'Sports') {
-                    const enrollment = act.PreliminaryEnrollment || 0;
-                    count = sportsMin + Math.ceil(Math.max(0, enrollment - sportsThreshold) / sportsPer);
-                    if (/swim/i.test(act.ActivityName)) count = Math.min(count, 2);
-                } else {
-                    const enrollment = act.PreliminaryEnrollment || 0;
-                    if (act.PeriodNumber > 3 && enrollment <= 8) {
-                        // PM enrichment with small classes: reduced minimum of 1
-                        count = 1;
-                    } else {
-                        const ag = act.AllowedGroups || '';
-                        if (ag === 'Red')               count = enrichRed;
-                        else if (ag === 'Carolina')     count = enrichCarolina;
-                        else if (ag === 'Red-Carolina') count = enrichRC;
-                        else if (ag === 'Green-Navy')   count = enrichGN;
-                        else                            count = enrichRC;
-                    }
-                }
-                rawCounts[idx] = count;
+                rawCounts[idx] = calcSlotCount(act);
             });
 
             // Step 2: Bucket raw counts by period+side; compute supply from current DOM ScheduleTypes
@@ -1676,6 +1881,9 @@
             const prefMap = {};
             PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
 
+            // Preferred-class wins so far (seeded from pinned/locked assignments)
+            const prefWins = buildPrefWins(prefMap);
+
             // Track activity names a counselor has been placed in per AM/PM block
             const blockUsed = {};
             COUNSELORS.forEach(c => { blockUsed[c.CounselorID] = { am: new Set(), pm: new Set() }; });
@@ -1740,11 +1948,12 @@
                 const tEligible = getAssignablePool().filter(c => {
                     if (usedThisPeriod[srcPeriod].has(c.CounselorID)) return false;
                     if ((STAFF_BUSY[c.CounselorID] || []).includes(srcPeriod)) return false;
+                    if (isFemaleOnlyClass(tName) && GENDER_BY_ID[c.CounselorID] === 'M') return false;
                     const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     return isCounselorAvailableFor(sched, srcPeriod, tSide);
                 });
-                const tPreferred = shuffle(tEligible.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(tName)));
+                const tPreferred = orderByFewestWins(tEligible.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(tName)), prefWins, c => c.CounselorID);
                 const tNonPref   = shuffle(tEligible.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(tName)));
                 const tPool = mode === 'pref' ? [...tPreferred] : [...tPreferred, ...tNonPref];
                 for (let slot = 0; slot < slotCount; slot++) {
@@ -1755,6 +1964,8 @@
                         while (state[tidx].counselors.length <= slot) state[tidx].counselors.push(null);
                         state[tidx].counselors[slot] = chosen.CounselorID;
                         usedThisPeriod[OFFERINGS[tidx].PeriodNumber].add(chosen.CounselorID);
+                        if (prefMap[chosen.CounselorID]?.ActivityPreferences?.includes(tName))
+                            prefWins[chosen.CounselorID] = (prefWins[chosen.CounselorID] || 0) + 1;
                     }
                     blockUsed[chosen.CounselorID][tBlock].add(blockKey(tName));
                 }
@@ -1786,22 +1997,35 @@
                 const side   = act.SideOfCamp;
                 const name   = act.ActivityName;
                 const block  = period <= 3 ? 'am' : 'pm';
-                const oppBlock = block === 'am' ? 'pm' : 'am';
                 const slotPos  = state[bestIdx].counselors.indexOf(null);
 
                 const eligible = getAssignablePool().filter(c => {
                     if (usedThisPeriod[period].has(c.CounselorID)) return false;
                     if ((STAFF_BUSY[c.CounselorID] || []).includes(period)) return false;
+                    if (isFemaleOnlyClass(name) && GENDER_BY_ID[c.CounselorID] === 'M') return false;
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     if (!isCounselorAvailableFor(sched, period, side)) return false;
-                    if (blockUsed[c.CounselorID]?.[block].has(blockKey(name))) return false;
+                    if (usedEitherBlock(blockUsed, c.CounselorID, name)) return false; // day-level variety
                     return true;
                 });
 
-                const preferred = shuffle(eligible.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
+                const preferred = orderByFewestWins(eligible.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)), prefWins, c => c.CounselorID);
                 const nonPref   = shuffle(eligible.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
-                const pool = mode === 'pref' ? [...preferred] : [...preferred, ...nonPref];
+                let pool = mode === 'pref' ? [...preferred] : [...preferred, ...nonPref];
+
+                // Gender split: filling the LAST open slot of a 2+ class that is
+                // single-gender so far → prefer the missing gender if available.
+                if (pool.length > 1 &&
+                    state[bestIdx].counselors.length >= 2 &&
+                    state[bestIdx].counselors.filter(id => id === null).length === 1) {
+                    const { m, f } = genderMix(bestIdx);
+                    const need = (m > 0 && f === 0) ? 'F' : (f > 0 && m === 0) ? 'M' : null;
+                    if (need) {
+                        const genderPool = pool.filter(c => GENDER_BY_ID[c.CounselorID] === need);
+                        if (genderPool.length) pool = genderPool;
+                    }
+                }
 
                 if (pool.length === 0) {
                     state[bestIdx].counselors[slotPos] = -1; // unfillable sentinel
@@ -1810,6 +2034,8 @@
                     state[bestIdx].counselors[slotPos] = chosen.CounselorID;
                     usedThisPeriod[period].add(chosen.CounselorID);
                     blockUsed[chosen.CounselorID][block].add(blockKey(name));
+                    if (prefMap[chosen.CounselorID]?.ActivityPreferences?.includes(name))
+                        prefWins[chosen.CounselorID] = (prefWins[chosen.CounselorID] || 0) + 1;
                 }
                 madeProgress = true;
             }
@@ -1865,6 +2091,265 @@
             statusEl.textContent = 'Schedule built. Checking for extra counselors…';
         }
 
+        // ── Post-build equity rebalance ──────────────────────────────────────────
+        // Within each period+side, move counselors from over-staffed classes to
+        // under-staffed ones until enrollment-per-counselor ratios can't improve.
+        // Zero-counselor classes always receive first. Locked and triple-period
+        // offerings are never touched; day-level variety is respected.
+        function rebalanceCounselors() {
+            const prefMap = {};
+            PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
+            const prefers = (cid, actName) => !!prefMap[cid]?.ActivityPreferences?.includes(actName);
+            const capFor = idx => {
+                const a = OFFERINGS[idx];
+                if (/swim/i.test(a.ActivityName) || /archery/i.test(a.ActivityName)) return 2;
+                if (a.SideOfCamp === 'Enrichment') return 3;
+                return Infinity;
+            };
+            const floorFor = idx => {
+                const a = OFFERINGS[idx];
+                const mc = manualCounts[idx]?.counselors;
+                if (mc != null) return mc;
+                return a.SideOfCamp === 'Enrichment' ? getEnrichMin(a) : 1;
+            };
+            const movable = idx => {
+                const a = OFFERINGS[idx];
+                if (!a.PeriodNumber || !a.SideOfCamp) return false;
+                if (lockedOfferings.has(idx)) return false;
+                if (a.ActivityName.toLowerCase().includes('triple period')) return false;
+                if (/hartt.+chamber/i.test(a.ActivityName) || /learning.zone/i.test(a.ActivityName)) return false;
+                return true;
+            };
+
+            // Activity names each counselor already has today (for the variety rule)
+            const dayUsed = {};
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber) return;
+                state[idx].counselors.forEach(id => {
+                    if (!id) return;
+                    if (!dayUsed[id]) dayUsed[id] = new Set();
+                    dayUsed[id].add(blockKey(act.ActivityName));
+                });
+            });
+
+            for (let period = 1; period <= 6; period++) {
+                for (const side of ['Sports', 'Enrichment']) {
+                    const idxs = [];
+                    OFFERINGS.forEach((act, idx) => {
+                        if (act.PeriodNumber === period && act.SideOfCamp === side && movable(idx)) idxs.push(idx);
+                    });
+                    if (idxs.length < 2) continue;
+
+                    const ratio = idx => {
+                        const placed = state[idx].counselors.filter(id => id).length;
+                        const enroll = OFFERINGS[idx].PreliminaryEnrollment || 0;
+                        return placed === 0 ? Infinity : enroll / placed;
+                    };
+
+                    let guard = 100;
+                    while (guard-- > 0) {
+                        let moved = false;
+                        const receivers = [...idxs].sort((a, b) => ratio(b) - ratio(a));
+                        for (const rIdx of receivers) {
+                            const rPlaced = state[rIdx].counselors.filter(id => id).length;
+                            if (rPlaced >= capFor(rIdx)) continue;
+                            const rRatio = ratio(rIdx);
+                            const rName  = blockKey(OFFERINGS[rIdx].ActivityName);
+                            const donors = idxs
+                                .filter(d => d !== rIdx && state[d].counselors.filter(id => id).length > floorFor(d))
+                                .sort((a, b) => ratio(a) - ratio(b));
+                            for (const dIdx of donors) {
+                                const dPlaced = state[dIdx].counselors.filter(id => id).length;
+                                const dRatioAfter = (OFFERINGS[dIdx].PreliminaryEnrollment || 0) / (dPlaced - 1);
+                                if (rRatio <= dRatioAfter) continue; // move wouldn't improve balance
+                                // Among movable counselors, prefer one who requested the receiver
+                                // class and avoid moving one who requested the donor class.
+                                const dName = OFFERINGS[dIdx].ActivityName;
+                                const rActName = OFFERINGS[rIdx].ActivityName;
+                                // Moving this counselor out must not leave the donor single-gendered
+                                const wouldBreakDonorSplit = id => {
+                                    if (dPlaced - 1 < 2) return false;
+                                    const g = GENDER_BY_ID[id];
+                                    if (!g) return false;
+                                    const mix = genderMix(dIdx);
+                                    const m = mix.m - (g === 'M' ? 1 : 0);
+                                    const f = mix.f - (g === 'F' ? 1 : 0);
+                                    return (m > 0 && f === 0) || (f > 0 && m === 0);
+                                };
+                                const candidates = state[dIdx].counselors.filter(id =>
+                                    id &&
+                                    !state[rIdx].counselors.includes(id) &&
+                                    !(dayUsed[id]?.has(rName)) &&
+                                    !(isFemaleOnlyClass(rActName) && GENDER_BY_ID[id] === 'M') &&
+                                    !wouldBreakDonorSplit(id)
+                                );
+                                if (candidates.length === 0) continue;
+                                const cId = candidates.reduce((best, id) => {
+                                    const score  = (prefers(id, rActName) ? 2 : 0) - (prefers(id, dName) ? 1 : 0);
+                                    const bScore = (prefers(best, rActName) ? 2 : 0) - (prefers(best, dName) ? 1 : 0);
+                                    return score > bScore ? id : best;
+                                });
+                                state[dIdx].counselors = state[dIdx].counselors.filter(id => id !== cId);
+                                state[rIdx].counselors.push(cId);
+                                if (!dayUsed[cId]) dayUsed[cId] = new Set();
+                                dayUsed[cId].add(rName);
+                                moved = true;
+                                break;
+                            }
+                            if (moved) break;
+                        }
+                        if (!moved) break;
+                    }
+                }
+            }
+        }
+
+        // ── Gender split repair ──────────────────────────────────────────────────
+        // Classes with 2+ counselors need at least one of each gender. Attempts to
+        // fix single-gender classes by swapping a counselor with another class in
+        // the same period+side (respecting variety, Go Girl, and the donor's own
+        // split). Returns offering indexes still violating afterwards.
+        function enforceGenderSplit() {
+            const violations = [];
+            for (let period = 1; period <= 6; period++) {
+                for (const side of ['Sports', 'Enrichment']) {
+                    const idxs = [];
+                    OFFERINGS.forEach((act, idx) => {
+                        if (act.PeriodNumber === period && act.SideOfCamp === side) idxs.push(idx);
+                    });
+                    for (const rIdx of idxs) {
+                        if (lockedOfferings.has(rIdx)) continue;
+                        if (OFFERINGS[rIdx].ActivityName.toLowerCase().includes('triple period')) continue;
+                        const need = missingGender(rIdx);
+                        if (!need) continue;
+                        const rName = OFFERINGS[rIdx].ActivityName;
+
+                        let fixed = false;
+                        for (const dIdx of idxs) {
+                            if (fixed) break;
+                            if (dIdx === rIdx || lockedOfferings.has(dIdx)) continue;
+                            if (OFFERINGS[dIdx].ActivityName.toLowerCase().includes('triple period')) continue;
+                            const dName = OFFERINGS[dIdx].ActivityName;
+                            const dPlacedArr = state[dIdx].counselors.filter(id => id);
+
+                            // Incoming: a needed-gender counselor from the donor who can join us
+                            const inCands = dPlacedArr.filter(id =>
+                                GENDER_BY_ID[id] === need &&
+                                !state[rIdx].counselors.includes(id) &&
+                                !hasActivityElsewhere(id, rName, dIdx));
+                            if (!inCands.length) continue;
+
+                            // Outgoing: one of ours who can join the donor in exchange
+                            const outCands = state[rIdx].counselors.filter(id =>
+                                id &&
+                                !state[dIdx].counselors.includes(id) &&
+                                !(isFemaleOnlyClass(dName) && GENDER_BY_ID[id] === 'M') &&
+                                !hasActivityElsewhere(id, dName, rIdx));
+
+                            for (const inId of inCands) {
+                                if (fixed) break;
+                                for (const outId of outCands) {
+                                    if (outId === inId) continue;
+                                    // The swap must not create a violation in the donor
+                                    const dm   = genderMix(dIdx);
+                                    const gIn  = GENDER_BY_ID[inId];
+                                    const gOut = GENDER_BY_ID[outId];
+                                    const m = dm.m - (gIn === 'M' ? 1 : 0) + (gOut === 'M' ? 1 : 0);
+                                    const f = dm.f - (gIn === 'F' ? 1 : 0) + (gOut === 'F' ? 1 : 0);
+                                    if (dPlacedArr.length >= 2 && ((m > 0 && f === 0) || (f > 0 && m === 0))) continue;
+                                    state[dIdx].counselors[state[dIdx].counselors.indexOf(inId)]  = outId;
+                                    state[rIdx].counselors[state[rIdx].counselors.indexOf(outId)] = inId;
+                                    fixed = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!fixed) violations.push(rIdx);
+                    }
+                }
+            }
+            return violations;
+        }
+
+        // ── Build-result card flags ──────────────────────────────────────────────
+        // Pink = all-female class (2+), blue = all-male class (2+), red = short on
+        // staff. Each flag has an Ignore button; ignores persist per week+class in
+        // localStorage so re-running the build doesn't resurrect dismissed flags.
+        function applyCardFlags(genderViolationIdxs, shortIdxs) {
+            const IGNORE_KEY = 'buildFlagIgnore_w' + PLAN_WEEK;
+            let ignored = [];
+            try { ignored = JSON.parse(localStorage.getItem(IGNORE_KEY) || '[]'); } catch {}
+            const ignoredSet = new Set(ignored);
+
+            document.querySelectorAll('.offering-card.flag-all-f, .offering-card.flag-all-m, .offering-card.flag-short')
+                .forEach(el => el.classList.remove('flag-all-f', 'flag-all-m', 'flag-short'));
+            document.querySelectorAll('.flag-ignore-btn').forEach(el => el.remove());
+
+            const flag = (idx, cls) => {
+                if (ignoredSet.has(lockKey(idx))) return;
+                const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                if (!card) return;
+                card.classList.add(cls);
+                if (!card.querySelector('.flag-ignore-btn')) {
+                    const btn = document.createElement('button');
+                    btn.className = 'flag-ignore-btn';
+                    btn.type = 'button';
+                    btn.title = 'Dismiss this highlight for this class this week';
+                    btn.textContent = 'Ignore ✕';
+                    btn.addEventListener('click', e => {
+                        e.stopPropagation();
+                        card.classList.remove('flag-all-f', 'flag-all-m', 'flag-short');
+                        btn.remove();
+                        ignoredSet.add(lockKey(idx));
+                        localStorage.setItem(IGNORE_KEY, JSON.stringify([...ignoredSet]));
+                    });
+                    card.appendChild(btn);
+                }
+            };
+
+            // Red (short-staffed) takes priority if a class is both short and single-gender
+            genderViolationIdxs.forEach(idx => {
+                const { f } = genderMix(idx);
+                flag(idx, f > 0 ? 'flag-all-f' : 'flag-all-m');
+            });
+            shortIdxs.forEach(idx => {
+                const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                if (card) card.classList.remove('flag-all-f', 'flag-all-m');
+                flag(idx, 'flag-short');
+            });
+        }
+
+        // Flags are derived from current state so they survive save/refresh and
+        // clear automatically once the conflict is actually resolved.
+        function computeGenderViolations() {
+            const v = [];
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber || !act.SideOfCamp) return;
+                if (missingGender(idx)) v.push(idx);
+            });
+            return v;
+        }
+
+        function computeShortIdxs() {
+            const s = [];
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber || !act.SideOfCamp) return;
+                if (lockedOfferings.has(idx)) return;
+                const placed = state[idx].counselors.filter(id => id).length;
+                const hasNulls = state[idx].counselors.some(id => id === null);
+                const required = manualCounts[idx]?.counselors ?? calcSlotCount(act);
+                if (hasNulls || placed < required) s.push(idx);
+            });
+            return s;
+        }
+
+        function refreshBuildFlags() {
+            // An untouched week (no assignments at all) shouldn't paint everything red
+            const anyPlaced = OFFERINGS.some((a, i) => a.PeriodNumber && state[i].counselors.some(id => id));
+            if (!anyPlaced) { applyCardFlags([], []); return; }
+            applyCardFlags(computeGenderViolations(), computeShortIdxs());
+        }
+
         function fillExtraCounselors() {
             const statusEl = document.getElementById('autoStatus');
             statusEl.textContent = 'Placing extra counselors…';
@@ -1872,6 +2357,9 @@
             const prefMap = {};
             PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
             const mode = document.querySelector('input[name="autoMode"]:checked').value;
+
+            // Preferred-class wins from the already-built schedule (coin-toss fairness)
+            const prefWins = buildPrefWins(prefMap);
 
             // Rebuild blockUsed from the current fully-built state
             const blockUsed = {};
@@ -1888,7 +2376,6 @@
 
             for (let period = 1; period <= 6; period++) {
                 const block = period <= 3 ? 'am' : 'pm';
-                const oppBlock = block === 'am' ? 'pm' : 'am';
 
                 // Build usedThisPeriod from current state
                 const usedThisPeriod = new Set();
@@ -1933,17 +2420,18 @@
                         const actName = OFFERINGS[eligIdx].ActivityName;
                         state[eligIdx].counselors.forEach((id, slotPos) => {
                             if (id !== null || extrasPool.length === 0) return;
-                            const eligible_e = extrasPool.filter(c => {
-                                if (blockUsed[c.CounselorID]?.[block].has(blockKey(actName))) return false;
-                                return true;
-                            });
-                            const preferred = shuffle(eligible_e.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
+                            const eligible_e = extrasPool.filter(c =>
+                                !usedEitherBlock(blockUsed, c.CounselorID, actName) &&
+                                !(isFemaleOnlyClass(actName) && GENDER_BY_ID[c.CounselorID] === 'M'));
+                            const preferred = orderByFewestWins(eligible_e.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)), prefWins, c => c.CounselorID);
                             const nonPref   = shuffle(eligible_e.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
                             const chosen    = mode === 'pref' ? (preferred[0] ?? null) : (preferred[0] ?? nonPref[0]);
                             if (!chosen) return;
                             state[eligIdx].counselors[slotPos] = chosen.CounselorID;
                             usedThisPeriod.add(chosen.CounselorID);
                             blockUsed[chosen.CounselorID][block].add(blockKey(actName));
+                            if (prefMap[chosen.CounselorID]?.ActivityPreferences?.includes(actName))
+                                prefWins[chosen.CounselorID] = (prefWins[chosen.CounselorID] || 0) + 1;
                             extrasPool.splice(extrasPool.indexOf(chosen), 1);
                             totalAdded++;
                         });
@@ -1956,12 +2444,10 @@
                     // Phase 2: For remaining extras, add new slots
                     const newSlots = [];
                     for (const extra of extrasPool) {
-                        // Only target activities not already run in this block; cross-block repeat only if preferred
-                        const valid = eligibleIdxs.filter(idx => {
-                            const actName = OFFERINGS[idx].ActivityName;
-                            if (blockUsed[extra.CounselorID][block].has(blockKey(actName))) return false;
-                            return true;
-                        });
+                        // Only target activities the counselor hasn't run yet today (day-level variety)
+                        const valid = eligibleIdxs.filter(idx =>
+                            !usedEitherBlock(blockUsed, extra.CounselorID, OFFERINGS[idx].ActivityName) &&
+                            !(isFemaleOnlyClass(OFFERINGS[idx].ActivityName) && GENDER_BY_ID[extra.CounselorID] === 'M'));
                         if (valid.length === 0) continue;
                         const targetIdx = valid.reduce((best, idx) => {
                             const bestRatio = (OFFERINGS[best].PreliminaryEnrollment || 0) / Math.max(state[best].counselors.length, 1);
@@ -1985,17 +2471,18 @@
                     for (const { idx, slotPos } of newSlots) {
                         if (state[idx].counselors[slotPos] != null) continue;
                         const actName = OFFERINGS[idx].ActivityName;
-                        const eligible_r = [...remaining].filter(cid => {
-                            if (blockUsed[cid]?.[block].has(blockKey(actName))) return false;
-                            return true;
-                        });
-                        const preferred = shuffle(eligible_r.filter(cid =>  prefMap[cid]?.ActivityPreferences?.includes(actName)));
+                        const eligible_r = [...remaining].filter(cid =>
+                            !usedEitherBlock(blockUsed, cid, actName) &&
+                            !(isFemaleOnlyClass(actName) && GENDER_BY_ID[cid] === 'M'));
+                        const preferred = orderByFewestWins(eligible_r.filter(cid =>  prefMap[cid]?.ActivityPreferences?.includes(actName)), prefWins, cid => cid);
                         const nonPref   = shuffle(eligible_r.filter(cid => !prefMap[cid]?.ActivityPreferences?.includes(actName)));
                         const chosen    = mode === 'pref' ? (preferred[0] ?? null) : (preferred[0] ?? nonPref[0]);
                         if (chosen == null) continue;
                         state[idx].counselors[slotPos] = chosen;
                         usedThisPeriod.add(chosen);
                         blockUsed[chosen][block].add(blockKey(actName));
+                        if (prefMap[chosen]?.ActivityPreferences?.includes(actName))
+                            prefWins[chosen] = (prefWins[chosen] || 0) + 1;
                         remaining.delete(chosen);
                         totalAdded++;
                     }
@@ -2041,12 +2528,13 @@
                             if (/archery/i.test(a.ActivityName) && state[idx].counselors.length >= 2) return false;
                             return true;
                         };
+                        const genderOK = idx => !(isFemaleOnlyClass(OFFERINGS[idx].ActivityName) && GENDER_BY_ID[c.CounselorID] === 'M');
                         let valid = tIdxs.filter(idx =>
-                            belowCap(idx) &&
-                            !blockUsed[c.CounselorID]?.[block3].has(blockKey(OFFERINGS[idx].ActivityName)) &&
+                            belowCap(idx) && genderOK(idx) &&
+                            !usedEitherBlock(blockUsed, c.CounselorID, OFFERINGS[idx].ActivityName) &&
                             !state[idx].counselors.includes(c.CounselorID)
                         );
-                        if (valid.length === 0) valid = tIdxs.filter(idx => belowCap(idx) && !state[idx].counselors.includes(c.CounselorID));
+                        if (valid.length === 0) valid = tIdxs.filter(idx => belowCap(idx) && genderOK(idx) && !state[idx].counselors.includes(c.CounselorID));
                         if (valid.length === 0) continue;
 
                         const tIdx = valid.reduce((best, idx) => {
@@ -2089,12 +2577,49 @@
                 }
             }
 
+            // Equalize enrollment-per-counselor ratios before final cleanup
+            rebalanceCounselors();
+
+            // Gender split: fix single-gender 2+ classes via swaps; collect the unfixable
+            const genderViolations = enforceGenderSplit();
+
             // Remove unfilled null slots, but preserve manually-set counts and enrichment minimums
             OFFERINGS.forEach((act, idx) => {
                 state[idx].counselors = state[idx].counselors.filter(id => id !== null);
                 const mc = manualCounts[idx]?.counselors;
                 const floor = mc != null ? mc : (act.SideOfCamp === 'Enrichment' ? getEnrichMin(act) : 0);
                 while (state[idx].counselors.length < floor) state[idx].counselors.push(null);
+            });
+
+            // Drop blank slots no remaining counselor can legally fill — otherwise they
+            // linger with nobody left to assign. Reported in the status line instead.
+            let dropped = 0;
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber || !act.SideOfCamp) return;
+                if (lockedOfferings.has(idx)) return;
+                const nulls = state[idx].counselors.filter(id => id === null).length;
+                if (nulls === 0) return;
+                const usedNow = new Set();
+                OFFERINGS.forEach((a, i) => {
+                    if (a.PeriodNumber !== act.PeriodNumber) return;
+                    state[i].counselors.forEach(id => { if (id) usedNow.add(id); });
+                    state[i].staff.forEach(id => { if (id) usedNow.add(id); });
+                });
+                const anyEligible = getAssignablePool().some(c => {
+                    if (usedNow.has(c.CounselorID)) return false;
+                    if ((STAFF_BUSY[c.CounselorID] || []).includes(act.PeriodNumber)) return false;
+                    const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                    const sched = sel ? sel.value : (c.ScheduleType || '');
+                    return isCounselorAvailableFor(sched, act.PeriodNumber, act.SideOfCamp);
+                });
+                if (!anyEligible) {
+                    dropped += nulls;
+                    state[idx].counselors = state[idx].counselors.filter(id => id !== null);
+                }
+            });
+
+            // Sync count inputs to final state
+            OFFERINGS.forEach((act, idx) => {
                 const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
                 if (card) {
                     const inp = card.querySelector('[data-count-type="counselors"]');
@@ -2105,9 +2630,17 @@
             renderAllFromState();
             updateAllCounters();
             updateGroupCounters();
-            statusEl.textContent = totalAdded > 0
-                ? `Done! ${totalAdded} extra counselor slot${totalAdded !== 1 ? 's' : ''} added. Review and save when ready.`
-                : 'Done! Review and save when ready.';
+            refreshBuildFlags();
+
+            let doneMsg = totalAdded > 0
+                ? `Done! ${totalAdded} extra counselor slot${totalAdded !== 1 ? 's' : ''} added.`
+                : 'Done!';
+            if (dropped > 0) doneMsg += ` ${dropped} unfillable slot${dropped !== 1 ? 's' : ''} removed (no counselors left to assign).`;
+            if (genderViolations.length > 0) {
+                const names = genderViolations.map(i => `P${OFFERINGS[i].PeriodNumber} ${OFFERINGS[i].ActivityName}`).join(', ');
+                doneMsg += ` Gender split unmet: ${names}.`;
+            }
+            statusEl.textContent = doneMsg + ' Review and save when ready.';
         }
 
         // ── Side-specific rebuild ─────────────────────────────────────────────────
@@ -2264,6 +2797,7 @@
                 const slotCount = state[srcIdx].counselors.length;
                 const tEligible = rebuildPool.filter(c => {
                     if (usedThisPeriod[srcPeriod].has(c.CounselorID)) return false;
+                    if (isFemaleOnlyClass(tName) && GENDER_BY_ID[c.CounselorID] === 'M') return false;
                     const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     return isCounselorAvailableFor(sched, srcPeriod, targetSide);
@@ -2306,6 +2840,7 @@
                 const eligible = rebuildPool.filter(c => {
                     if (usedThisPeriod[period].has(c.CounselorID)) return false;
                     if ((STAFF_BUSY[c.CounselorID] || []).includes(period)) return false;
+                    if (isFemaleOnlyClass(name) && GENDER_BY_ID[c.CounselorID] === 'M') return false;
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     if (!isCounselorAvailableFor(sched, period, targetSide)) return false;
@@ -2395,7 +2930,7 @@
                     const actName = OFFERINGS[eligIdx].ActivityName;
                     state[eligIdx].counselors.forEach((id, slotPos) => {
                         if (id !== null || extrasPool.length === 0) return;
-                        const elig_e  = extrasPool;
+                        const elig_e  = extrasPool.filter(c => !(isFemaleOnlyClass(actName) && GENDER_BY_ID[c.CounselorID] === 'M'));
                         const pref    = shuffle(elig_e.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
                         const nonP    = shuffle(elig_e.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
                         const chosen  = mode === 'pref' ? (pref[0] ?? null) : (pref[0] ?? nonP[0]);
@@ -2412,7 +2947,8 @@
                 // Phase 2: add new slots for remaining extras
                 const newSlots = [];
                 for (const extra of extrasPool) {
-                    const valid = eligibleIdxs;
+                    const valid = eligibleIdxs.filter(idx =>
+                        !(isFemaleOnlyClass(OFFERINGS[idx].ActivityName) && GENDER_BY_ID[extra.CounselorID] === 'M'));
                     if (valid.length === 0) continue;
                     const tgtIdx = valid.reduce((best, idx) => {
                         const bR = (OFFERINGS[best].PreliminaryEnrollment || 0) / Math.max(state[best].counselors.length, 1);
@@ -2435,7 +2971,9 @@
                 for (const { idx, slotPos } of newSlots) {
                     if (state[idx].counselors[slotPos] != null) continue;
                     const actName  = OFFERINGS[idx].ActivityName;
-                    const elig_r   = [...remaining].filter(cid => !blockUsed[cid]?.[block].has(blockKey(actName)));
+                    const elig_r   = [...remaining].filter(cid =>
+                        !blockUsed[cid]?.[block].has(blockKey(actName)) &&
+                        !(isFemaleOnlyClass(actName) && GENDER_BY_ID[cid] === 'M'));
                     const pref     = shuffle(elig_r.filter(cid =>  prefMap[cid]?.ActivityPreferences?.includes(actName)));
                     const nonP     = shuffle(elig_r.filter(cid => !prefMap[cid]?.ActivityPreferences?.includes(actName)));
                     const chosen   = mode === 'pref' ? (pref[0] ?? null) : (pref[0] ?? nonP[0]);
@@ -2482,6 +3020,7 @@
                 for (const c of unplaced) {
                     const valid = tIdxs.filter(idx =>
                         belowCap(idx) &&
+                        !(isFemaleOnlyClass(OFFERINGS[idx].ActivityName) && GENDER_BY_ID[c.CounselorID] === 'M') &&
                         !state[idx].counselors.includes(c.CounselorID)
                     );
                     if (valid.length === 0) continue;
@@ -2572,17 +3111,20 @@
                 });
                 updateAllCounters();
                 updateGroupCounters();
+                refreshBuildFlags();         // restore flags from saved state on page load
+                updateScheduleTypeColors();  // preference match colors on schedule-type selects
                 document.querySelectorAll('.cg-schedule').forEach(sel => {
-                    sel.addEventListener('change', () => { updateAllCounters(); updateGroupCounters(); });
+                    sel.addEventListener('change', () => { updateAllCounters(); updateGroupCounters(); updateScheduleTypeColors(); });
                 });
 
                 if (sessionStorage.getItem('pendingFullAuto')) {
                     sessionStorage.removeItem('pendingFullAuto');
-                    // Snapshot saved schedule types before assigning — counselors with a saved
-                    // type are treated as fixed; only unset types are auto-assigned.
+                    // Rebalance schedule types on every run: only partial "Only" types
+                    // (real availability constraints) are preserved; full-day types are
+                    // re-derived from current enrollment demand.
                     const savedTypes = {};
                     document.querySelectorAll('.cg-schedule:not(.cg-specialty-schedule)').forEach(sel => {
-                        if (sel.value) savedTypes[sel.dataset.cid] = sel.value;
+                        if (sel.value && sel.value.endsWith('Only')) savedTypes[sel.dataset.cid] = sel.value;
                     });
                     autoAssignScheduleTypes(savedTypes);
                     buildSchedule(true);

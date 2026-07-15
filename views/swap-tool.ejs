@@ -23,12 +23,13 @@
     <div class="container">
         <header style="margin-bottom: 30px;">
             <h1>Camper Schedule Swapper</h1>
-            <form action="/swap-tool" method="GET" class="search-bar-container" style="margin-top: 15px; position: relative;">
-                <div style="position: relative; flex: 1;">
-                    <input type="text" name="name" id="camperSearch" placeholder="Search Camper Name..."
-                           value="<%= query || '' %>" class="search-input" autocomplete="off"
-                           oninput="filterCampers(this.value)" onblur="hideSuggestions()" onkeydown="handleKey(event)">
-                    <ul id="camper-suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid var(--border-color); border-radius:8px; margin:4px 0 0; padding:0; list-style:none; max-height:240px; overflow-y:auto; z-index:100; box-shadow:var(--shadow);"></ul>
+            <form action="/swap-tool" method="GET" class="search-bar-container" style="margin-top: 15px; position: relative;" id="swapSearchForm">
+                <div class="camper-autocomplete" style="flex: 1;">
+                    <input type="text" name="name" id="camperSearchAC" placeholder="Search Camper Name..."
+                           value="<%= camper ? (camper.LastName + ', ' + (camper.PreferredName || camper.FirstName)) : (query || '') %>"
+                           class="search-input" autocomplete="off">
+                    <input type="hidden" name="camperId" id="camperIdHidden" value="<%= camper ? camper.CamperID : '' %>">
+                    <div class="ac-dropdown" id="acDropdown"></div>
                 </div>
                 <button type="submit" class="btn btn-primary">Find Camper</button>
             </form>
@@ -79,68 +80,19 @@
         <% } %>
     </div>
 
+    <script src="/js/camper-ac.js"></script>
     <script>
-        const ALL_CAMPERS = <%- JSON.stringify(allCampers) %>;
-        let suggestionIndex = -1;
-
-        function filterCampers(val) {
-            const list = document.getElementById('camper-suggestions');
-            const term = val.trim().toLowerCase();
-            if (!term) { list.style.display = 'none'; return; }
-
-            const matches = ALL_CAMPERS.filter(c =>
-                (c.FirstName + ' ' + c.LastName).toLowerCase().includes(term) ||
-                (c.LastName + ' ' + c.FirstName).toLowerCase().includes(term)
-            ).slice(0, 10);
-
-            if (!matches.length) { list.style.display = 'none'; return; }
-
-            suggestionIndex = -1;
-            list.innerHTML = matches.map((c, i) =>
-                `<li data-index="${i}" data-name="${c.FirstName} ${c.LastName}"
-                     style="padding:8px 12px; cursor:pointer; font-size:0.92rem;"
-                     onmousedown="selectCamper('${c.FirstName} ${c.LastName}')"
-                     onmouseover="highlightItem(${i})">${c.FirstName} ${c.LastName}</li>`
-            ).join('');
-            list.style.display = 'block';
-        }
-
-        function selectCamper(name) {
-            document.getElementById('camperSearch').value = name;
-            document.getElementById('camper-suggestions').style.display = 'none';
-            document.querySelector('form[action="/swap-tool"]').submit();
-        }
-
-        function hideSuggestions() {
-            setTimeout(() => { document.getElementById('camper-suggestions').style.display = 'none'; }, 150);
-        }
-
-        function highlightItem(index) {
-            document.querySelectorAll('#camper-suggestions li').forEach((li, i) => {
-                li.style.background = i === index ? 'var(--primary-light, #e8f0fe)' : '';
-            });
-            suggestionIndex = index;
-        }
-
-        function handleKey(e) {
-            const list = document.getElementById('camper-suggestions');
-            const items = list.querySelectorAll('li');
-            if (!items.length) return;
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                suggestionIndex = Math.min(suggestionIndex + 1, items.length - 1);
-                highlightItem(suggestionIndex);
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                suggestionIndex = Math.max(suggestionIndex - 1, 0);
-                highlightItem(suggestionIndex);
-            } else if (e.key === 'Enter' && suggestionIndex >= 0) {
-                e.preventDefault();
-                selectCamper(items[suggestionIndex].dataset.name);
-            } else if (e.key === 'Escape') {
-                list.style.display = 'none';
-            }
-        }
+        initCamperAC({
+            input:    'camperSearchAC',
+            dropdown: 'acDropdown',
+            hidden:   'camperIdHidden',
+            campers:  <%- JSON.stringify(allCampers.map(c => ({
+                id: c.CamperID,
+                label: c.LastName + ', ' + (c.PreferredName || c.FirstName),
+                color: c.HomeGroupColor
+            }))) %>,
+            onSelect: () => document.getElementById('swapSearchForm').submit()
+        });
 
         let currentOptions = [];
         let activeCamperId = '<%= camper ? camper.CamperID : "" %>';

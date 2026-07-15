@@ -9,14 +9,6 @@
     <style>
         .dismissal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
         @media (max-width: 768px) { .dismissal-grid { grid-template-columns: 1fr; } }
-        .search-result-list { list-style: none; padding: 0; margin: 8px 0 0; }
-        .search-result-list li a {
-            display: block; padding: 10px 14px;
-            border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 6px;
-            text-decoration: none; color: var(--text);
-            font-size: 0.9rem; transition: background 0.1s;
-        }
-        .search-result-list li a:hover { background: #f1f5f9; }
         .pickup-card {
             display: flex; align-items: center; justify-content: space-between;
             padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 10px;
@@ -83,32 +75,11 @@
             <div>
                 <div class="card">
                     <h3 style="margin: 0 0 14px;">Find Camper</h3>
-                    <form method="GET" action="/dismissals">
-                        <% if (selectedCamper) { %>
-                            <input type="hidden" name="camperId" value="<%= selectedCamper.CamperID %>">
-                        <% } %>
-                        <div style="display:flex; gap:8px;">
-                            <input type="text" name="q" value="<%= q %>"
-                                placeholder="Type a name…"
-                                class="search-input" style="flex:1; padding:9px 12px; border:1px solid var(--border-color); border-radius:8px; font-size:0.95rem;">
-                            <button type="submit" class="btn btn-primary">Search</button>
-                        </div>
-                    </form>
-
-                    <% if (q && searchResults.length === 0) { %>
-                        <p style="margin:12px 0 0; color:var(--text-muted); font-size:0.875rem;">No campers found matching "<%= q %>".</p>
-                    <% } else if (searchResults.length > 0) { %>
-                        <ul class="search-result-list" style="margin-top:12px;">
-                            <% searchResults.forEach(function(c) { %>
-                                <li>
-                                    <a href="/dismissals?camperId=<%= c.CamperID %><%= q ? '&q=' + encodeURIComponent(q) : '' %>">
-                                        <span class="tag <%= c.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px; margin-right:8px;"><%= c.HomeGroupColor %></span>
-                                        <%= c.FirstName %> <%= c.LastName %>
-                                    </a>
-                                </li>
-                            <% }); %>
-                        </ul>
-                    <% } %>
+                    <div class="camper-autocomplete">
+                        <input type="text" id="camperSearchAC" placeholder="Type a name…" autocomplete="off"
+                               value="<%= selectedCamper ? (selectedCamper.LastName + ', ' + (selectedCamper.PreferredName || selectedCamper.FirstName)) : '' %>">
+                        <div class="ac-dropdown" id="acDropdown"></div>
+                    </div>
                 </div>
 
                 <% if (selectedCamper) { %>
@@ -194,6 +165,19 @@
             </div>
         </div>
     </div>
+    <script src="/js/camper-ac.js"></script>
+    <script>
+        initCamperAC({
+            input:    'camperSearchAC',
+            dropdown: 'acDropdown',
+            campers:  <%- JSON.stringify(allCampers.map(c => ({
+                id: c.CamperID,
+                label: c.LastName + ', ' + (c.PreferredName || c.FirstName),
+                color: c.HomeGroupColor
+            }))) %>,
+            onSelect: c => { window.location.href = '/dismissals?camperId=' + c.id; }
+        });
+    </script>
     <% if (selectedCamper) { %>
     <script>
         const SPORTS_PERIODS     = <%- JSON.stringify([

@@ -140,12 +140,29 @@ Key constants available to the builder at page load:
 | `AM Enrichment / PM Sports` | reverse of above | reverse of above |
 | *(blank)* | auto-detected from color group | auto-detected from color group |
 
-**Build phases:**
-1. `buildSchedule()` — greedy assignment loop. For each offering, filters `MAIN_COUNSELORS` to those eligible by schedule type and not already booked, then assigns in order of least-assigned first.
-2. `fillExtraCounselors()` — second pass to place any counselors who have remaining open slots.
-3. `renderAllFromState()` — re-renders all dropdowns from in-memory state.
+**Build phases (Full Auto Build):**
+1. `autoAssignScheduleTypes()` — re-derives full-day schedule types from enrollment demand on **every** run (partial `…Only` types are treated as fixed availability constraints and never changed). Demand uses `calcSlotCount()` — the same formula as the slot calculator — and supply counts main-camp *and* specialty counselors that are marked working this week.
+2. `buildSchedule()` — computes slot counts via `calcSlotCount()`, then a greedy assignment loop: zero-counselor classes first, then highest enrollment-per-counselor ratio. Filters to counselors eligible by schedule type and not already booked.
+3. `fillExtraCounselors()` — places all remaining available counselors: fills empty slots, then adds new slots to the neediest classes (caps: swim/archery 2, enrichment 3), then force-places anyone still unassigned.
+4. `rebalanceCounselors()` — equity pass: within each period+side, moves counselors from over-staffed to under-staffed classes until enrollment-per-counselor ratios can't improve. Locked and triple-period offerings are never touched.
+5. Blank slots that no remaining counselor can legally fill are removed and reported in the status line instead of lingering.
+6. `renderAllFromState()` — re-renders all dropdowns from in-memory state.
 
-**Block tracking** — `blockUsed[counselorID][block]` is a Set of activity names. A counselor is blocked from an offering if they're already assigned to the **same activity name in the same block** (prevents double-booking the same class).
+**Variety rule (day-level)** — `blockUsed[counselorID]` tracks activity names per AM/PM block; eligibility checks **both blocks**, so a counselor is never assigned the same activity name twice in one day (all swim variants count as one activity). The force-place fallback relaxes this only if nothing else is available.
+
+**Preference fairness** — `prefWins[counselorID]` counts how many preferred classes each counselor has been given during the build. When multiple counselors who prefer the same class compete for a slot, the one with the fewest preferred wins so far goes first (random shuffle breaks remaining ties). If demand forces schedule-type overrides, the counselor whose activity preferences best align with the forced type is flipped first instead of choosing randomly. After overrides, a **mutual-swap pass** trades schedule types 1:1 between counselors who each hold the other's preferred type (opposite full-days, inverse splits, full↔split pairs) — both get their preference at zero supply cost.
+
+**Preference color cues** —
+- Slot dropdowns: counselors who listed the class in their activity preferences render with a light-green background — both as options in the open dropdown and on the closed input when they're the selected assignee.
+- Group-assignment schedule-type selects: green = matches the counselor's `SchedulePreference`; yellow = wanted full-day but got a split (or vice versa — half right); red = opposite full day, or the inverse split. Inside the open dropdown their preferred value is highlighted green. Colors update live on change and after auto-assignment.
+
+**Gender rules** — driven by `Counselors.Gender` (`M`/`F`/NULL, editable via Mass Edit Staff or the profile page):
+- **Go Girl (female-only)**: any offering matching `/go.?girl/i` excludes male counselors from every placement path, including force-place fallbacks and side rebuilds. Unknown-gender counselors are allowed.
+- **Gender split**: classes with 2+ counselors need at least one of each gender. The greedy fill prefers the missing gender on a class's last open slot; after the build, `enforceGenderSplit()` repairs single-gender classes by swapping counselors with other classes in the same period+side (never breaking the donor's split, variety, or Go Girl). Unknown genders count as neither, so all-unknown classes never flag.
+- **Best effort**: if a violation can't be repaired, the class is listed in the status line ("Gender split unmet: …") and the build proceeds.
+- **Card flags**: violating cards get a background — pink = all-female, blue = all-male, red = short on staff (fewer counselors than the slot formula requires). Flags are recomputed from current assignments on page load, after every build, and after manual slot/count edits, so they survive save/refresh and clear automatically once the conflict is resolved. Each flag has an Ignore button; ignores persist per week+class in `localStorage`. A week with no assignments at all shows no flags.
+
+**Slot formula** — `calcSlotCount(act)` is the single source of truth: Hartt Chamber and Learning Zone → 0; Archery → 2; Sports → `min + ceil(max(0, enrollment − threshold) / per)` with swim capped at 2; Enrichment → configured per-AllowedGroups minimum, reduced to 1 for PM classes with ≤8 enrolled.
 
 ### Saving
 

@@ -489,6 +489,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/photo-gallery/all', '/photo-download',
     '/admin/building-coord', '/admin/delete-building-coord',
     '/camper-attendance',
+    '/mass-edit-staff',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -1185,7 +1186,8 @@ try {
     if (!cCols.includes('Phone')) db.exec("ALTER TABLE Counselors ADD COLUMN Phone TEXT");
     if (!cCols.includes('Email')) db.exec("ALTER TABLE Counselors ADD COLUMN Email TEXT");
     if (!cCols.includes('IncludeInStaffDropdown')) db.exec("ALTER TABLE Counselors ADD COLUMN IncludeInStaffDropdown INTEGER DEFAULT 0");
-} catch(e) { console.error('[migration] Counselors.Phone/Email/IncludeInStaffDropdown:', e.message); }
+    if (!cCols.includes('Gender')) db.exec("ALTER TABLE Counselors ADD COLUMN Gender TEXT CHECK(Gender IN ('M','F') OR Gender IS NULL)");
+} catch(e) { console.error('[migration] Counselors.Phone/Email/IncludeInStaffDropdown/Gender:', e.message); }
 
 try {
     db.exec(`CREATE TABLE IF NOT EXISTS NurseLog (
@@ -2313,16 +2315,27 @@ app.get('/map', (req, res) => {
         ORDER BY wo.PeriodNumber, wo.ActivityName
     `).all(aw, aw).filter(r => r.location);
 
-    // Counselor's period→activity assignments for the active week
-    const myPeriods = cid
-        ? db.prepare('SELECT PeriodNumber AS period, ActivityName AS activity FROM CounselorWeekSchedules WHERE CounselorID=? AND WeekNumber=?')
-              .all(cid, aw)
-        : [];
-
-    // Default map: UL/SL → sports; everyone else → enrichment.
-    // Override if counselor has a sports-only period (3 or 6, which don't exist in enrichment).
+    // Resolve the logged-in person's role first so we can pick the right schedule table
     const SPORTS_ROLES = new Set(['Unit Leader', 'Sports Leader']);
     const counselor = cid ? db.prepare('SELECT StaffRole FROM Counselors WHERE CounselorID=?').get(cid) : null;
+    const role = counselor?.StaffRole ?? null;
+
+    // Counselor's period→activity assignments for the active week (table varies by role)
+    let myPeriods = [];
+    if (cid) {
+        if (role === 'Unit Leader' || role === 'Sports Leader') {
+            myPeriods = db.prepare('SELECT PeriodNumber AS period, ActivityName AS activity FROM StaffWeekSchedules WHERE StaffID=? AND WeekNumber=?')
+                .all(cid, aw);
+        } else if (role === 'Instructor') {
+            myPeriods = db.prepare('SELECT PeriodNumber AS period, ActivityName AS activity FROM Schedules WHERE PersonType=\'Instructor\' AND PersonID=?')
+                .all(cid);
+        } else {
+            myPeriods = db.prepare('SELECT PeriodNumber AS period, ActivityName AS activity FROM CounselorWeekSchedules WHERE CounselorID=? AND WeekNumber=?')
+                .all(cid, aw);
+        }
+    }
+
+    // Default map: UL/SL → sports; everyone else → enrichment.
     let defaultMap = 'enrichment';
     if (counselor && SPORTS_ROLES.has(counselor.StaffRole)) defaultMap = 'sports';
     if (myPeriods.some(mp => mp.period === 3 || mp.period === 6)) defaultMap = 'sports';
@@ -2588,7 +2601,13 @@ app.get('/camper-attendance', (req, res) => {
         : null;
 
     const sessions = db.prepare('SELECT weekNumber, label, startDate FROM Sessions ORDER BY weekNumber').all();
-    const campers = db.prepare('SELECT CamperID, FirstName, LastName, PreferredName FROM Campers ORDER BY LastName, FirstName').all();
+    const _caAw = getActiveWeek();
+    const campers = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, cwd.HomeGroupColor
+        FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        ORDER BY c.LastName, c.FirstName
+    `).all(_caAw);
 
     let camper = null;
     let weekData = [];
@@ -4204,12 +4223,13 @@ app.post('/update-staff-info/:id', (req, res) => {
     const extendedHours  = (req.body.extendedHours  || '').trim() || null;
     const phone          = (req.body.phone          || '').trim() || null;
     const email          = (req.body.email          || '').trim() || null;
+    const gender         = ['M', 'F'].includes(req.body.gender) ? req.body.gender : null;
     db.prepare(`
         UPDATE Counselors
         SET FirstName = ?, LastName = ?, StaffRole = ?, HomeGroupColor = ?,
-            ScheduleType = ?, BusRoute = ?, ExtendedHours = ?, Phone = ?, Email = ?
+            ScheduleType = ?, BusRoute = ?, ExtendedHours = ?, Phone = ?, Email = ?, Gender = ?
         WHERE CounselorID = ?
-    `).run(firstName, lastName, staffRole, homeGroupColor, scheduleType, busRoute, extendedHours, phone, email, id);
+    `).run(firstName, lastName, staffRole, homeGroupColor, scheduleType, busRoute, extendedHours, phone, email, gender, id);
     const aw = getActiveWeek();
     db.prepare(`
         INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
@@ -4221,6 +4241,68 @@ app.post('/update-staff-info/:id', (req, res) => {
             ExtendedHours  = excluded.ExtendedHours
     `).run(id, aw, homeGroupColor, scheduleType, busRoute, extendedHours);
     res.redirect(`/counselor-profile/${id}?message=Profile+updated`);
+});
+
+// --- MASS EDIT STAFF ---
+app.get('/mass-edit-staff', (req, res) => {
+    const staff = db.prepare(`
+        SELECT CounselorID, FirstName, LastName, StaffRole, Gender, HomeGroupColor,
+               ScheduleType, BusRoute, ExtendedHours, Phone, Email
+        FROM Counselors
+        ORDER BY StaffRole, LastName, FirstName
+    `).all();
+    const roles = [...new Set(staff.map(s => s.StaffRole).filter(Boolean))].sort();
+    res.render('mass-edit-staff', { staff, roles, message: req.query.message || null });
+});
+
+app.post('/mass-edit-staff/save', (req, res) => {
+    const { staff } = req.body;
+    if (!Array.isArray(staff)) return res.status(400).json({ error: 'Invalid payload' });
+    const validRoles = ['Instructor','Unit Leader','Sports Leader','Counselor','Swim Counselor',
+                        'Director','Office Staff','Nurse','Equipment Manager','CPR Instructor','Internship'];
+    const aw = getActiveWeek();
+    const upd = db.prepare(`
+        UPDATE Counselors
+        SET FirstName = ?, LastName = ?, StaffRole = ?, Gender = ?, HomeGroupColor = ?,
+            ScheduleType = ?, BusRoute = ?, ExtendedHours = ?, Phone = ?, Email = ?
+        WHERE CounselorID = ?
+    `);
+    const updWeek = db.prepare(`
+        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET
+            HomeGroupColor = excluded.HomeGroupColor,
+            ScheduleType   = excluded.ScheduleType,
+            BusRoute       = excluded.BusRoute,
+            ExtendedHours  = excluded.ExtendedHours
+    `);
+    let saved = 0;
+    try {
+        db.transaction(() => {
+            for (const s of staff) {
+                const id = parseInt(s.counselorID);
+                const firstName = (s.firstName || '').trim();
+                const lastName  = (s.lastName  || '').trim();
+                if (!id || !firstName || !lastName) continue;
+                if (!validRoles.includes(s.staffRole)) continue;
+                const gender         = ['M', 'F'].includes(s.gender) ? s.gender : null;
+                const homeGroupColor = (s.homeGroupColor || '').trim() || null;
+                const scheduleType   = (s.scheduleType   || '').trim() || null;
+                const busRoute       = (s.busRoute       || '').trim() || null;
+                const extendedHours  = (s.extendedHours  || '').trim() || null;
+                const phone          = (s.phone          || '').trim() || null;
+                const email          = (s.email          || '').trim() || null;
+                upd.run(firstName, lastName, s.staffRole, gender, homeGroupColor,
+                        scheduleType, busRoute, extendedHours, phone, email, id);
+                updWeek.run(id, aw, homeGroupColor, scheduleType, busRoute, extendedHours);
+                saved++;
+            }
+        })();
+        res.json({ ok: true, saved });
+    } catch (err) {
+        console.error('[mass-edit-staff/save]', err.message);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.post('/update-staff-period', (req, res) => {
@@ -4285,11 +4367,21 @@ app.post('/clear-campers', (req, res) => {
 // --- SWAP TOOL ROUTES ---
 app.get('/swap-tool', (req, res) => {
     const query = req.query.name || '';
+    const queryId = parseInt(req.query.camperId) || null;
     const aw = getActiveWeek();
     let camper = null;
     let currentSchedule = [];
 
-    if (query) {
+    if (queryId) {
+        // Exact selection from the autocomplete — unambiguous even with duplicate names
+        camper = db.prepare(`
+            SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName,
+                   cwd.HomeGroupColor
+            FROM Campers c
+            LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+            WHERE c.CamperID = ?
+        `).get(aw, queryId);
+    } else if (query) {
         camper = db.prepare(`
             SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName,
                    cwd.HomeGroupColor
@@ -4298,19 +4390,22 @@ app.get('/swap-tool', (req, res) => {
             WHERE (c.FirstName || ' ' || c.LastName) LIKE ?
             LIMIT 1
         `).get(aw, `%${query}%`);
-
-        if (camper) {
-            currentSchedule = db.prepare(`
-                SELECT * FROM Schedules
-                WHERE PersonID = ? AND PersonType = 'Camper' AND WeekNumber = ?
-                ORDER BY PeriodNumber ASC
-            `).all(camper.CamperID, aw);
-        }
     }
 
-    const allCampers = db.prepare(
-        `SELECT CamperID, FirstName, LastName FROM Campers ORDER BY LastName, FirstName`
-    ).all();
+    if (camper) {
+        currentSchedule = db.prepare(`
+            SELECT * FROM Schedules
+            WHERE PersonID = ? AND PersonType = 'Camper' AND WeekNumber = ?
+            ORDER BY PeriodNumber ASC
+        `).all(camper.CamperID, aw);
+    }
+
+    const allCampers = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, cwd.HomeGroupColor
+        FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        ORDER BY c.LastName, c.FirstName
+    `).all(aw);
 
     const activeSession = db.prepare("SELECT startDate FROM Sessions WHERE isActive=1 LIMIT 1").get();
     const weekStart = activeSession?.startDate || null;
@@ -5459,7 +5554,7 @@ app.get('/nurse', (req, res) => {
         ORDER BY n.CheckInTime DESC
     `).all(_naw, today);
     const campers = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, cwd.HomeGroupColor
         FROM Campers c
         LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         ORDER BY c.LastName, c.FirstName
@@ -5569,7 +5664,7 @@ app.get('/case-log', (req, res) => {
         ORDER BY cl.CheckInTime DESC
     `).all(_claw, today);
     const campers = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, cwd.HomeGroupColor
         FROM Campers c
         LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         ORDER BY c.LastName, c.FirstName
@@ -5685,7 +5780,14 @@ app.get('/dismissals', (req, res) => {
         ORDER BY sp.PickupTime
     `).all(_daw, _daw, today);
 
-    res.render('dismissals', { q, searchResults, selectedCamper, existingPickup, todayPickups, today });
+    const allCampers = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, cwd.HomeGroupColor
+        FROM Campers c
+        LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        ORDER BY c.LastName, c.FirstName
+    `).all(_disaw);
+
+    res.render('dismissals', { q, searchResults, selectedCamper, existingPickup, todayPickups, today, allCampers });
 });
 
 app.post('/dismissals/schedule', (req, res) => {
@@ -5806,7 +5908,7 @@ app.get('/counselor-scheduling', (req, res) => {
     // Counselors with week-specific attributes (fall back to Counselors table)
     // Only Counselor and Swim Counselor roles — not Instructors, Unit Leaders, etc.
     const allCounselors = db.prepare(`
-        SELECT c.CounselorID, c.FirstName, c.LastName, c.StaffRole,
+        SELECT c.CounselorID, c.FirstName, c.LastName, c.StaffRole, c.Gender,
                COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor,
                COALESCE(cwa.BusRoute,       c.BusRoute)       AS BusRoute,
                COALESCE(cwa.ScheduleType,   c.ScheduleType)   AS ScheduleType,

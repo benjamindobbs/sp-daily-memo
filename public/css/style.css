@@ -172,6 +172,37 @@ body {
 .SPRC       { background-color: var(--sprc-group);       color: #1e293b; }
 .Swim       { background-color: var(--swim-group);       color: #083344; }
 
+/* --- Camper Autocomplete (shared — used with /js/camper-ac.js) --- */
+.camper-autocomplete { position: relative; }
+.camper-autocomplete input[type="text"] {
+    width: 100%; padding: 9px 12px; border: 1px solid var(--border-color);
+    border-radius: 8px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
+}
+.camper-autocomplete input[type="text"]:focus { outline: none; border-color: var(--primary); }
+.ac-dropdown {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    background: white; border: 1px solid var(--border-color); border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.10); z-index: 100;
+    max-height: 240px; overflow-y: auto; display: none;
+}
+.ac-option {
+    padding: 8px 14px; cursor: pointer; font-size: 0.88rem;
+    display: flex; align-items: center; gap: 8px;
+}
+.ac-option:hover, .ac-option.active { background: #f1f5f9; }
+.ac-option .ac-color {
+    font-size: 0.7rem; font-weight: 700; padding: 1px 6px;
+    border-radius: 999px; background: #e2e8f0; color: #475569; flex-shrink: 0;
+}
+.ac-option .ac-color.Red         { background: var(--red-group);         color: #fff; }
+.ac-option .ac-color.Carolina    { background: var(--carolina-group);    color: #fff; }
+.ac-option .ac-color.Green       { background: var(--green-group);       color: #fff; }
+.ac-option .ac-color.Navy        { background: var(--navy-group);        color: #fff; }
+.ac-option .ac-color.SPLIT       { background: var(--split-group);       color: #451a03; }
+.ac-option .ac-color.LilPlace    { background: var(--lilplace-group);    color: #064e3b; }
+.ac-option .ac-color.KinderPlace { background: var(--kinderplace-group); color: #713f12; }
+.ac-empty { padding: 10px 14px; font-size: 0.85rem; color: var(--text-muted); }
+
 /* --- Alert / Banner --- */
 .alert {
     background: #dcfce7;

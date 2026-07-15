@@ -43,7 +43,9 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | GET | `/staff-lookup` | | Redirect → `/counselor-directory` |
 | GET | `/counselor-profile/:id` | | Individual staff profile |
 | POST | `/delete-counselor/:id` | ✓ | Delete a counselor record |
-| POST | `/update-staff-info/:id` | ✓ | Edit all 9 counselor profile fields (base record + active week attributes) |
+| POST | `/update-staff-info/:id` | ✓ | Edit all counselor profile fields incl. `gender` (base record + active week attributes) |
+| GET | `/mass-edit-staff` | ✓ | Spreadsheet-style editor: one row per staff member with all profile fields plus Gender; filter by name/role/gender |
+| POST | `/mass-edit-staff/save` | ✓ | JSON bulk save of every row (transaction); mirrors group/schedule/bus/extended into `CounselorWeekAttributes` for the active week |
 | POST | `/update-staff-period` | ✓ | Add/update one period on an instructor's weekly schedule |
 | POST | `/remove-staff-period` | ✓ | Remove one period from an instructor's weekly schedule |
 | GET | `/camper/:id` | | Individual camper profile |
@@ -57,7 +59,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 
 | Method | Path | Admin only | Description |
 |---|---|:---:|---|
-| GET | `/swap-tool` | | Class swap interface |
+| GET | `/swap-tool` | | Class swap interface; accepts `?camperId=` (exact, from autocomplete) or `?name=` (LIKE search) |
 | GET | `/get-options/:camperId/:period` | | Ajax: available classes for a camper/period swap |
 | GET | `/process-swap` | ✓ | Execute a class swap; writes `Schedules` and `ScheduleChanges` |
 | GET | `/schedule-history` | ✓ | Swap log viewer |
@@ -171,7 +173,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 
 | Method | Path | Admin only | Description |
 |---|---|:---:|---|
-| GET | `/dismissals` | | Today's pending dismissals |
+| GET | `/dismissals` | | Today's pending dismissals; camper picked via client-side autocomplete (`?camperId=`), `?q=` server search kept as fallback |
 | POST | `/dismissals/schedule` | | Create a scheduled pickup |
 | POST | `/dismissals/cancel` | | Cancel a scheduled pickup |
 | POST | `/dismissals/update` | | Mark a dismissal as completed |

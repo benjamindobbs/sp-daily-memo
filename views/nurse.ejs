@@ -136,27 +136,8 @@
             background: white;
         }
         .checkin-fields textarea { flex: 1; min-width: 180px; resize: none; height: 38px; }
-        .camper-autocomplete { position: relative; min-width: 240px; }
-        .camper-autocomplete input {
-            width: 100%; padding: 8px 12px; border: 1px solid var(--border-color);
-            border-radius: 8px; font-size: 0.88rem; font-family: inherit;
-            box-sizing: border-box;
-        }
-        .camper-autocomplete input:focus { outline: none; border-color: var(--primary); }
-        .ac-dropdown {
-            position: absolute; top: calc(100% + 4px); left: 0; right: 0;
-            background: white; border: 1px solid var(--border-color); border-radius: 8px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.10); z-index: 100;
-            max-height: 220px; overflow-y: auto; display: none;
-        }
-        .ac-option {
-            padding: 8px 14px; cursor: pointer; font-size: 0.88rem;
-            display: flex; align-items: center; gap: 8px;
-        }
-        .ac-option:hover, .ac-option.active { background: #f1f5f9; }
-        .ac-option .ac-color { font-size: 0.7rem; font-weight: 700; padding: 1px 6px;
-            border-radius: 999px; background: #e2e8f0; color: #475569; flex-shrink: 0; }
-        .ac-empty { padding: 10px 14px; font-size: 0.85rem; color: var(--text-muted); }
+        /* Autocomplete visuals come from the shared stylesheet (.camper-autocomplete etc.) */
+        .camper-autocomplete { min-width: 240px; }
         .empty-state { text-align: center; padding: 24px; color: var(--text-muted); font-size: 0.88rem; }
         .duration-chip { font-size: 0.72rem; color: var(--text-muted); }
     </style>
@@ -288,71 +269,17 @@
 
     </div>
 
+    <script src="/js/camper-ac.js"></script>
     <script>
-        const AC_CAMPERS = <%- JSON.stringify(campers.map(c => ({
-            id: c.CamperID,
-            label: c.LastName + ', ' + c.FirstName,
-            color: c.HomeGroupColor
-        }))) %>;
-
-        const acInput    = document.getElementById('camperSearchAC');
-        const acDropdown = document.getElementById('acDropdown');
-        const acHidden   = document.getElementById('camperIdHidden');
-        let acActiveIdx  = -1;
-
-        function renderAC(term) {
-            const q = term.trim().toLowerCase();
-            acDropdown.innerHTML = '';
-            acActiveIdx = -1;
-            if (!q) { acDropdown.style.display = 'none'; return; }
-
-            const matches = AC_CAMPERS.filter(c => c.label.toLowerCase().includes(q)).slice(0, 30);
-            if (!matches.length) {
-                acDropdown.innerHTML = '<div class="ac-empty">No campers found</div>';
-            } else {
-                matches.forEach((c, i) => {
-                    const div = document.createElement('div');
-                    div.className = 'ac-option';
-                    div.dataset.id = c.id;
-                    div.innerHTML = `<span class="ac-color">${c.color}</span>${c.label}`;
-                    div.addEventListener('mousedown', e => {
-                        e.preventDefault();
-                        selectCamper(c);
-                    });
-                    acDropdown.appendChild(div);
-                });
-            }
-            acDropdown.style.display = 'block';
-        }
-
-        function selectCamper(c) {
-            acInput.value  = c.label + ' (' + c.color + ')';
-            acHidden.value = c.id;
-            acDropdown.style.display = 'none';
-        }
-
-        acInput.addEventListener('input', () => { acHidden.value = ''; renderAC(acInput.value); });
-        acInput.addEventListener('keydown', e => {
-            const opts = acDropdown.querySelectorAll('.ac-option');
-            if (!opts.length) return;
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                acActiveIdx = Math.min(acActiveIdx + 1, opts.length - 1);
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                acActiveIdx = Math.max(acActiveIdx - 1, 0);
-            } else if (e.key === 'Enter' && acActiveIdx >= 0) {
-                e.preventDefault();
-                opts[acActiveIdx].dispatchEvent(new MouseEvent('mousedown'));
-                return;
-            } else if (e.key === 'Escape') {
-                acDropdown.style.display = 'none'; return;
-            }
-            opts.forEach((o, i) => o.classList.toggle('active', i === acActiveIdx));
-        });
-        document.addEventListener('click', e => {
-            if (!document.getElementById('acWrap').contains(e.target))
-                acDropdown.style.display = 'none';
+        initCamperAC({
+            input:    'camperSearchAC',
+            dropdown: 'acDropdown',
+            hidden:   'camperIdHidden',
+            campers:  <%- JSON.stringify(campers.map(c => ({
+                id: c.CamperID,
+                label: c.LastName + ', ' + (c.PreferredName || c.FirstName),
+                color: c.HomeGroupColor
+            }))) %>
         });
     </script>
 </body>
