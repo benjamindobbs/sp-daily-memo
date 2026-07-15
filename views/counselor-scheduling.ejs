@@ -1578,6 +1578,38 @@
                 }
             }
 
+            // Mutual-preference swap pass: if counselor A holds the type counselor B
+            // wants and B holds the type A wants, trade them 1:1. Both get their
+            // preference and quadrant supply is untouched (the multiset of assigned
+            // types doesn't change). Covers opposite full-days, inverse splits, and
+            // full↔split mutual trades. Saved (partial) types and specialty
+            // counselors are never traded.
+            {
+                const swappableIds = new Set(MAIN_COUNSELORS.map(c => String(c.CounselorID)));
+                const unsatisfied = Object.keys(typeAssignments).filter(cid => {
+                    if (savedTypes[cid]) return false;
+                    if (!swappableIds.has(cid)) return false;
+                    const pref = prefMap[cid]?.SchedulePreference;
+                    return pref && pref !== 'No Preference' && COVERS[pref] && typeAssignments[cid] !== pref;
+                });
+                const swapBuckets = {};
+                unsatisfied.forEach(cid => {
+                    const key = typeAssignments[cid] + '→' + prefMap[cid].SchedulePreference;
+                    (swapBuckets[key] = swapBuckets[key] || []).push(cid);
+                });
+                Object.keys(swapBuckets).forEach(key => {
+                    const [have, want] = key.split('→');
+                    const revKey = want + '→' + have;
+                    if (!(revKey in swapBuckets) || key > revKey) return; // handle each pair once
+                    const a = swapBuckets[key], b = swapBuckets[revKey];
+                    while (a.length && b.length) {
+                        const cidA = a.pop(), cidB = b.pop();
+                        typeAssignments[cidA] = want;
+                        typeAssignments[cidB] = have;
+                    }
+                });
+            }
+
             // If still invalid after all free reassignments, show shortfall modal
             const finalSupply = supplyFrom(typeAssignments);
             if (!scheduleIsValid(finalSupply)) {
