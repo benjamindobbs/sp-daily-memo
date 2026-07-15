@@ -42,7 +42,9 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | GET | `/staff-lookup` | | Redirect → `/counselor-directory` |
 | GET | `/counselor-profile/:id` | | Individual staff profile |
 | POST | `/delete-counselor/:id` | ✓ | Delete a counselor record |
-| POST | `/update-staff-info/:id` | ✓ | Edit all 9 counselor profile fields (base record + active week attributes) |
+| POST | `/update-staff-info/:id` | ✓ | Edit all counselor profile fields incl. `gender` (base record + active week attributes) |
+| GET | `/mass-edit-staff` | ✓ | Spreadsheet-style editor: one row per staff member with all profile fields plus Gender; filter by name/role/gender |
+| POST | `/mass-edit-staff/save` | ✓ | JSON bulk save of every row (transaction); mirrors group/schedule/bus/extended into `CounselorWeekAttributes` for the active week |
 | POST | `/update-staff-period` | ✓ | Add/update one period on an instructor's weekly schedule |
 | POST | `/remove-staff-period` | ✓ | Remove one period from an instructor's weekly schedule |
 | GET | `/camper/:id` | | Individual camper profile |

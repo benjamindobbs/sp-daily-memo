@@ -20,8 +20,19 @@
         .period-body { padding: 16px 20px 20px; border-top: 1px solid var(--border-color); }
         .side-heading { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9; }
         .offering-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 20px; }
-        .offering-card { border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; background: #fafafa; }
+        .offering-card { border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; background: #fafafa; position: relative; }
         .offering-card.locked { border-color: #f59e0b; background: #fffbeb; }
+        /* Build-result flags: gender imbalance (pink = all female, blue = all male) and staffing shortage (red) */
+        .offering-card.flag-all-f { background: #fdf2f8; border-color: #f9a8d4; }
+        .offering-card.flag-all-m { background: #eff6ff; border-color: #93c5fd; }
+        .offering-card.flag-short { background: #fef2f2; border-color: #fca5a5; }
+        .flag-ignore-btn {
+            position: absolute; bottom: 6px; right: 6px; z-index: 5;
+            font-size: 0.68rem; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+            border: 1px solid var(--border-color); background: white; cursor: pointer;
+            color: var(--text-muted); font-family: inherit;
+        }
+        .flag-ignore-btn:hover { background: #f1f5f9; color: var(--text); }
         .offering-card-header { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
         .offering-name-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; }
         .lock-btn { font-size: 0.9rem; background: none; border: none; cursor: pointer; padding: 0 2px; line-height: 1; opacity: 0.35; flex-shrink: 0; margin-top: 1px; }
@@ -1571,6 +1582,47 @@
             return !!bu && (bu.am.has(blockKey(name)) || bu.pm.has(blockKey(name)));
         }
 
+        // ── Gender rules ─────────────────────────────────────────────────────────
+        const GENDER_BY_ID = {};
+        COUNSELORS.forEach(c => { GENDER_BY_ID[c.CounselorID] = c.Gender || null; });
+
+        // Go Girl is the only class that requires female staff exclusively
+        function isFemaleOnlyClass(name) { return /go.?girl/i.test(name); }
+
+        // Gender counts among the placed (non-null) counselors of an offering
+        function genderMix(idx) {
+            let m = 0, f = 0;
+            state[idx].counselors.forEach(id => {
+                if (!id || id === -1) return;
+                const g = GENDER_BY_ID[id];
+                if (g === 'M') m++; else if (g === 'F') f++;
+            });
+            return { m, f };
+        }
+
+        // The gender an offering is missing under the split rule (2+ counselors →
+        // min one of each). Returns 'M', 'F', or null if satisfied / not applicable.
+        // Unknown-gender counselors count as neither, so all-unknown classes never flag.
+        function missingGender(idx) {
+            const act = OFFERINGS[idx];
+            if (isFemaleOnlyClass(act.ActivityName)) return null;
+            if (state[idx].counselors.filter(id => id && id !== -1).length < 2) return null;
+            const { m, f } = genderMix(idx);
+            if (m > 0 && f === 0) return 'F';
+            if (f > 0 && m === 0) return 'M';
+            return null;
+        }
+
+        // True if the counselor has this activity name in any OTHER offering today
+        function hasActivityElsewhere(cid, name, excludeIdx) {
+            const key = blockKey(name);
+            return OFFERINGS.some((a, i) =>
+                i !== excludeIdx && a.PeriodNumber &&
+                blockKey(a.ActivityName) === key &&
+                state[i].counselors.includes(cid)
+            );
+        }
+
         // Count of already-assigned classes matching each counselor's activity
         // preferences — used to break "coin tosses" in favor of counselors with
         // fewer preferred assignments so wins spread evenly.
@@ -1798,6 +1850,7 @@
                 const tEligible = getAssignablePool().filter(c => {
                     if (usedThisPeriod[srcPeriod].has(c.CounselorID)) return false;
                     if ((STAFF_BUSY[c.CounselorID] || []).includes(srcPeriod)) return false;
+                    if (isFemaleOnlyClass(tName) && GENDER_BY_ID[c.CounselorID] === 'M') return false;
                     const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     return isCounselorAvailableFor(sched, srcPeriod, tSide);
@@ -1851,6 +1904,7 @@
                 const eligible = getAssignablePool().filter(c => {
                     if (usedThisPeriod[period].has(c.CounselorID)) return false;
                     if ((STAFF_BUSY[c.CounselorID] || []).includes(period)) return false;
+                    if (isFemaleOnlyClass(name) && GENDER_BY_ID[c.CounselorID] === 'M') return false;
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     if (!isCounselorAvailableFor(sched, period, side)) return false;
@@ -1860,7 +1914,20 @@
 
                 const preferred = orderByFewestWins(eligible.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)), prefWins, c => c.CounselorID);
                 const nonPref   = shuffle(eligible.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
-                const pool = mode === 'pref' ? [...preferred] : [...preferred, ...nonPref];
+                let pool = mode === 'pref' ? [...preferred] : [...preferred, ...nonPref];
+
+                // Gender split: filling the LAST open slot of a 2+ class that is
+                // single-gender so far → prefer the missing gender if available.
+                if (pool.length > 1 &&
+                    state[bestIdx].counselors.length >= 2 &&
+                    state[bestIdx].counselors.filter(id => id === null).length === 1) {
+                    const { m, f } = genderMix(bestIdx);
+                    const need = (m > 0 && f === 0) ? 'F' : (f > 0 && m === 0) ? 'M' : null;
+                    if (need) {
+                        const genderPool = pool.filter(c => GENDER_BY_ID[c.CounselorID] === need);
+                        if (genderPool.length) pool = genderPool;
+                    }
+                }
 
                 if (pool.length === 0) {
                     state[bestIdx].counselors[slotPos] = -1; // unfillable sentinel
@@ -2001,10 +2068,22 @@
                                 // class and avoid moving one who requested the donor class.
                                 const dName = OFFERINGS[dIdx].ActivityName;
                                 const rActName = OFFERINGS[rIdx].ActivityName;
+                                // Moving this counselor out must not leave the donor single-gendered
+                                const wouldBreakDonorSplit = id => {
+                                    if (dPlaced - 1 < 2) return false;
+                                    const g = GENDER_BY_ID[id];
+                                    if (!g) return false;
+                                    const mix = genderMix(dIdx);
+                                    const m = mix.m - (g === 'M' ? 1 : 0);
+                                    const f = mix.f - (g === 'F' ? 1 : 0);
+                                    return (m > 0 && f === 0) || (f > 0 && m === 0);
+                                };
                                 const candidates = state[dIdx].counselors.filter(id =>
                                     id &&
                                     !state[rIdx].counselors.includes(id) &&
-                                    !(dayUsed[id]?.has(rName))
+                                    !(dayUsed[id]?.has(rName)) &&
+                                    !(isFemaleOnlyClass(rActName) && GENDER_BY_ID[id] === 'M') &&
+                                    !wouldBreakDonorSplit(id)
                                 );
                                 if (candidates.length === 0) continue;
                                 const cId = candidates.reduce((best, id) => {
@@ -2025,6 +2104,121 @@
                     }
                 }
             }
+        }
+
+        // ── Gender split repair ──────────────────────────────────────────────────
+        // Classes with 2+ counselors need at least one of each gender. Attempts to
+        // fix single-gender classes by swapping a counselor with another class in
+        // the same period+side (respecting variety, Go Girl, and the donor's own
+        // split). Returns offering indexes still violating afterwards.
+        function enforceGenderSplit() {
+            const violations = [];
+            for (let period = 1; period <= 6; period++) {
+                for (const side of ['Sports', 'Enrichment']) {
+                    const idxs = [];
+                    OFFERINGS.forEach((act, idx) => {
+                        if (act.PeriodNumber === period && act.SideOfCamp === side) idxs.push(idx);
+                    });
+                    for (const rIdx of idxs) {
+                        if (lockedOfferings.has(rIdx)) continue;
+                        if (OFFERINGS[rIdx].ActivityName.toLowerCase().includes('triple period')) continue;
+                        const need = missingGender(rIdx);
+                        if (!need) continue;
+                        const rName = OFFERINGS[rIdx].ActivityName;
+
+                        let fixed = false;
+                        for (const dIdx of idxs) {
+                            if (fixed) break;
+                            if (dIdx === rIdx || lockedOfferings.has(dIdx)) continue;
+                            if (OFFERINGS[dIdx].ActivityName.toLowerCase().includes('triple period')) continue;
+                            const dName = OFFERINGS[dIdx].ActivityName;
+                            const dPlacedArr = state[dIdx].counselors.filter(id => id);
+
+                            // Incoming: a needed-gender counselor from the donor who can join us
+                            const inCands = dPlacedArr.filter(id =>
+                                GENDER_BY_ID[id] === need &&
+                                !state[rIdx].counselors.includes(id) &&
+                                !hasActivityElsewhere(id, rName, dIdx));
+                            if (!inCands.length) continue;
+
+                            // Outgoing: one of ours who can join the donor in exchange
+                            const outCands = state[rIdx].counselors.filter(id =>
+                                id &&
+                                !state[dIdx].counselors.includes(id) &&
+                                !(isFemaleOnlyClass(dName) && GENDER_BY_ID[id] === 'M') &&
+                                !hasActivityElsewhere(id, dName, rIdx));
+
+                            for (const inId of inCands) {
+                                if (fixed) break;
+                                for (const outId of outCands) {
+                                    if (outId === inId) continue;
+                                    // The swap must not create a violation in the donor
+                                    const dm   = genderMix(dIdx);
+                                    const gIn  = GENDER_BY_ID[inId];
+                                    const gOut = GENDER_BY_ID[outId];
+                                    const m = dm.m - (gIn === 'M' ? 1 : 0) + (gOut === 'M' ? 1 : 0);
+                                    const f = dm.f - (gIn === 'F' ? 1 : 0) + (gOut === 'F' ? 1 : 0);
+                                    if (dPlacedArr.length >= 2 && ((m > 0 && f === 0) || (f > 0 && m === 0))) continue;
+                                    state[dIdx].counselors[state[dIdx].counselors.indexOf(inId)]  = outId;
+                                    state[rIdx].counselors[state[rIdx].counselors.indexOf(outId)] = inId;
+                                    fixed = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!fixed) violations.push(rIdx);
+                    }
+                }
+            }
+            return violations;
+        }
+
+        // ── Build-result card flags ──────────────────────────────────────────────
+        // Pink = all-female class (2+), blue = all-male class (2+), red = short on
+        // staff. Each flag has an Ignore button; ignores persist per week+class in
+        // localStorage so re-running the build doesn't resurrect dismissed flags.
+        function applyCardFlags(genderViolationIdxs, shortIdxs) {
+            const IGNORE_KEY = 'buildFlagIgnore_w' + PLAN_WEEK;
+            let ignored = [];
+            try { ignored = JSON.parse(localStorage.getItem(IGNORE_KEY) || '[]'); } catch {}
+            const ignoredSet = new Set(ignored);
+
+            document.querySelectorAll('.offering-card.flag-all-f, .offering-card.flag-all-m, .offering-card.flag-short')
+                .forEach(el => el.classList.remove('flag-all-f', 'flag-all-m', 'flag-short'));
+            document.querySelectorAll('.flag-ignore-btn').forEach(el => el.remove());
+
+            const flag = (idx, cls) => {
+                if (ignoredSet.has(lockKey(idx))) return;
+                const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                if (!card) return;
+                card.classList.add(cls);
+                if (!card.querySelector('.flag-ignore-btn')) {
+                    const btn = document.createElement('button');
+                    btn.className = 'flag-ignore-btn';
+                    btn.type = 'button';
+                    btn.title = 'Dismiss this highlight for this class this week';
+                    btn.textContent = 'Ignore ✕';
+                    btn.addEventListener('click', e => {
+                        e.stopPropagation();
+                        card.classList.remove('flag-all-f', 'flag-all-m', 'flag-short');
+                        btn.remove();
+                        ignoredSet.add(lockKey(idx));
+                        localStorage.setItem(IGNORE_KEY, JSON.stringify([...ignoredSet]));
+                    });
+                    card.appendChild(btn);
+                }
+            };
+
+            // Red (short-staffed) takes priority if a class is both short and single-gender
+            genderViolationIdxs.forEach(idx => {
+                const { f } = genderMix(idx);
+                flag(idx, f > 0 ? 'flag-all-f' : 'flag-all-m');
+            });
+            shortIdxs.forEach(idx => {
+                const card = document.querySelector(`.offering-card[data-offer="${idx}"]`);
+                if (card) card.classList.remove('flag-all-f', 'flag-all-m');
+                flag(idx, 'flag-short');
+            });
         }
 
         function fillExtraCounselors() {
@@ -2097,7 +2291,9 @@
                         const actName = OFFERINGS[eligIdx].ActivityName;
                         state[eligIdx].counselors.forEach((id, slotPos) => {
                             if (id !== null || extrasPool.length === 0) return;
-                            const eligible_e = extrasPool.filter(c => !usedEitherBlock(blockUsed, c.CounselorID, actName));
+                            const eligible_e = extrasPool.filter(c =>
+                                !usedEitherBlock(blockUsed, c.CounselorID, actName) &&
+                                !(isFemaleOnlyClass(actName) && GENDER_BY_ID[c.CounselorID] === 'M'));
                             const preferred = orderByFewestWins(eligible_e.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)), prefWins, c => c.CounselorID);
                             const nonPref   = shuffle(eligible_e.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
                             const chosen    = mode === 'pref' ? (preferred[0] ?? null) : (preferred[0] ?? nonPref[0]);
@@ -2120,7 +2316,9 @@
                     const newSlots = [];
                     for (const extra of extrasPool) {
                         // Only target activities the counselor hasn't run yet today (day-level variety)
-                        const valid = eligibleIdxs.filter(idx => !usedEitherBlock(blockUsed, extra.CounselorID, OFFERINGS[idx].ActivityName));
+                        const valid = eligibleIdxs.filter(idx =>
+                            !usedEitherBlock(blockUsed, extra.CounselorID, OFFERINGS[idx].ActivityName) &&
+                            !(isFemaleOnlyClass(OFFERINGS[idx].ActivityName) && GENDER_BY_ID[extra.CounselorID] === 'M'));
                         if (valid.length === 0) continue;
                         const targetIdx = valid.reduce((best, idx) => {
                             const bestRatio = (OFFERINGS[best].PreliminaryEnrollment || 0) / Math.max(state[best].counselors.length, 1);
@@ -2144,7 +2342,9 @@
                     for (const { idx, slotPos } of newSlots) {
                         if (state[idx].counselors[slotPos] != null) continue;
                         const actName = OFFERINGS[idx].ActivityName;
-                        const eligible_r = [...remaining].filter(cid => !usedEitherBlock(blockUsed, cid, actName));
+                        const eligible_r = [...remaining].filter(cid =>
+                            !usedEitherBlock(blockUsed, cid, actName) &&
+                            !(isFemaleOnlyClass(actName) && GENDER_BY_ID[cid] === 'M'));
                         const preferred = orderByFewestWins(eligible_r.filter(cid =>  prefMap[cid]?.ActivityPreferences?.includes(actName)), prefWins, cid => cid);
                         const nonPref   = shuffle(eligible_r.filter(cid => !prefMap[cid]?.ActivityPreferences?.includes(actName)));
                         const chosen    = mode === 'pref' ? (preferred[0] ?? null) : (preferred[0] ?? nonPref[0]);
@@ -2199,12 +2399,13 @@
                             if (/archery/i.test(a.ActivityName) && state[idx].counselors.length >= 2) return false;
                             return true;
                         };
+                        const genderOK = idx => !(isFemaleOnlyClass(OFFERINGS[idx].ActivityName) && GENDER_BY_ID[c.CounselorID] === 'M');
                         let valid = tIdxs.filter(idx =>
-                            belowCap(idx) &&
+                            belowCap(idx) && genderOK(idx) &&
                             !usedEitherBlock(blockUsed, c.CounselorID, OFFERINGS[idx].ActivityName) &&
                             !state[idx].counselors.includes(c.CounselorID)
                         );
-                        if (valid.length === 0) valid = tIdxs.filter(idx => belowCap(idx) && !state[idx].counselors.includes(c.CounselorID));
+                        if (valid.length === 0) valid = tIdxs.filter(idx => belowCap(idx) && genderOK(idx) && !state[idx].counselors.includes(c.CounselorID));
                         if (valid.length === 0) continue;
 
                         const tIdx = valid.reduce((best, idx) => {
@@ -2250,6 +2451,9 @@
             // Equalize enrollment-per-counselor ratios before final cleanup
             rebalanceCounselors();
 
+            // Gender split: fix single-gender 2+ classes via swaps; collect the unfixable
+            const genderViolations = enforceGenderSplit();
+
             // Remove unfilled null slots, but preserve manually-set counts and enrichment minimums
             OFFERINGS.forEach((act, idx) => {
                 state[idx].counselors = state[idx].counselors.filter(id => id !== null);
@@ -2261,11 +2465,13 @@
             // Drop blank slots no remaining counselor can legally fill — otherwise they
             // linger with nobody left to assign. Reported in the status line instead.
             let dropped = 0;
+            const shortIdxs = new Set();
             OFFERINGS.forEach((act, idx) => {
                 if (!act.PeriodNumber || !act.SideOfCamp) return;
                 if (lockedOfferings.has(idx)) return;
                 const nulls = state[idx].counselors.filter(id => id === null).length;
                 if (nulls === 0) return;
+                shortIdxs.add(idx); // any unfilled required slot = short on staff
                 const usedNow = new Set();
                 OFFERINGS.forEach((a, i) => {
                     if (a.PeriodNumber !== act.PeriodNumber) return;
@@ -2297,10 +2503,16 @@
             renderAllFromState();
             updateAllCounters();
             updateGroupCounters();
+            applyCardFlags(genderViolations, [...shortIdxs]);
+
             let doneMsg = totalAdded > 0
                 ? `Done! ${totalAdded} extra counselor slot${totalAdded !== 1 ? 's' : ''} added.`
                 : 'Done!';
             if (dropped > 0) doneMsg += ` ${dropped} unfillable slot${dropped !== 1 ? 's' : ''} removed (no counselors left to assign).`;
+            if (genderViolations.length > 0) {
+                const names = genderViolations.map(i => `P${OFFERINGS[i].PeriodNumber} ${OFFERINGS[i].ActivityName}`).join(', ');
+                doneMsg += ` Gender split unmet: ${names}.`;
+            }
             statusEl.textContent = doneMsg + ' Review and save when ready.';
         }
 
@@ -2458,6 +2670,7 @@
                 const slotCount = state[srcIdx].counselors.length;
                 const tEligible = rebuildPool.filter(c => {
                     if (usedThisPeriod[srcPeriod].has(c.CounselorID)) return false;
+                    if (isFemaleOnlyClass(tName) && GENDER_BY_ID[c.CounselorID] === 'M') return false;
                     const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     return isCounselorAvailableFor(sched, srcPeriod, targetSide);
@@ -2500,6 +2713,7 @@
                 const eligible = rebuildPool.filter(c => {
                     if (usedThisPeriod[period].has(c.CounselorID)) return false;
                     if ((STAFF_BUSY[c.CounselorID] || []).includes(period)) return false;
+                    if (isFemaleOnlyClass(name) && GENDER_BY_ID[c.CounselorID] === 'M') return false;
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     if (!isCounselorAvailableFor(sched, period, targetSide)) return false;
@@ -2589,7 +2803,7 @@
                     const actName = OFFERINGS[eligIdx].ActivityName;
                     state[eligIdx].counselors.forEach((id, slotPos) => {
                         if (id !== null || extrasPool.length === 0) return;
-                        const elig_e  = extrasPool;
+                        const elig_e  = extrasPool.filter(c => !(isFemaleOnlyClass(actName) && GENDER_BY_ID[c.CounselorID] === 'M'));
                         const pref    = shuffle(elig_e.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
                         const nonP    = shuffle(elig_e.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
                         const chosen  = mode === 'pref' ? (pref[0] ?? null) : (pref[0] ?? nonP[0]);
@@ -2606,7 +2820,8 @@
                 // Phase 2: add new slots for remaining extras
                 const newSlots = [];
                 for (const extra of extrasPool) {
-                    const valid = eligibleIdxs;
+                    const valid = eligibleIdxs.filter(idx =>
+                        !(isFemaleOnlyClass(OFFERINGS[idx].ActivityName) && GENDER_BY_ID[extra.CounselorID] === 'M'));
                     if (valid.length === 0) continue;
                     const tgtIdx = valid.reduce((best, idx) => {
                         const bR = (OFFERINGS[best].PreliminaryEnrollment || 0) / Math.max(state[best].counselors.length, 1);
@@ -2629,7 +2844,9 @@
                 for (const { idx, slotPos } of newSlots) {
                     if (state[idx].counselors[slotPos] != null) continue;
                     const actName  = OFFERINGS[idx].ActivityName;
-                    const elig_r   = [...remaining].filter(cid => !blockUsed[cid]?.[block].has(blockKey(actName)));
+                    const elig_r   = [...remaining].filter(cid =>
+                        !blockUsed[cid]?.[block].has(blockKey(actName)) &&
+                        !(isFemaleOnlyClass(actName) && GENDER_BY_ID[cid] === 'M'));
                     const pref     = shuffle(elig_r.filter(cid =>  prefMap[cid]?.ActivityPreferences?.includes(actName)));
                     const nonP     = shuffle(elig_r.filter(cid => !prefMap[cid]?.ActivityPreferences?.includes(actName)));
                     const chosen   = mode === 'pref' ? (pref[0] ?? null) : (pref[0] ?? nonP[0]);
@@ -2676,6 +2893,7 @@
                 for (const c of unplaced) {
                     const valid = tIdxs.filter(idx =>
                         belowCap(idx) &&
+                        !(isFemaleOnlyClass(OFFERINGS[idx].ActivityName) && GENDER_BY_ID[c.CounselorID] === 'M') &&
                         !state[idx].counselors.includes(c.CounselorID)
                     );
                     if (valid.length === 0) continue;

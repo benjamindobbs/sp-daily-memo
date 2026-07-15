@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mass Edit Staff | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .mes-toolbar {
+            display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .mes-toolbar input[type="search"], .mes-toolbar select {
+            padding: 7px 12px; border: 1px solid var(--border-color); border-radius: 8px;
+            font-size: 0.85rem; font-family: inherit;
+        }
+        .mes-count { font-size: 0.8rem; color: var(--text-muted); }
+        .mes-table-wrap { overflow-x: auto; background: white; border: 1px solid var(--border-color); border-radius: 10px; }
+        .mes-table { border-collapse: collapse; width: 100%; min-width: 1150px; }
+        .mes-table th {
+            position: sticky; top: 0; background: #f8fafc; z-index: 5;
+            font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
+            color: var(--text-muted); text-align: left; padding: 10px 8px;
+            border-bottom: 2px solid var(--border-color); white-space: nowrap;
+        }
+        .mes-table td { padding: 4px 6px; border-bottom: 1px solid #f1f5f9; }
+        .mes-table tr:hover td { background: #f8fafc; }
+        .mes-table input, .mes-table select {
+            width: 100%; padding: 5px 8px; border: 1px solid transparent; border-radius: 6px;
+            font-size: 0.83rem; font-family: inherit; background: transparent; box-sizing: border-box;
+        }
+        .mes-table input:hover, .mes-table select:hover { border-color: var(--border-color); }
+        .mes-table input:focus, .mes-table select:focus {
+            outline: none; border-color: var(--primary); background: white;
+        }
+        .mes-table tr.dirty td { background: #fefce8; }
+        .mes-table tr.filter-hidden { display: none; }
+        .col-name  { min-width: 110px; }
+        .col-role  { min-width: 130px; }
+        .col-gender{ width: 80px; }
+        .col-group { min-width: 110px; }
+        .col-sched { min-width: 190px; }
+        .col-bus   { width: 80px; }
+        .col-ext   { width: 90px; }
+        .col-phone { min-width: 120px; }
+        .col-email { min-width: 170px; }
+        .save-bar {
+            position: sticky; bottom: 0; background: white; border-top: 1px solid var(--border-color);
+            padding: 12px 0; margin-top: 4px; display: flex; align-items: center; gap: 14px;
+        }
+        #saveStatus { font-size: 0.83rem; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/counselor-directory" class="nav-btn">&#128101; Staff Directory</a>
+        <a href="/mass-edit-staff" class="nav-btn primary">&#9997;&#65039; Mass Edit Staff</a>
+    </nav>
+
+    <div class="container-xl">
+        <header style="margin-bottom:18px;">
+            <h1 style="margin:0;">Mass Edit Staff</h1>
+            <p class="text-muted" style="margin:4px 0 0;">Edit every staff member in one place. Rows you change are highlighted; nothing is written until you hit Save All.</p>
+        </header>
+
+        <% if (message) { %><div class="alert"><%= message %></div><% } %>
+
+        <div class="mes-toolbar">
+            <input type="search" id="nameFilter" placeholder="Filter by name…" autocomplete="off">
+            <select id="roleFilter">
+                <option value="">All roles</option>
+                <% roles.forEach(function(r) { %>
+                    <option value="<%= r %>"><%= r %></option>
+                <% }); %>
+            </select>
+            <select id="genderFilter">
+                <option value="">Any gender</option>
+                <option value="F">Female</option>
+                <option value="M">Male</option>
+                <option value="none">Not set</option>
+            </select>
+            <span class="mes-count" id="rowCount"></span>
+        </div>
+
+        <div class="mes-table-wrap">
+            <table class="mes-table">
+                <thead>
+                    <tr>
+                        <th class="col-name">First</th>
+                        <th class="col-name">Last</th>
+                        <th class="col-role">Role</th>
+                        <th class="col-gender">Gender</th>
+                        <th class="col-group">Group</th>
+                        <th class="col-sched">Schedule Type</th>
+                        <th class="col-bus">Bus</th>
+                        <th class="col-ext">Extended</th>
+                        <th class="col-phone">Phone</th>
+                        <th class="col-email">Email</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% staff.forEach(function(s) { %>
+                    <tr data-cid="<%= s.CounselorID %>"
+                        data-name="<%= ((s.FirstName || '') + ' ' + (s.LastName || '')).toLowerCase() %>">
+                        <td><input data-f="firstName" value="<%= s.FirstName || '' %>"></td>
+                        <td><input data-f="lastName" value="<%= s.LastName || '' %>"></td>
+                        <td>
+                            <select data-f="staffRole">
+                                <% ['Counselor','Swim Counselor','Unit Leader','Sports Leader','Instructor','Director','Office Staff','Nurse','Equipment Manager','CPR Instructor','Internship'].forEach(function(r) { %>
+                                    <option value="<%= r %>" <%= s.StaffRole === r ? 'selected' : '' %>><%= r %></option>
+                                <% }); %>
+                            </select>
+                        </td>
+                        <td>
+                            <select data-f="gender">
+                                <option value="">—</option>
+                                <option value="F" <%= s.Gender === 'F' ? 'selected' : '' %>>F</option>
+                                <option value="M" <%= s.Gender === 'M' ? 'selected' : '' %>>M</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select data-f="homeGroupColor">
+                                <option value="">— None —</option>
+                                <% ['Red','Carolina','Green','Navy','LilPlace','KinderPlace','SPLIT','SPRC','Swim'].forEach(function(c) { %>
+                                    <option value="<%= c %>" <%= s.HomeGroupColor === c ? 'selected' : '' %>><%= c %></option>
+                                <% }); %>
+                            </select>
+                        </td>
+                        <td>
+                            <select data-f="scheduleType">
+                                <option value="">— Auto —</option>
+                                <% ['All Sports','All Enrichment','AM Sports / PM Enrichment','AM Enrichment / PM Sports'].forEach(function(t) { %>
+                                    <option value="<%= t %>" <%= s.ScheduleType === t ? 'selected' : '' %>><%= t %></option>
+                                <% }); %>
+                            </select>
+                        </td>
+                        <td><input data-f="busRoute" value="<%= s.BusRoute || '' %>"></td>
+                        <td>
+                            <select data-f="extendedHours">
+                                <option value="">— None —</option>
+                                <% ['AM','PM','Both'].forEach(function(e) { %>
+                                    <option value="<%= e %>" <%= s.ExtendedHours === e ? 'selected' : '' %>><%= e %></option>
+                                <% }); %>
+                            </select>
+                        </td>
+                        <td><input data-f="phone" value="<%= s.Phone || '' %>"></td>
+                        <td><input data-f="email" value="<%= s.Email || '' %>"></td>
+                    </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="save-bar">
+            <button class="btn btn-primary" id="saveAllBtn" onclick="saveAll()">Save All</button>
+            <span id="saveStatus"></span>
+        </div>
+    </div>
+
+    <script>
+        // Mark edited rows
+        document.querySelectorAll('.mes-table tbody tr').forEach(tr => {
+            tr.addEventListener('input',  () => tr.classList.add('dirty'));
+            tr.addEventListener('change', () => tr.classList.add('dirty'));
+        });
+
+        // Filters
+        function applyFilters() {
+            const name   = document.getElementById('nameFilter').value.trim().toLowerCase();
+            const role   = document.getElementById('roleFilter').value;
+            const gender = document.getElementById('genderFilter').value;
+            let visible = 0;
+            document.querySelectorAll('.mes-table tbody tr').forEach(tr => {
+                const nameMatch = !name || tr.dataset.name.includes(name);
+                const roleMatch = !role || tr.querySelector('[data-f="staffRole"]').value === role;
+                const g = tr.querySelector('[data-f="gender"]').value;
+                const genderMatch = !gender || (gender === 'none' ? g === '' : g === gender);
+                const show = nameMatch && roleMatch && genderMatch;
+                tr.classList.toggle('filter-hidden', !show);
+                if (show) visible++;
+            });
+            document.getElementById('rowCount').textContent = visible + ' staff shown';
+        }
+        document.getElementById('nameFilter').addEventListener('input', applyFilters);
+        document.getElementById('roleFilter').addEventListener('change', applyFilters);
+        document.getElementById('genderFilter').addEventListener('change', applyFilters);
+        applyFilters();
+
+        // Save all rows (including filtered-out ones) in one request
+        async function saveAll() {
+            const btn = document.getElementById('saveAllBtn');
+            const status = document.getElementById('saveStatus');
+            btn.disabled = true; btn.textContent = 'Saving…'; status.textContent = '';
+
+            const staff = [];
+            document.querySelectorAll('.mes-table tbody tr').forEach(tr => {
+                const row = { counselorID: parseInt(tr.dataset.cid) };
+                tr.querySelectorAll('[data-f]').forEach(inp => { row[inp.dataset.f] = inp.value; });
+                staff.push(row);
+            });
+
+            try {
+                const resp = await fetch('/mass-edit-staff/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ staff })
+                });
+                const data = await resp.json();
+                if (resp.ok && data.ok) {
+                    document.querySelectorAll('.mes-table tbody tr.dirty').forEach(tr => tr.classList.remove('dirty'));
+                    btn.textContent = '✓ Saved!';
+                    status.textContent = data.saved + ' staff records written.';
+                    setTimeout(() => { btn.textContent = 'Save All'; btn.disabled = false; }, 2000);
+                } else {
+                    btn.textContent = 'Save All'; btn.disabled = false;
+                    status.textContent = 'Error: ' + (data.error || resp.status);
+                }
+            } catch (err) {
+                btn.textContent = 'Save All'; btn.disabled = false;
+                status.textContent = 'Network error — try again.';
+            }
+        }
+    </script>
+</body>
+</html>

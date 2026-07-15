@@ -152,6 +152,12 @@ Key constants available to the builder at page load:
 
 **Preference fairness** — `prefWins[counselorID]` counts how many preferred classes each counselor has been given during the build. When multiple counselors who prefer the same class compete for a slot, the one with the fewest preferred wins so far goes first (random shuffle breaks remaining ties). If demand forces schedule-type overrides, the counselor whose activity preferences best align with the forced type is flipped first instead of choosing randomly.
 
+**Gender rules** — driven by `Counselors.Gender` (`M`/`F`/NULL, editable via Mass Edit Staff or the profile page):
+- **Go Girl (female-only)**: any offering matching `/go.?girl/i` excludes male counselors from every placement path, including force-place fallbacks and side rebuilds. Unknown-gender counselors are allowed.
+- **Gender split**: classes with 2+ counselors need at least one of each gender. The greedy fill prefers the missing gender on a class's last open slot; after the build, `enforceGenderSplit()` repairs single-gender classes by swapping counselors with other classes in the same period+side (never breaking the donor's split, variety, or Go Girl). Unknown genders count as neither, so all-unknown classes never flag.
+- **Best effort**: if a violation can't be repaired, the class is listed in the status line ("Gender split unmet: …") and the build proceeds.
+- **Card flags**: after Full Auto Build, violating cards get a background — pink = all-female, blue = all-male, red = short on staff (unfilled/dropped required slots). Each flag has an Ignore button; ignores persist per week+class in `localStorage`.
+
 **Slot formula** — `calcSlotCount(act)` is the single source of truth: Hartt Chamber and Learning Zone → 0; Archery → 2; Sports → `min + ceil(max(0, enrollment − threshold) / per)` with swim capped at 2; Enrichment → configured per-AllowedGroups minimum, reduced to 1 for PM classes with ≤8 enrolled.
 
 ### Saving

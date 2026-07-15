@@ -348,6 +348,7 @@ All at `/settings`.
 | Spartan Games | `/spartan-games` | Counselor sign-up sheet for Spartan Games events. Admin can add/edit/delete events, view all sign-ups, and toggle submissions open or closed. When closed, counselors can still view the page and see their existing registrations but cannot submit new entries. |
 | Counselor Talent Show | `/talent-show` (staff) · `/admin#talent-show` (admin hub) | Counselors submit a one-line description of their act. Submissions are weekly (reset on week rollover). The admin hub shows all submissions for the current week with Approve / Deny / Delete actions and an Open/Close toggle. When submissions are closed the card does not appear in the Staff Hub. |
 | Camper Attendance History | `/camper-attendance` | Admin-only report. Select a camper via searchable dropdown and view a calendar grid of their attendance across all weeks (or a filtered subset). Each day shows a colored dot: **green** = present (at least one class marked present), **red** = absent all day, **yellow** = late arrival or early dismissal, **gray** = no data. Each week section includes a present and absent day count. |
+| Mass Edit Staff | `/mass-edit-staff` | Admin-only spreadsheet-style editor: one row per staff member with the same fields as the profile page (name, role, group, schedule type, bus, extended hours, phone, email) plus **Gender**. Filter by name, role, or gender; edited rows highlight yellow; one Save All button writes everything. Gender feeds the scheduler's gender-split rules. |
 
 ---
 

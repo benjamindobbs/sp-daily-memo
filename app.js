@@ -489,6 +489,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/photo-gallery/all', '/photo-download',
     '/admin/building-coord', '/admin/delete-building-coord',
     '/camper-attendance',
+    '/mass-edit-staff',
 ];
 const UNPROTECTED = new Set(['/admin-login', '/logout', '/choose-view', '/']);
 app.use((req, res, next) => {
@@ -1185,7 +1186,8 @@ try {
     if (!cCols.includes('Phone')) db.exec("ALTER TABLE Counselors ADD COLUMN Phone TEXT");
     if (!cCols.includes('Email')) db.exec("ALTER TABLE Counselors ADD COLUMN Email TEXT");
     if (!cCols.includes('IncludeInStaffDropdown')) db.exec("ALTER TABLE Counselors ADD COLUMN IncludeInStaffDropdown INTEGER DEFAULT 0");
-} catch(e) { console.error('[migration] Counselors.Phone/Email/IncludeInStaffDropdown:', e.message); }
+    if (!cCols.includes('Gender')) db.exec("ALTER TABLE Counselors ADD COLUMN Gender TEXT CHECK(Gender IN ('M','F') OR Gender IS NULL)");
+} catch(e) { console.error('[migration] Counselors.Phone/Email/IncludeInStaffDropdown/Gender:', e.message); }
 
 try {
     db.exec(`CREATE TABLE IF NOT EXISTS NurseLog (
@@ -4221,12 +4223,13 @@ app.post('/update-staff-info/:id', (req, res) => {
     const extendedHours  = (req.body.extendedHours  || '').trim() || null;
     const phone          = (req.body.phone          || '').trim() || null;
     const email          = (req.body.email          || '').trim() || null;
+    const gender         = ['M', 'F'].includes(req.body.gender) ? req.body.gender : null;
     db.prepare(`
         UPDATE Counselors
         SET FirstName = ?, LastName = ?, StaffRole = ?, HomeGroupColor = ?,
-            ScheduleType = ?, BusRoute = ?, ExtendedHours = ?, Phone = ?, Email = ?
+            ScheduleType = ?, BusRoute = ?, ExtendedHours = ?, Phone = ?, Email = ?, Gender = ?
         WHERE CounselorID = ?
-    `).run(firstName, lastName, staffRole, homeGroupColor, scheduleType, busRoute, extendedHours, phone, email, id);
+    `).run(firstName, lastName, staffRole, homeGroupColor, scheduleType, busRoute, extendedHours, phone, email, gender, id);
     const aw = getActiveWeek();
     db.prepare(`
         INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
@@ -4238,6 +4241,68 @@ app.post('/update-staff-info/:id', (req, res) => {
             ExtendedHours  = excluded.ExtendedHours
     `).run(id, aw, homeGroupColor, scheduleType, busRoute, extendedHours);
     res.redirect(`/counselor-profile/${id}?message=Profile+updated`);
+});
+
+// --- MASS EDIT STAFF ---
+app.get('/mass-edit-staff', (req, res) => {
+    const staff = db.prepare(`
+        SELECT CounselorID, FirstName, LastName, StaffRole, Gender, HomeGroupColor,
+               ScheduleType, BusRoute, ExtendedHours, Phone, Email
+        FROM Counselors
+        ORDER BY StaffRole, LastName, FirstName
+    `).all();
+    const roles = [...new Set(staff.map(s => s.StaffRole).filter(Boolean))].sort();
+    res.render('mass-edit-staff', { staff, roles, message: req.query.message || null });
+});
+
+app.post('/mass-edit-staff/save', (req, res) => {
+    const { staff } = req.body;
+    if (!Array.isArray(staff)) return res.status(400).json({ error: 'Invalid payload' });
+    const validRoles = ['Instructor','Unit Leader','Sports Leader','Counselor','Swim Counselor',
+                        'Director','Office Staff','Nurse','Equipment Manager','CPR Instructor','Internship'];
+    const aw = getActiveWeek();
+    const upd = db.prepare(`
+        UPDATE Counselors
+        SET FirstName = ?, LastName = ?, StaffRole = ?, Gender = ?, HomeGroupColor = ?,
+            ScheduleType = ?, BusRoute = ?, ExtendedHours = ?, Phone = ?, Email = ?
+        WHERE CounselorID = ?
+    `);
+    const updWeek = db.prepare(`
+        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET
+            HomeGroupColor = excluded.HomeGroupColor,
+            ScheduleType   = excluded.ScheduleType,
+            BusRoute       = excluded.BusRoute,
+            ExtendedHours  = excluded.ExtendedHours
+    `);
+    let saved = 0;
+    try {
+        db.transaction(() => {
+            for (const s of staff) {
+                const id = parseInt(s.counselorID);
+                const firstName = (s.firstName || '').trim();
+                const lastName  = (s.lastName  || '').trim();
+                if (!id || !firstName || !lastName) continue;
+                if (!validRoles.includes(s.staffRole)) continue;
+                const gender         = ['M', 'F'].includes(s.gender) ? s.gender : null;
+                const homeGroupColor = (s.homeGroupColor || '').trim() || null;
+                const scheduleType   = (s.scheduleType   || '').trim() || null;
+                const busRoute       = (s.busRoute       || '').trim() || null;
+                const extendedHours  = (s.extendedHours  || '').trim() || null;
+                const phone          = (s.phone          || '').trim() || null;
+                const email          = (s.email          || '').trim() || null;
+                upd.run(firstName, lastName, s.staffRole, gender, homeGroupColor,
+                        scheduleType, busRoute, extendedHours, phone, email, id);
+                updWeek.run(id, aw, homeGroupColor, scheduleType, busRoute, extendedHours);
+                saved++;
+            }
+        })();
+        res.json({ ok: true, saved });
+    } catch (err) {
+        console.error('[mass-edit-staff/save]', err.message);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.post('/update-staff-period', (req, res) => {
@@ -5843,7 +5908,7 @@ app.get('/counselor-scheduling', (req, res) => {
     // Counselors with week-specific attributes (fall back to Counselors table)
     // Only Counselor and Swim Counselor roles — not Instructors, Unit Leaders, etc.
     const allCounselors = db.prepare(`
-        SELECT c.CounselorID, c.FirstName, c.LastName, c.StaffRole,
+        SELECT c.CounselorID, c.FirstName, c.LastName, c.StaffRole, c.Gender,
                COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor,
                COALESCE(cwa.BusRoute,       c.BusRoute)       AS BusRoute,
                COALESCE(cwa.ScheduleType,   c.ScheduleType)   AS ScheduleType,
