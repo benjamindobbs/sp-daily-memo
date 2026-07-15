@@ -1189,6 +1189,12 @@ try {
     if (!cCols.includes('Gender')) db.exec("ALTER TABLE Counselors ADD COLUMN Gender TEXT CHECK(Gender IN ('M','F') OR Gender IS NULL)");
 } catch(e) { console.error('[migration] Counselors.Phone/Email/IncludeInStaffDropdown/Gender:', e.message); }
 
+// Migration: track schedule types set by hand so auto-build never overwrites them
+try {
+    const cwaCols = db.prepare("PRAGMA table_info(CounselorWeekAttributes)").all().map(c => c.name);
+    if (!cwaCols.includes('ScheduleTypeManual')) db.exec("ALTER TABLE CounselorWeekAttributes ADD COLUMN ScheduleTypeManual INTEGER DEFAULT 0");
+} catch(e) { console.error('[migration] CounselorWeekAttributes.ScheduleTypeManual:', e.message); }
+
 try {
     db.exec(`CREATE TABLE IF NOT EXISTS NurseLog (
         VisitID      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -5914,7 +5920,8 @@ app.get('/counselor-scheduling', (req, res) => {
                COALESCE(cwa.ScheduleType,   c.ScheduleType)   AS ScheduleType,
                COALESCE(cwa.ExtendedHours,  c.ExtendedHours)  AS ExtendedHours,
                cwa.SpecialtyGroup,
-               COALESCE(cwa.isWorkingThisWeek, 1)             AS isWorkingThisWeek
+               COALESCE(cwa.isWorkingThisWeek, 1)             AS isWorkingThisWeek,
+               COALESCE(cwa.ScheduleTypeManual, 0)            AS ScheduleTypeManual
         FROM Counselors c
         LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
         WHERE c.StaffRole IN ('Counselor', 'Swim Counselor')
@@ -6208,15 +6215,16 @@ app.post('/save-counselor-group-assignments', (req, res) => {
     if (!Array.isArray(counselors)) return res.status(400).json({ error: 'Invalid payload' });
     const week = parseInt(weekNumber) || getActiveWeek();
     const upsert = db.prepare(`
-        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours, SpecialtyGroup, isWorkingThisWeek)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours, SpecialtyGroup, isWorkingThisWeek, ScheduleTypeManual)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (CounselorID, WeekNumber) DO UPDATE SET
-            HomeGroupColor    = excluded.HomeGroupColor,
-            ScheduleType      = excluded.ScheduleType,
-            BusRoute          = excluded.BusRoute,
-            ExtendedHours     = excluded.ExtendedHours,
-            SpecialtyGroup    = excluded.SpecialtyGroup,
-            isWorkingThisWeek = excluded.isWorkingThisWeek
+            HomeGroupColor     = excluded.HomeGroupColor,
+            ScheduleType       = excluded.ScheduleType,
+            BusRoute           = excluded.BusRoute,
+            ExtendedHours      = excluded.ExtendedHours,
+            SpecialtyGroup     = excluded.SpecialtyGroup,
+            isWorkingThisWeek  = excluded.isWorkingThisWeek,
+            ScheduleTypeManual = excluded.ScheduleTypeManual
     `);
     db.transaction(list => {
         for (const c of list) {
@@ -6229,7 +6237,8 @@ app.post('/save-counselor-group-assignments', (req, res) => {
                 c.busRoute            || null,
                 c.extendedHours       || null,
                 c.specialtyGroup      || null,
-                c.isWorkingThisWeek   != null ? (c.isWorkingThisWeek ? 1 : 0) : 1
+                c.isWorkingThisWeek   != null ? (c.isWorkingThisWeek ? 1 : 0) : 1,
+                c.scheduleTypeManual  ? 1 : 0
             );
         }
     })(counselors);

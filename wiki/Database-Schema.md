@@ -153,6 +153,7 @@ Week-specific scheduling attributes for each counselor. The scheduler always rea
 | `ExtendedHours` | TEXT | | |
 | `SpecialtyGroup` | TEXT | **[migrated]** | Used for SPLIT/specialty counselor grouping |
 | `isWorkingThisWeek` | INTEGER | DEFAULT `1` | **[migrated]** — `0` = counselor is not present this week; excluded from all scheduler dropdowns and auto-assignment passes. Defaults to `1` (working). Set via the **Working** checkbox in the Counselor Scheduling page. |
+| `ScheduleTypeManual` | INTEGER | DEFAULT `0` | **[migrated]** — `1` = the schedule type was set by hand in the scheduler UI. Full Auto Build treats it as fixed and reshuffles everyone else around it. Cleared by blanking the schedule-type dropdown. |
 
 ---
 

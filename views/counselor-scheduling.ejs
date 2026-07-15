@@ -71,7 +71,12 @@
         .cg-schedule.st-green  { background: #dcfce7; }
         .cg-schedule.st-yellow { background: #fef9c3; }
         .cg-schedule.st-red    { background: #fee2e2; }
+        .cg-schedule.st-manual { border: 2px solid #6366f1; }
         .cg-schedule option.pref-opt { background: #dcfce7; font-weight: 700; }
+        /* Pin toggle: locks a schedule type against auto-build reshuffling */
+        .st-pin-btn { background: none; border: none; cursor: pointer; font-size: 0.85rem; padding: 0 3px; opacity: 0.25; vertical-align: middle; line-height: 1; }
+        .st-pin-btn:hover { opacity: 0.7; }
+        .st-pin-btn.pinned { opacity: 1; }
     </style>
 </head>
 <body>
@@ -375,6 +380,7 @@
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn btn-primary" onclick="buildSchedule()">Build Schedule</button>
                 <button class="btn btn-primary" onclick="runFullAutoBuild();" style="background:var(--success, #16a34a);">⚡ Full Auto Build</button>
+                <button class="btn btn-small" style="background:#eef2ff; color:#4338ca; border-color:#c7d2fe;" onclick="assignScheduleTypes()">&#128256; Assign Schedule Types</button>
                 <button class="btn btn-small" style="background:#fff7ed; color:#c2410c; border-color:#fed7aa;" onclick="rebuildSide('Sports')">&#9917; Re-Build Sports</button>
                 <button class="btn btn-small" style="background:#faf5ff; color:#7e22ce; border-color:#e9d5ff;" onclick="rebuildSide('Enrichment')">&#127912; Re-Build Enrichment</button>
                 <span id="autoStatus" style="font-size:0.82rem; color:var(--text-muted); margin-left:4px;"></span>
@@ -1207,6 +1213,18 @@
                 sel.classList.remove('st-green', 'st-yellow', 'st-red');
                 const cls = schedTypeMatch(pref, sel.value);
                 if (cls) sel.classList.add(cls);
+                // Manually pinned types get a marker and are never auto-reshuffled
+                const isManual = manualTypeCids.has(sel.dataset.cid);
+                sel.classList.toggle('st-manual', isManual);
+                if (isManual) sel.title = 'Manually set — auto-build will not change this.';
+                else sel.removeAttribute('title');
+                const pinBtn = document.querySelector(`.st-pin-btn[data-cid="${sel.dataset.cid}"]`);
+                if (pinBtn) {
+                    pinBtn.classList.toggle('pinned', isManual);
+                    pinBtn.title = isManual
+                        ? 'Pinned — click to unlock so auto-build can reshuffle this type'
+                        : 'Click to pin this schedule type against auto-build';
+                }
                 // Highlight their preferred value inside the open dropdown
                 [...sel.options].forEach(o =>
                     o.classList.toggle('pref-opt', !!pref && pref !== 'No Preference' && o.value === pref));
@@ -1226,13 +1244,14 @@
                 const row = sel.closest('tr');
                 savedCids.add(cid);
                 counselors.push({
-                    counselorID:       cid,
-                    homeGroupColor:    sel.value || null,
-                    busRoute:          document.querySelector(`.cg-bus-input[data-cid="${cid}"]:not(.cg-specialty-bus)`)?.value.trim() || null,
-                    scheduleType:      document.querySelector(`.cg-schedule[data-cid="${cid}"]:not(.cg-specialty-schedule)`)?.value || null,
-                    extendedHours:     document.querySelector(`.cg-extended[data-cid="${cid}"]:not(.cg-specialty-extended)`)?.value || null,
-                    specialtyGroup:    row ? (row.dataset.specialtyGroup || null) : null,
-                    isWorkingThisWeek: document.querySelector(`.cg-working[data-cid="${cid}"]:not(.cg-specialty-working)`)?.checked ? 1 : 0,
+                    counselorID:        cid,
+                    homeGroupColor:     sel.value || null,
+                    busRoute:           document.querySelector(`.cg-bus-input[data-cid="${cid}"]:not(.cg-specialty-bus)`)?.value.trim() || null,
+                    scheduleType:       document.querySelector(`.cg-schedule[data-cid="${cid}"]:not(.cg-specialty-schedule)`)?.value || null,
+                    extendedHours:      document.querySelector(`.cg-extended[data-cid="${cid}"]:not(.cg-specialty-extended)`)?.value || null,
+                    specialtyGroup:     row ? (row.dataset.specialtyGroup || null) : null,
+                    isWorkingThisWeek:  document.querySelector(`.cg-working[data-cid="${cid}"]:not(.cg-specialty-working)`)?.checked ? 1 : 0,
+                    scheduleTypeManual: manualTypeCids.has(String(cid)) ? 1 : 0,
                 });
             });
 
@@ -1683,6 +1702,12 @@
         // Preference lookup shared by the UI highlights
         const PREF_BY_ID = {};
         PREFERENCES.forEach(p => { PREF_BY_ID[p.CounselorID] = p; });
+
+        // Schedule types set by hand (persisted via ScheduleTypeManual). Auto-build
+        // treats these as fixed and reshuffles everyone else around them.
+        const manualTypeCids = new Set(
+            MAIN_COUNSELORS.filter(c => c.ScheduleTypeManual === 1).map(c => String(c.CounselorID))
+        );
 
         // Go Girl is the only class that requires female staff exclusively
         function isFemaleOnlyClass(name) { return /go.?girl/i.test(name); }
@@ -3055,6 +3080,20 @@
             statusEl.textContent = `${targetSide} rebuilt from ${rebuildPool.length} counselor${rebuildPool.length !== 1 ? 's' : ''}. Review and save when ready.`;
         }
 
+        // ── Assign Schedule Types only ───────────────────────────────────────────
+        // Rescrambles every UNLOCKED schedule type from current enrollment demand.
+        // Fixed: partial "Only" types and manually pinned (📌) types.
+        function assignScheduleTypes() {
+            const statusEl = document.getElementById('autoStatus');
+            const savedTypes = {};
+            document.querySelectorAll('.cg-schedule:not(.cg-specialty-schedule)').forEach(sel => {
+                if (sel.value && (sel.value.endsWith('Only') || manualTypeCids.has(sel.dataset.cid)))
+                    savedTypes[sel.dataset.cid] = sel.value;
+            });
+            autoAssignScheduleTypes(savedTypes);
+            statusEl.textContent = 'Schedule types assigned. Pin any you want to keep, then build.';
+        }
+
         // ── Full Auto Build ──────────────────────────────────────────────────────
         async function runFullAutoBuild() {
             const statusEl = document.getElementById('autoStatus');
@@ -3112,12 +3151,37 @@
                         }
                     }
                 });
+                // Pin toggle next to each main schedule-type select: pinned types are
+                // never reshuffled by auto-build; clicking unlocks (keeps the value).
+                document.querySelectorAll('.cg-schedule:not(.cg-specialty-schedule)').forEach(sel => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'st-pin-btn';
+                    btn.dataset.cid = sel.dataset.cid;
+                    btn.innerHTML = '&#128204;';
+                    btn.addEventListener('click', () => {
+                        const cid = sel.dataset.cid;
+                        if (manualTypeCids.has(cid)) manualTypeCids.delete(cid);
+                        else if (sel.value) manualTypeCids.add(cid); // a blank type can't be pinned
+                        updateScheduleTypeColors();
+                    });
+                    sel.insertAdjacentElement('afterend', btn);
+                });
+
                 updateAllCounters();
                 updateGroupCounters();
                 refreshBuildFlags();         // restore flags from saved state on page load
                 updateScheduleTypeColors();  // preference match colors on schedule-type selects
                 document.querySelectorAll('.cg-schedule').forEach(sel => {
-                    sel.addEventListener('change', () => { updateAllCounters(); updateGroupCounters(); updateScheduleTypeColors(); });
+                    sel.addEventListener('change', () => {
+                        // A hand-edit pins the type against auto-reshuffle; blanking releases it.
+                        // (Programmatic .value writes by the auto-builder don't fire 'change'.)
+                        if (!sel.classList.contains('cg-specialty-schedule')) {
+                            if (sel.value) manualTypeCids.add(sel.dataset.cid);
+                            else manualTypeCids.delete(sel.dataset.cid);
+                        }
+                        updateAllCounters(); updateGroupCounters(); updateScheduleTypeColors();
+                    });
                 });
 
                 if (sessionStorage.getItem('pendingFullAuto')) {
@@ -3129,12 +3193,12 @@
                         const radio = document.querySelector(`input[name="autoMode"][value="${savedMode}"]`);
                         if (radio) radio.checked = true;
                     }
-                    // Rebalance schedule types on every run: only partial "Only" types
-                    // (real availability constraints) are preserved; full-day types are
-                    // re-derived from current enrollment demand.
+                    // Full Auto Build respects EVERY existing schedule type — it only
+                    // fills blanks demand-first. Use the "Assign Schedule Types" button
+                    // to rescramble unlocked types before building.
                     const savedTypes = {};
                     document.querySelectorAll('.cg-schedule:not(.cg-specialty-schedule)').forEach(sel => {
-                        if (sel.value && sel.value.endsWith('Only')) savedTypes[sel.dataset.cid] = sel.value;
+                        if (sel.value) savedTypes[sel.dataset.cid] = sel.value;
                     });
                     autoAssignScheduleTypes(savedTypes);
                     buildSchedule(true);
