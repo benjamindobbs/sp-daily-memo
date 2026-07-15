@@ -3083,6 +3083,9 @@
                 statusEl.textContent = 'Color sync failed — continuing without color update.';
             }
             sessionStorage.setItem('pendingFullAuto', '1');
+            // The reload resets the radios to their HTML default (Preference Only),
+            // so carry the chosen assignment mode across the reload.
+            sessionStorage.setItem('pendingAutoMode', document.querySelector('input[name="autoMode"]:checked').value);
             location.reload();
         }
 
@@ -3119,6 +3122,13 @@
 
                 if (sessionStorage.getItem('pendingFullAuto')) {
                     sessionStorage.removeItem('pendingFullAuto');
+                    // Restore the assignment mode chosen before the sync reload
+                    const savedMode = sessionStorage.getItem('pendingAutoMode');
+                    sessionStorage.removeItem('pendingAutoMode');
+                    if (savedMode) {
+                        const radio = document.querySelector(`input[name="autoMode"][value="${savedMode}"]`);
+                        if (radio) radio.checked = true;
+                    }
                     // Rebalance schedule types on every run: only partial "Only" types
                     // (real availability constraints) are preserved; full-day types are
                     // re-derived from current enrollment demand.
