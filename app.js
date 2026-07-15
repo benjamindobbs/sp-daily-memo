@@ -2313,16 +2313,27 @@ app.get('/map', (req, res) => {
         ORDER BY wo.PeriodNumber, wo.ActivityName
     `).all(aw, aw).filter(r => r.location);
 
-    // Counselor's period→activity assignments for the active week
-    const myPeriods = cid
-        ? db.prepare('SELECT PeriodNumber AS period, ActivityName AS activity FROM CounselorWeekSchedules WHERE CounselorID=? AND WeekNumber=?')
-              .all(cid, aw)
-        : [];
-
-    // Default map: UL/SL → sports; everyone else → enrichment.
-    // Override if counselor has a sports-only period (3 or 6, which don't exist in enrichment).
+    // Resolve the logged-in person's role first so we can pick the right schedule table
     const SPORTS_ROLES = new Set(['Unit Leader', 'Sports Leader']);
     const counselor = cid ? db.prepare('SELECT StaffRole FROM Counselors WHERE CounselorID=?').get(cid) : null;
+    const role = counselor?.StaffRole ?? null;
+
+    // Counselor's period→activity assignments for the active week (table varies by role)
+    let myPeriods = [];
+    if (cid) {
+        if (role === 'Unit Leader' || role === 'Sports Leader') {
+            myPeriods = db.prepare('SELECT PeriodNumber AS period, ActivityName AS activity FROM StaffWeekSchedules WHERE StaffID=? AND WeekNumber=?')
+                .all(cid, aw);
+        } else if (role === 'Instructor') {
+            myPeriods = db.prepare('SELECT PeriodNumber AS period, ActivityName AS activity FROM Schedules WHERE PersonType=\'Instructor\' AND PersonID=?')
+                .all(cid);
+        } else {
+            myPeriods = db.prepare('SELECT PeriodNumber AS period, ActivityName AS activity FROM CounselorWeekSchedules WHERE CounselorID=? AND WeekNumber=?')
+                .all(cid, aw);
+        }
+    }
+
+    // Default map: UL/SL → sports; everyone else → enrichment.
     let defaultMap = 'enrichment';
     if (counselor && SPORTS_ROLES.has(counselor.StaffRole)) defaultMap = 'sports';
     if (myPeriods.some(mp => mp.period === 3 || mp.period === 6)) defaultMap = 'sports';
