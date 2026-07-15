@@ -152,6 +152,10 @@ Key constants available to the builder at page load:
 
 **Preference fairness** — `prefWins[counselorID]` counts how many preferred classes each counselor has been given during the build. When multiple counselors who prefer the same class compete for a slot, the one with the fewest preferred wins so far goes first (random shuffle breaks remaining ties). If demand forces schedule-type overrides, the counselor whose activity preferences best align with the forced type is flipped first instead of choosing randomly.
 
+**Preference color cues** —
+- Slot dropdowns: counselors who listed the class in their activity preferences render with a light-green background.
+- Group-assignment schedule-type selects: green = matches the counselor's `SchedulePreference`; yellow = wanted full-day but got a split (or vice versa — half right); red = opposite full day, or the inverse split. Inside the open dropdown their preferred value is highlighted green. Colors update live on change and after auto-assignment.
+
 **Gender rules** — driven by `Counselors.Gender` (`M`/`F`/NULL, editable via Mass Edit Staff or the profile page):
 - **Go Girl (female-only)**: any offering matching `/go.?girl/i` excludes male counselors from every placement path, including force-place fallbacks and side rebuilds. Unknown-gender counselors are allowed.
 - **Gender split**: classes with 2+ counselors need at least one of each gender. The greedy fill prefers the missing gender on a class's last open slot; after the build, `enforceGenderSplit()` repairs single-gender classes by swapping counselors with other classes in the same period+side (never breaking the donor's split, variety, or Go Girl). Unknown genders count as neither, so all-unknown classes never flag.

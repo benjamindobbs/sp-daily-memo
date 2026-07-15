@@ -62,6 +62,15 @@
         .search-select-item { padding: 5px 8px; font-size: 0.82rem; font-family: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .search-select-item:hover, .search-select-item.highlighted { background: #eff6ff; }
         .search-select-item.selected { background: #dbeafe; font-weight: 600; }
+        /* Counselor listed this class in their preferences */
+        .search-select-item.pref-match { background: #dcfce7; }
+        .search-select-item.pref-match:hover, .search-select-item.pref-match.highlighted { background: #bbf7d0; }
+        .search-select-item.pref-match.selected { background: #86efac; }
+        /* Schedule-type vs. counselor's stated preference */
+        .cg-schedule.st-green  { background: #dcfce7; }
+        .cg-schedule.st-yellow { background: #fef9c3; }
+        .cg-schedule.st-red    { background: #fee2e2; }
+        .cg-schedule option.pref-opt { background: #dcfce7; font-weight: 700; }
     </style>
 </head>
 <body>
@@ -789,7 +798,9 @@
                 options.forEach(opt => {
                     if (lower && !opt.label.toLowerCase().includes(lower)) return;
                     const el = document.createElement('div');
-                    el.className = 'search-select-item' + (opt.value === currentValue ? ' selected' : '');
+                    el.className = 'search-select-item'
+                        + (opt.value === currentValue ? ' selected' : '')
+                        + (opt.pref ? ' pref-match' : '');
                     el.textContent = opt.label;
                     el.dataset.val = String(opt.value);
                     dropdown.appendChild(el);
@@ -896,6 +907,13 @@
             });
             container.innerHTML = '';
 
+            // Names this offering answers to, for the preference highlight
+            const prefNames = act.mergedNames || [act.ActivityName];
+            const prefersThisClass = cid => {
+                const p = PREF_BY_ID[cid]?.ActivityPreferences;
+                return !!p && prefNames.some(n => p.includes(n));
+            };
+
             arr.forEach((selectedId, slotIdx) => {
                 const usedElsewhere = getUsedElsewhere(offerIdx, type, slotIdx);
 
@@ -907,7 +925,7 @@
                     const label = type === 'counselors'
                         ? `${person.FirstName} ${person.LastName}${person.HomeGroupColor ? ` (${person.HomeGroupColor})` : ''}`
                         : `${person.FirstName} ${person.LastName} — ${person.StaffType}`;
-                    opts.push({ value: id, label });
+                    opts.push({ value: id, label, pref: type === 'counselors' && prefersThisClass(id) });
                     addedIds.add(id);
                 });
 
@@ -921,7 +939,7 @@
                         const label = type === 'counselors'
                             ? `${saved.FirstName} ${saved.LastName}${saved.HomeGroupColor ? ` (${saved.HomeGroupColor})` : ''}`
                             : `${saved.FirstName} ${saved.LastName} — ${saved.StaffType}`;
-                        opts.push({ value: selectedId, label });
+                        opts.push({ value: selectedId, label, pref: type === 'counselors' && prefersThisClass(selectedId) });
                     }
                 }
 
@@ -1150,6 +1168,39 @@
                     chip.classList.toggle('sports',     !warn && !isEnrich);
                     chip.classList.toggle('enrichment', !warn && isEnrich);
                 }
+            });
+        }
+
+        // ── Schedule-type preference colors ──────────────────────────────────────
+        // Green = got their preferred type. Yellow = wanted full-day, got a split
+        // (or wanted a split, got a full day — half right). Red = wanted full-day,
+        // got the opposite full day, or wanted a split and got the inverse split.
+        const FULL_DAY_TYPES  = ['All Sports', 'All Enrichment'];
+        const SPLIT_DAY_TYPES = ['AM Sports / PM Enrichment', 'AM Enrichment / PM Sports'];
+        function schedTypeMatch(pref, val) {
+            if (!pref || pref === 'No Preference' || !val) return null;
+            if (val === pref) return 'st-green';
+            const prefFull  = FULL_DAY_TYPES.includes(pref);
+            const valFull   = FULL_DAY_TYPES.includes(val);
+            const prefSplit = SPLIT_DAY_TYPES.includes(pref);
+            const valSplit  = SPLIT_DAY_TYPES.includes(val);
+            if (prefFull && valSplit)  return 'st-yellow';
+            if (prefFull && valFull)   return 'st-red';
+            if (prefSplit && valSplit) return 'st-red';
+            if (prefSplit && valFull)  return 'st-yellow';
+            return null;
+        }
+
+        function updateScheduleTypeColors() {
+            document.querySelectorAll('.cg-schedule').forEach(sel => {
+                const cid  = parseInt(sel.dataset.cid);
+                const pref = PREF_BY_ID[cid]?.SchedulePreference;
+                sel.classList.remove('st-green', 'st-yellow', 'st-red');
+                const cls = schedTypeMatch(pref, sel.value);
+                if (cls) sel.classList.add(cls);
+                // Highlight their preferred value inside the open dropdown
+                [...sel.options].forEach(o =>
+                    o.classList.toggle('pref-opt', !!pref && pref !== 'No Preference' && o.value === pref));
             });
         }
 
@@ -1538,6 +1589,7 @@
             });
 
             updateGroupCounters();
+            updateScheduleTypeColors();
         }
 
         // Canonical block-used key: rec swim and swim lessons are the same class for scheduling purposes
@@ -1586,6 +1638,10 @@
         // ── Gender rules ─────────────────────────────────────────────────────────
         const GENDER_BY_ID = {};
         COUNSELORS.forEach(c => { GENDER_BY_ID[c.CounselorID] = c.Gender || null; });
+
+        // Preference lookup shared by the UI highlights
+        const PREF_BY_ID = {};
+        PREFERENCES.forEach(p => { PREF_BY_ID[p.CounselorID] = p; });
 
         // Go Girl is the only class that requires female staff exclusively
         function isFemaleOnlyClass(name) { return /go.?girl/i.test(name); }
@@ -3014,9 +3070,10 @@
                 });
                 updateAllCounters();
                 updateGroupCounters();
-                refreshBuildFlags(); // restore flags from saved state on page load
+                refreshBuildFlags();         // restore flags from saved state on page load
+                updateScheduleTypeColors();  // preference match colors on schedule-type selects
                 document.querySelectorAll('.cg-schedule').forEach(sel => {
-                    sel.addEventListener('change', () => { updateAllCounters(); updateGroupCounters(); });
+                    sel.addEventListener('change', () => { updateAllCounters(); updateGroupCounters(); updateScheduleTypeColors(); });
                 });
 
                 if (sessionStorage.getItem('pendingFullAuto')) {
