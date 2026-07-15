@@ -176,6 +176,10 @@
                 card.classList.toggle('hidden', !show);
                 if (show) visible++;
             });
+            document.querySelectorAll('.card-grid').forEach(grid => {
+                const anyVisible = grid.querySelector('.name-card:not(.hidden)');
+                grid.style.display = anyVisible ? '' : 'none';
+            });
             document.getElementById('cardCount').textContent = visible + ' card' + (visible !== 1 ? 's' : '');
         }
 
