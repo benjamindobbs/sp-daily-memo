@@ -138,9 +138,9 @@
         <span class="card-count" id="cardCount"></span>
     </div>
 
-    <% for (let pi = 0; pi < campers.length; pi += 6) { %>
-    <div class="card-grid">
-        <% campers.slice(pi, pi + 6).forEach(camper => { %>
+    <div id="cardContainer"></div>
+    <div id="cardPool" style="display:none">
+        <% campers.forEach(function(camper) { %>
         <div class="name-card" data-group="<%= camper.HomeGroupColor %>" data-name="<%= ((camper.PreferredName || camper.FirstName) + ' ' + camper.LastName).toLowerCase() %>">
             <img src="/assets/SP-Logo.svg" class="card-logo" alt="SummerPlace">
             <div class="card-body">
@@ -149,16 +149,15 @@
                 <div class="card-counselor"><%= camper.counselorName %></div>
                 <% } %>
                 <div class="card-classes">
-                    <% camper.classes.forEach(cls => { %>
+                    <% camper.classes.forEach(function(cls) { %>
                         <%= cls %><br>
-                    <% }) %>
+                    <% }); %>
                 </div>
             </div>
             <div class="card-session">Session <%= sessionNumber %></div>
         </div>
-        <% }) %>
+        <% }); %>
     </div>
-    <% } %>
 
     <script>
         const FILTER_GROUPS = new Set(['Red', 'Carolina', 'Green', 'Navy', 'SPLIT']);
@@ -166,33 +165,40 @@
 
         function applyFilter() {
             const query = document.getElementById('camperSearch').value.toLowerCase().trim();
-            const cards = document.querySelectorAll('.name-card');
-            let visible = 0;
-            cards.forEach(card => {
+            const container = document.getElementById('cardContainer');
+            const pool = document.getElementById('cardPool');
+            const allCards = Array.from(document.querySelectorAll('#cardContainer .name-card, #cardPool .name-card'));
+
+            const visible = [], hidden = [];
+            allCards.forEach(card => {
                 const g = card.dataset.group;
                 const groupMatch = active.has(g) || !FILTER_GROUPS.has(g);
                 const nameMatch = !query || card.dataset.name.includes(query);
-                const show = groupMatch && nameMatch;
-                card.classList.toggle('hidden', !show);
-                if (show) visible++;
+                if (groupMatch && nameMatch) visible.push(card);
+                else hidden.push(card);
             });
-            document.querySelectorAll('.card-grid').forEach(grid => {
-                const anyVisible = grid.querySelector('.name-card:not(.hidden)');
-                grid.style.display = anyVisible ? '' : 'none';
-            });
-            document.getElementById('cardCount').textContent = visible + ' card' + (visible !== 1 ? 's' : '');
+
+            container.querySelectorAll('.card-grid').forEach(g => g.remove());
+
+            for (let i = 0; i < visible.length; i += 6) {
+                const grid = document.createElement('div');
+                grid.className = 'card-grid';
+                for (let j = i; j < Math.min(i + 6, visible.length); j++) {
+                    grid.appendChild(visible[j]);
+                }
+                container.appendChild(grid);
+            }
+
+            hidden.forEach(card => pool.appendChild(card));
+
+            document.getElementById('cardCount').textContent = visible.length + ' card' + (visible.length !== 1 ? 's' : '');
         }
 
         document.querySelectorAll('.group-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const g = btn.dataset.group;
-                if (active.has(g)) {
-                    active.delete(g);
-                    btn.classList.remove('active');
-                } else {
-                    active.add(g);
-                    btn.classList.add('active');
-                }
+                if (active.has(g)) { active.delete(g); btn.classList.remove('active'); }
+                else { active.add(g); btn.classList.add('active'); }
                 applyFilter();
             });
         });

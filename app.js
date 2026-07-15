@@ -7686,7 +7686,16 @@ app.get('/reports/name-cards', (_req, res) => {
         camperMap[r.CamperID].classes.push(r.ActivityName);
     });
 
-    res.render('name-cards', { campers: Object.values(camperMap), sessionNumber: aw });
+    const COLOR_ORDER = ['Red', 'Carolina', 'Green', 'Navy', 'SPLIT'];
+    const sorted = Object.values(camperMap).sort((a, b) => {
+        const ai = COLOR_ORDER.indexOf(a.HomeGroupColor);
+        const bi = COLOR_ORDER.indexOf(b.HomeGroupColor);
+        const aOrd = ai === -1 ? COLOR_ORDER.length : ai;
+        const bOrd = bi === -1 ? COLOR_ORDER.length : bi;
+        if (aOrd !== bOrd) return aOrd - bOrd;
+        return a.LastName.localeCompare(b.LastName) || (a.PreferredName || a.FirstName).localeCompare(b.PreferredName || b.FirstName);
+    });
+    res.render('name-cards', { campers: sorted, sessionNumber: aw });
 });
 
 // ─── DOCUMENT PDF UPLOAD / SERVE ──────────────────────────────────────────────
