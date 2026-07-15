@@ -66,6 +66,7 @@
         .search-select-item.pref-match { background: #dcfce7; }
         .search-select-item.pref-match:hover, .search-select-item.pref-match.highlighted { background: #bbf7d0; }
         .search-select-item.pref-match.selected { background: #86efac; }
+        .search-select-input.pref-input { background: #dcfce7; border-color: #86efac; }
         /* Schedule-type vs. counselor's stated preference */
         .cg-schedule.st-green  { background: #dcfce7; }
         .cg-schedule.st-yellow { background: #fef9c3; }
@@ -820,15 +821,23 @@
                 input.value = getLabel(currentValue);
             }
 
+            // Tint the closed input green when the selected person prefers this class
+            function updateInputPref() {
+                const opt = currentValue != null ? options.find(o => o.value === currentValue) : null;
+                input.classList.toggle('pref-input', !!(opt && opt.pref));
+            }
+
             function choose(val) {
                 currentValue = val !== '' ? parseInt(val) : null;
                 close();
+                updateInputPref();
                 wrap.dispatchEvent(new CustomEvent('change'));
             }
 
             Object.defineProperty(wrap, 'value', { get: () => currentValue });
             input.value = getLabel(currentValue);
             if (currentValue == null) input.placeholder = '— Select —';
+            updateInputPref();
 
             input.addEventListener('focus', () => { input.select(); open(); });
 

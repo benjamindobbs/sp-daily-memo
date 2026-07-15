@@ -153,7 +153,7 @@ Key constants available to the builder at page load:
 **Preference fairness** — `prefWins[counselorID]` counts how many preferred classes each counselor has been given during the build. When multiple counselors who prefer the same class compete for a slot, the one with the fewest preferred wins so far goes first (random shuffle breaks remaining ties). If demand forces schedule-type overrides, the counselor whose activity preferences best align with the forced type is flipped first instead of choosing randomly.
 
 **Preference color cues** —
-- Slot dropdowns: counselors who listed the class in their activity preferences render with a light-green background.
+- Slot dropdowns: counselors who listed the class in their activity preferences render with a light-green background — both as options in the open dropdown and on the closed input when they're the selected assignee.
 - Group-assignment schedule-type selects: green = matches the counselor's `SchedulePreference`; yellow = wanted full-day but got a split (or vice versa — half right); red = opposite full day, or the inverse split. Inside the open dropdown their preferred value is highlighted green. Colors update live on change and after auto-assignment.
 
 **Gender rules** — driven by `Counselors.Gender` (`M`/`F`/NULL, editable via Mass Edit Staff or the profile page):
