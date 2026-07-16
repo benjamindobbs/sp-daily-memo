@@ -381,6 +381,7 @@
                 <button class="btn btn-primary" onclick="buildSchedule()">Build Schedule</button>
                 <button class="btn btn-primary" onclick="runFullAutoBuild();" style="background:var(--success, #16a34a);">⚡ Full Auto Build</button>
                 <button class="btn btn-small" style="background:#eef2ff; color:#4338ca; border-color:#c7d2fe;" onclick="assignScheduleTypes()">&#128256; Assign Schedule Types</button>
+                <button class="btn btn-small" style="background:#f8fafc; color:#475569; border-color:#cbd5e1;" onclick="inferScheduleTypes()" title="Repair: fill blank schedule types from each counselor's current class assignments">&#129657; Infer Types from Schedule</button>
                 <button class="btn btn-small" style="background:#fff7ed; color:#c2410c; border-color:#fed7aa;" onclick="rebuildSide('Sports')">&#9917; Re-Build Sports</button>
                 <button class="btn btn-small" style="background:#faf5ff; color:#7e22ce; border-color:#e9d5ff;" onclick="rebuildSide('Enrichment')">&#127912; Re-Build Enrichment</button>
                 <span id="autoStatus" style="font-size:0.82rem; color:var(--text-muted); margin-left:4px;"></span>
@@ -495,7 +496,8 @@
                             <td>
                                 <select class="person-select cg-schedule" data-cid="<%= c.CounselorID %>">
                                     <option value="">— Unassigned —</option>
-                                    <% ['All Sports','All Enrichment','AM Sports / PM Enrichment','AM Enrichment / PM Sports'].forEach(type => { %>
+                                    <% ['All Sports','All Enrichment','AM Sports / PM Enrichment','AM Enrichment / PM Sports',
+                                        'AM Sports Only','PM Sports Only','AM Enrichment Only','PM Enrichment Only'].forEach(type => { %>
                                     <option value="<%= type %>"<%= c.ScheduleType === type ? ' selected' : '' %>><%= type %></option>
                                     <% }); %>
                                 </select>
@@ -3109,6 +3111,59 @@
             });
             autoAssignScheduleTypes(savedTypes);
             statusEl.textContent = 'Schedule types assigned. Pin any you want to keep, then build.';
+        }
+
+        // ── Debug: infer schedule types from current assignments ────────────────
+        // Repairs a type/schedule desync: reads each counselor's current class
+        // assignments (in-page state) and fills BLANK schedule-type dropdowns with
+        // the type their schedule actually implies. Non-blank types are untouched.
+        function inferScheduleTypes() {
+            const statusEl = document.getElementById('autoStatus');
+
+            // Tally which side each counselor works per AM/PM block
+            const blocks = {}; // cid -> { am: {Sports, Enrichment}, pm: {Sports, Enrichment} }
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber || !act.SideOfCamp) return;
+                const blk = act.PeriodNumber <= 3 ? 'am' : 'pm';
+                state[idx].counselors.forEach(id => {
+                    if (!id) return;
+                    if (!blocks[id]) blocks[id] = { am: { Sports: 0, Enrichment: 0 }, pm: { Sports: 0, Enrichment: 0 } };
+                    blocks[id][blk][act.SideOfCamp]++;
+                });
+            });
+
+            const dominant = cnt => {
+                if (cnt.Sports === 0 && cnt.Enrichment === 0) return null;
+                return cnt.Sports >= cnt.Enrichment ? 'Sports' : 'Enrichment';
+            };
+            const typeFor = b => {
+                const am = dominant(b.am), pm = dominant(b.pm);
+                if (am === 'Sports'     && pm === 'Sports')     return 'All Sports';
+                if (am === 'Enrichment' && pm === 'Enrichment') return 'All Enrichment';
+                if (am === 'Sports'     && pm === 'Enrichment') return 'AM Sports / PM Enrichment';
+                if (am === 'Enrichment' && pm === 'Sports')     return 'AM Enrichment / PM Sports';
+                if (am === 'Sports'     && !pm)                 return 'AM Sports Only';
+                if (am === 'Enrichment' && !pm)                 return 'AM Enrichment Only';
+                if (!am && pm === 'Sports')                     return 'PM Sports Only';
+                if (!am && pm === 'Enrichment')                 return 'PM Enrichment Only';
+                return null;
+            };
+
+            let applied = 0, noData = 0;
+            document.querySelectorAll('.cg-schedule:not(.cg-specialty-schedule)').forEach(sel => {
+                if (sel.value) return; // only repair blanks — existing types are not touched
+                const b = blocks[parseInt(sel.dataset.cid)];
+                const t = b ? typeFor(b) : null;
+                if (t) { sel.value = t; applied++; }
+                else noData++;
+            });
+
+            updateAllCounters();
+            updateGroupCounters();
+            updateScheduleTypeColors();
+            let msg = `Inferred ${applied} schedule type${applied !== 1 ? 's' : ''} from current assignments.`;
+            if (noData > 0) msg += ` ${noData} blank counselor${noData !== 1 ? 's have' : ' has'} no assignments to infer from.`;
+            statusEl.textContent = msg + ' Review, then Save Group Assignments to persist.';
         }
 
         // ── Full Auto Build ──────────────────────────────────────────────────────
