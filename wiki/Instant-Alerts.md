@@ -29,7 +29,7 @@ Seven groups are seeded automatically at startup. They cannot be deleted or rena
 | All Counselors | `Counselors` where `StaffRole IN ('Counselor', 'Swim Counselor')` |
 | All Unit Leaders | `Counselors` where `StaffRole = 'Unit Leader'` |
 | All Admin | Names in `AdminUsers` matched to a `Counselors` row by full name |
-| All AM Sports | Active-week `CounselorWeekAttributes` with `ScheduleType` in `All Sports`, `AM Sports / PM Enrichment`, `AM Sports Only` |
+| All AM Sports | Effective schedule type (`COALESCE(CounselorWeekAttributes.ScheduleType, Counselors.ScheduleType)` for the active week) in `All Sports`, `AM Sports / PM Enrichment`, `AM Sports Only`; non-working counselors excluded |
 | All PM Sports | …`All Sports`, `AM Enrichment / PM Sports`, `PM Sports Only` |
 | All AM Enrichment | …`All Enrichment`, `AM Enrichment / PM Sports`, `AM Enrichment Only` |
 | All PM Enrichment | …`All Enrichment`, `AM Sports / PM Enrichment`, `PM Enrichment Only` |

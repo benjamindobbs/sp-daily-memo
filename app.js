@@ -6753,9 +6753,15 @@ function resolveAlertCounselorIds(group) {
     };
     if (scheduleTypeMap[name]) {
         const inList = scheduleTypeMap[name].join(',');
+        // Effective type = week-specific attribute falling back to the base record
+        // (same COALESCE pattern as the scheduler). Non-working counselors excluded.
         return db.prepare(`
-            SELECT DISTINCT CounselorID FROM CounselorWeekAttributes
-            WHERE WeekNumber = ? AND ScheduleType IN (${inList})
+            SELECT DISTINCT c.CounselorID
+            FROM Counselors c
+            LEFT JOIN CounselorWeekAttributes cwa
+                   ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
+            WHERE COALESCE(cwa.ScheduleType, c.ScheduleType) IN (${inList})
+              AND COALESCE(cwa.isWorkingThisWeek, 1) = 1
         `).all(aw).map(r => r.CounselorID);
     }
     // Custom group
