@@ -1722,7 +1722,9 @@ app.get('/staff', (req, res) => {
     const cRow = cid ? db.prepare('SELECT FirstName, LastName, StaffRole FROM Counselors WHERE CounselorID = ?').get(cid) : null;
     const selectedCounselorName = cRow ? `${cRow.FirstName} ${cRow.LastName}` : null;
     const isHomeCounselor = ['Counselor', 'Swim Counselor'].includes(cRow?.StaffRole);
-    let staffSide = 'enrichment';
+    // Unit Leaders and Sports Leaders run the sports side of camp — they have no
+    // CounselorWeekSchedules rows, so without this they'd fall through to enrichment.
+    let staffSide = ['Unit Leader', 'Sports Leader'].includes(cRow?.StaffRole) ? 'sports' : 'enrichment';
     if (cid) {
         const _staffAw = getActiveWeek();
         const _sideRow = db.prepare(`

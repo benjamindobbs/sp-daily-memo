@@ -246,7 +246,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | Page | URL | Admin Only | Description |
 |---|---|:---:|---|
 | Admin Hub | `/admin` | ✓ | Dashboard: director notes, announcements, camper/staff counts, links to all admin tools. Admins can edit their own notes inline using the pencil button next to each note. Includes a **day schedule bar** showing all periods and non-class blocks (lunch, big game, popsicle break, dismissal) for both sides of camp. Click a period to jump to that class's attendance. |
-| Staff Hub | `/staff` | | Counselor-facing dashboard: day schedule bar, home group roster, attendance links. Auto-refreshes silently every 15 minutes. The schedule bar defaults to the counselor's own side of camp (sports or enrichment). Hovering a period block shows start and end times. **Attendance at a Glance** shows all camp absences, nurse check-ins, and active case log entries. **Today's Memo** includes a section for campers absent from your home group specifically. |
+| Staff Hub | `/staff` | | Counselor-facing dashboard: day schedule bar, home group roster, attendance links. Auto-refreshes silently every 15 minutes. The schedule bar defaults to the counselor's own side of camp (sports or enrichment); Unit Leaders and Sports Leaders default to the sports schedule. Hovering a period block shows start and end times. **Attendance at a Glance** shows all camp absences, nurse check-ins, and active case log entries. **Today's Memo** includes a section for campers absent from your home group specifically. |
 
 ---
 
