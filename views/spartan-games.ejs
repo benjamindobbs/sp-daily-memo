@@ -138,6 +138,30 @@
 
         /* message banner */
         .sg-message { background: #dcfce7; color: #166534; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.88rem; font-weight: 600; }
+
+        /* gender ratio */
+        .sg-ratio-fields { display: none; gap: 10px; }
+        .sg-ratio-fields.open { display: flex; }
+        .sg-ratio-note { font-size: 0.76rem; color: var(--text-muted); margin-top: 2px; }
+        .sg-invalid-badge {
+            display: inline-block;
+            background: #fee2e2;
+            color: #991b1b;
+            font-size: 0.72rem;
+            font-weight: 700;
+            border-radius: 6px;
+            padding: 2px 8px;
+            margin-left: 8px;
+        }
+        .sg-invalid-notice {
+            background: #fee2e2;
+            color: #991b1b;
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-top: 8px;
+            font-size: 0.82rem;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -228,6 +252,25 @@
                                             <label>Count</label>
                                             <input type="number" name="participant_count" value="<%= ev.participant_count %>" min="1" max="10" required>
                                         </div>
+                                        <div class="sg-edit-field">
+                                            <label>&nbsp;</label>
+                                            <label style="display:flex; align-items:center; gap:6px; font-weight:400; white-space:nowrap;">
+                                                <input type="checkbox" name="enforce_gender_ratio" id="ratio-toggle-<%= ev.id %>"
+                                                       <%= ev.enforce_gender_ratio ? 'checked' : '' %>
+                                                       onchange="toggleRatioFields('<%= ev.id %>', this.checked)">
+                                                Enforce Gender Ratio
+                                            </label>
+                                        </div>
+                                        <div class="sg-ratio-fields <%= ev.enforce_gender_ratio ? 'open' : '' %>" id="ratio-fields-<%= ev.id %>">
+                                            <div class="sg-edit-field">
+                                                <label>Min Male</label>
+                                                <input type="number" name="min_male" value="<%= ev.min_male || 0 %>" min="0" max="10" style="width:80px;">
+                                            </div>
+                                            <div class="sg-edit-field">
+                                                <label>Min Female</label>
+                                                <input type="number" name="min_female" value="<%= ev.min_female || 0 %>" min="0" max="10" style="width:80px;">
+                                            </div>
+                                        </div>
                                         <div style="display:flex; gap:6px; align-items:flex-end;">
                                             <button class="btn btn-primary btn-small" type="submit">Save</button>
                                             <button class="btn btn-small" type="button" onclick="toggleEdit(<%= ev.id %>)">Cancel</button>
@@ -265,6 +308,23 @@
                             <label>Count</label>
                             <input type="number" name="participant_count" value="1" min="1" max="10" required>
                         </div>
+                        <div class="sg-edit-field">
+                            <label>&nbsp;</label>
+                            <label style="display:flex; align-items:center; gap:6px; font-weight:400; white-space:nowrap;">
+                                <input type="checkbox" name="enforce_gender_ratio" id="ratio-toggle-new" onchange="toggleRatioFields('new', this.checked)">
+                                Enforce Gender Ratio
+                            </label>
+                        </div>
+                        <div class="sg-ratio-fields" id="ratio-fields-new">
+                            <div class="sg-edit-field">
+                                <label>Min Male</label>
+                                <input type="number" name="min_male" value="0" min="0" max="10" style="width:80px;">
+                            </div>
+                            <div class="sg-edit-field">
+                                <label>Min Female</label>
+                                <input type="number" name="min_female" value="0" min="0" max="10" style="width:80px;">
+                            </div>
+                        </div>
                         <div style="align-self:flex-end;">
                             <button class="btn btn-primary btn-small" type="submit">Add Event</button>
                         </div>
@@ -288,7 +348,7 @@
                     <div style="font-weight:700; font-size:0.9rem; margin-bottom:6px;"><%= ev.name %> <span style="font-weight:400; color:var(--text-muted); font-size:0.8rem;"><%= ev.date %> &bull; <%= ev.block %></span></div>
                     <% sups.forEach(s => { %>
                     <div class="sg-signup-group">
-                        <span><%= s.participants.join(', ') %></span>
+                        <span><%= s.participants.join(', ') %><% if (!s.valid) { %><span class="sg-invalid-badge">&#9888; Ratio not met (needs <%= ev.min_male %>M / <%= ev.min_female %>F)</span><% } %></span>
                         <form method="POST" action="/admin/spartan-games/delete-signup" style="margin:0;" onsubmit="return confirm('Remove this signup?');">
                             <input type="hidden" name="id" value="<%= s.id %>">
                             <button class="btn btn-small btn-danger">Remove</button>
@@ -355,6 +415,11 @@
                     <div class="sg-registered">
                         &#10003; Registered &mdash; <strong><%= mySignup.participants.join(', ') %></strong>
                     </div>
+                    <% if (!mySignup.valid) { %>
+                    <div class="sg-invalid-notice">
+                        &#9888; This group doesn't meet the required gender ratio (at least <%= ev.min_male %> male / <%= ev.min_female %> female). Please adjust your group or contact an admin.
+                    </div>
+                    <% } %>
                     <% } else if (needPartners) { %>
                     <div class="sg-partner-panel" id="partners-<%= ev.id %>" style="display:none;">
                         <div class="sg-partner-you">You: <strong><%= myName %></strong></div>
@@ -404,6 +469,13 @@
             const editRow = document.getElementById('evedit-' + id);
             if (!editRow) return;
             editRow.style.display = editRow.style.display === 'none' ? '' : 'none';
+        }
+
+        // Show/hide min male/female fields when the gender ratio toggle changes
+        function toggleRatioFields(id, checked) {
+            const fields = document.getElementById('ratio-fields-' + id);
+            if (!fields) return;
+            fields.classList.toggle('open', checked);
         }
 
         // Filter partner list by search query

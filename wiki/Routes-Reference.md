@@ -281,11 +281,11 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 
 | Method | Path | Admin only | Description |
 |---|---|:---:|---|
-| GET | `/spartan-games` | | Spartan Games signup page. Counselors see event cards (checkbox for solo, checkbox + partner panel for group events). Admin panel (admin view only) shows event management and all signups. |
-| POST | `/spartan-games/signup` | | JSON body `{entries: [{eventId, partners:[]}]}`. Returns `{results:[{eventId, success, error?, conflictName?, eventName?}]}`. Returns 403 if submissions are closed. |
+| GET | `/spartan-games` | | Spartan Games signup page. Counselors see event cards (checkbox for solo, checkbox + partner panel for group events). Admin panel (admin view only) shows event management and all signups. Each signup group is checked against its event's gender-ratio minimums (if enforced); groups that don't meet the minimums are flagged `valid: false` and shown a warning badge/notice to both admins and the registered counselor. |
+| POST | `/spartan-games/signup` | | JSON body `{entries: [{eventId, partners:[]}]}`. Returns `{results:[{eventId, success, error?, conflictName?, eventName?}]}`. Returns 403 if submissions are closed. Gender-ratio minimums are not enforced at submission time — only flagged afterward on page load. |
 | POST | `/admin/spartan-games/toggle-submissions` | ✓ | Flip the `submissions_open` flag in `SpartanGamesMeta`. Redirects to `/spartan-games`. |
-| POST | `/admin/spartan-games/add-event` | ✓ | Create a new event. Body: `name, date, block, participant_count, subtext`. |
-| POST | `/admin/spartan-games/update-event` | ✓ | Edit an existing event. Body: `id, name, date, block, participant_count, subtext`. |
+| POST | `/admin/spartan-games/add-event` | ✓ | Create a new event. Body: `name, date, block, participant_count, subtext, enforce_gender_ratio, min_male, min_female`. `min_male`/`min_female` are only stored when `enforce_gender_ratio` is checked (otherwise saved as `0`). |
+| POST | `/admin/spartan-games/update-event` | ✓ | Edit an existing event. Body: `id, name, date, block, participant_count, subtext, enforce_gender_ratio, min_male, min_female`. |
 | POST | `/admin/spartan-games/delete-event` | ✓ | Delete an event and all its signups. Body: `id`. |
 | POST | `/admin/spartan-games/delete-signup` | ✓ | Delete a single signup entry. Body: `id`. |
 

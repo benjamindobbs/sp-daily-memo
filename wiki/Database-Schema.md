@@ -630,6 +630,9 @@ Definitions of events in the annual Spartan Games counselor competition. 12 even
 | `block` | TEXT | NOT NULL | Block name, e.g. `Lunch`, `Big Game`, `Dismissal` |
 | `participant_count` | INTEGER | NOT NULL, DEFAULT `1` | `1` = solo event; `>1` = group event requiring partner selection |
 | `subtext` | TEXT | | **[migrated]** — optional description shown below the event name on the signup form |
+| `enforce_gender_ratio` | INTEGER | NOT NULL, DEFAULT `0` | **[migrated]** — `1` = groups signed up for this event are validated against `min_male`/`min_female` |
+| `min_male` | INTEGER | NOT NULL, DEFAULT `0` | **[migrated]** — minimum male counselors required per group when `enforce_gender_ratio` is `1` |
+| `min_female` | INTEGER | NOT NULL, DEFAULT `0` | **[migrated]** — minimum female counselors required per group when `enforce_gender_ratio` is `1` |
 
 ---
 
@@ -642,6 +645,8 @@ Records of counselor registrations for Spartan Games events.
 | `id` | INTEGER | PK, AUTOINCREMENT | |
 | `event_id` | INTEGER | NOT NULL, FK → `SpartanEvents.id` ON DELETE CASCADE | |
 | `participants` | TEXT | NOT NULL | JSON array of participant full names, sorted alphabetically (e.g. `["Alice Smith","Bob Jones"]`). Sorting makes order-insensitive group comparison possible with a simple string equality check. |
+
+Signups are not blocked at submission time for failing gender-ratio requirements. Instead, on every page load each group is checked against its event's `enforce_gender_ratio`/`min_male`/`min_female` (using `Counselors.Gender`) and flagged invalid if the minimums aren't met — this flag drives the warning badges shown to admins and the registered counselor, but does not remove the signup.
 
 ---
 

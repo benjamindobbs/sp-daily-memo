@@ -930,6 +930,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS SpartanSignups (
 try { db.prepare('SELECT subtext FROM SpartanEvents LIMIT 1').get(); } catch {
     db.exec('ALTER TABLE SpartanEvents ADD COLUMN subtext TEXT');
 }
+try { db.prepare('SELECT enforce_gender_ratio FROM SpartanEvents LIMIT 1').get(); } catch {
+    db.exec('ALTER TABLE SpartanEvents ADD COLUMN enforce_gender_ratio INTEGER NOT NULL DEFAULT 0');
+    db.exec('ALTER TABLE SpartanEvents ADD COLUMN min_male INTEGER NOT NULL DEFAULT 0');
+    db.exec('ALTER TABLE SpartanEvents ADD COLUMN min_female INTEGER NOT NULL DEFAULT 0');
+}
 db.exec(`CREATE TABLE IF NOT EXISTS SpartanGamesMeta (
     id               INTEGER PRIMARY KEY CHECK(id = 1),
     submissions_open INTEGER NOT NULL DEFAULT 1
@@ -2523,11 +2528,27 @@ app.get('/spartan-games', (req, res) => {
     const allSignups = db.prepare('SELECT * FROM SpartanSignups ORDER BY id').all();
     const allCounselors = db.prepare("SELECT CounselorID, FirstName, LastName FROM Counselors WHERE StaffRole = 'Counselor' ORDER BY LastName, FirstName").all();
 
-    // Group signups by event, parsing JSON participant arrays
+    // Map full name -> Gender ('M'/'F'/null) for gender-ratio validation
+    const genderByName = {};
+    for (const c of db.prepare('SELECT FirstName, LastName, Gender FROM Counselors').all()) {
+        genderByName[`${c.FirstName} ${c.LastName}`] = c.Gender || null;
+    }
+    const eventsById = {};
+    for (const ev of events) eventsById[ev.id] = ev;
+
+    // Group signups by event, parsing JSON participant arrays, and flag groups that don't meet the event's gender-ratio minimums
     const signupsByEvent = {};
     for (const s of allSignups) {
         if (!signupsByEvent[s.event_id]) signupsByEvent[s.event_id] = [];
-        signupsByEvent[s.event_id].push({ id: s.id, participants: JSON.parse(s.participants) });
+        const participants = JSON.parse(s.participants);
+        const ev = eventsById[s.event_id];
+        let valid = true;
+        if (ev && ev.enforce_gender_ratio) {
+            const maleCount = participants.filter(p => genderByName[p] === 'M').length;
+            const femaleCount = participants.filter(p => genderByName[p] === 'F').length;
+            valid = maleCount >= ev.min_male && femaleCount >= ev.min_female;
+        }
+        signupsByEvent[s.event_id].push({ id: s.id, participants, valid });
     }
 
     // Map of eventId -> signup object for the current counselor
@@ -2622,16 +2643,20 @@ app.post('/admin/spartan-games/toggle-submissions', (req, res) => {
 });
 
 app.post('/admin/spartan-games/add-event', (req, res) => {
-    const { name, date, block, participant_count, subtext } = req.body;
+    const { name, date, block, participant_count, subtext, enforce_gender_ratio, min_male, min_female } = req.body;
     if (!name || !date || !block || !participant_count) return res.redirect('/spartan-games?message=Missing+fields');
-    db.prepare('INSERT INTO SpartanEvents (name, date, block, participant_count, subtext) VALUES (?, ?, ?, ?, ?)').run(name.trim(), date.trim(), block.trim(), parseInt(participant_count), (subtext || '').trim() || null);
+    const enforceRatio = enforce_gender_ratio ? 1 : 0;
+    db.prepare('INSERT INTO SpartanEvents (name, date, block, participant_count, subtext, enforce_gender_ratio, min_male, min_female) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(name.trim(), date.trim(), block.trim(), parseInt(participant_count), (subtext || '').trim() || null, enforceRatio, enforceRatio ? (parseInt(min_male) || 0) : 0, enforceRatio ? (parseInt(min_female) || 0) : 0);
     res.redirect('/spartan-games?message=Event+added');
 });
 
 app.post('/admin/spartan-games/update-event', (req, res) => {
-    const { id, name, date, block, participant_count, subtext } = req.body;
+    const { id, name, date, block, participant_count, subtext, enforce_gender_ratio, min_male, min_female } = req.body;
     if (!id || !name || !date || !block || !participant_count) return res.redirect('/spartan-games?message=Missing+fields');
-    db.prepare('UPDATE SpartanEvents SET name=?, date=?, block=?, participant_count=?, subtext=? WHERE id=?').run(name.trim(), date.trim(), block.trim(), parseInt(participant_count), (subtext || '').trim() || null, parseInt(id));
+    const enforceRatio = enforce_gender_ratio ? 1 : 0;
+    db.prepare('UPDATE SpartanEvents SET name=?, date=?, block=?, participant_count=?, subtext=?, enforce_gender_ratio=?, min_male=?, min_female=? WHERE id=?')
+        .run(name.trim(), date.trim(), block.trim(), parseInt(participant_count), (subtext || '').trim() || null, enforceRatio, enforceRatio ? (parseInt(min_male) || 0) : 0, enforceRatio ? (parseInt(min_female) || 0) : 0, parseInt(id));
     res.redirect('/spartan-games?message=Event+updated');
 });
 
