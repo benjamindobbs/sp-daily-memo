@@ -117,6 +117,16 @@ A week can be in any combination of these states:
 
 `POST /set-released-week` toggles `isReleased` for a given week.
 
+**"Your Upcoming Schedule" card** (`GET /staff`, `views/staff-hub.ejs`): shown when a week is released and the viewer has a selected counselor. The schedule source depends on role, since only main counselors have `CounselorWeekSchedules` rows:
+
+| Role | Source(s) |
+|---|---|
+| Counselor / Swim Counselor | `CounselorWeekSchedules` |
+| Unit Leader / Sports Leader | `CounselorScheduleAssignments` (PersonType `Instructor`, sports slots) ∪ `CounselorWeekSchedules` (enrichment slots placed as counselor) ∪ `StaffWeekSchedules` |
+| Instructor | legacy `Schedules` (PersonType `Instructor`) ∪ `StaffWeekSchedules` |
+
+For Unit Leaders, Sports Leaders, and Instructors the card also shows each period's **location**, resolved the same way as the Master Schedule: the week-scoped `StaffWeekSchedules` row wins, then the legacy `Schedules` row (only when the released week is also the active week — that table has no `WeekNumber` and would otherwise leak stale locations into other weeks), then `Activities.Location` as a last resort.
+
 ---
 
 ## Week-Scoped Tables

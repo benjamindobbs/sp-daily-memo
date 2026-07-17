@@ -190,11 +190,15 @@
                 <h3 style="margin:0;">Your Upcoming Schedule</h3>
                 <span style="background:var(--primary); color:white; font-size:0.75rem; font-weight:600; padding:3px 10px; border-radius:20px;"><%= releasedSessionLabel %></span>
             </div>
+            <% const showLocation = releasedSchedule.some(r => r.Location); %>
             <table style="width:100%; border-collapse:collapse; font-size:0.875rem;">
                 <thead>
                     <tr>
                         <th style="text-align:left; padding:4px 8px; color:var(--text-muted); font-weight:600;">Period</th>
                         <th style="text-align:left; padding:4px 8px; color:var(--text-muted); font-weight:600;">Activity</th>
+                        <% if (showLocation) { %>
+                        <th style="text-align:left; padding:4px 8px; color:var(--text-muted); font-weight:600;">Location</th>
+                        <% } %>
                     </tr>
                 </thead>
                 <tbody>
@@ -202,6 +206,9 @@
                     <tr style="border-top:1px solid var(--border-color);">
                         <td style="padding:6px 8px; color:var(--text-muted);">P<%= r.PeriodNumber %></td>
                         <td style="padding:6px 8px; font-weight:500;"><%= r.ActivityName %></td>
+                        <% if (showLocation) { %>
+                        <td style="padding:6px 8px; color:var(--text-muted);"><% if (r.Location) { %>&#128205; <%= r.Location %><% } else { %>&mdash;<% } %></td>
+                        <% } %>
                     </tr>
                 <% }); %>
                 </tbody>

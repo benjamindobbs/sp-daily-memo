@@ -21,7 +21,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | Method | Path | Admin only | Description |
 |---|---|:---:|---|
 | GET | `/admin` | ✓ | Admin dashboard — announcements, director notes, counts |
-| GET | `/staff` | | Staff hub — daily schedule, home group roster, attendance links |
+| GET | `/staff` | | Staff hub — daily schedule, home group roster, attendance links. When a week is released, shows a "Your Upcoming Schedule" card pulling from the correct table(s) per role (see [Sessions-and-Weeks](Sessions-and-Weeks.md#released-vs-active)); Unit Leaders, Sports Leaders, and Instructors also see each period's location |
 | POST | `/admin-set-name` | ✓ | Set logged-in admin name in session |
 | POST | `/director-notes` | ✓ | Add a director note (writes `DirectorNotes`) |
 | POST | `/director-notes/delete/:id` | ✓ | Delete a director note |

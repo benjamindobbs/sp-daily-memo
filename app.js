@@ -1476,6 +1476,31 @@ function getReleasedWeek() {
     return db.prepare("SELECT * FROM Sessions WHERE isReleased=1 LIMIT 1").get() ?? null;
 }
 
+// Resolves a class's location the same way the Master Schedule does: prefer the
+// week-scoped StaffWeekSchedules row (any staff), fall back to the legacy Schedules
+// Instructor row (week-agnostic, so only valid when weekNumber is the active week),
+// then the Activities table's default location.
+function resolveClassLocation(periodNumber, activityName, weekNumber) {
+    const weekRow = db.prepare(`
+        SELECT Location FROM StaffWeekSchedules
+        WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
+          AND Location IS NOT NULL AND Location != ''
+        LIMIT 1
+    `).get(weekNumber, periodNumber, activityName);
+    if (weekRow) return weekRow.Location;
+    if (weekNumber === getActiveWeek()) {
+        const legacyRow = db.prepare(`
+            SELECT Location FROM Schedules
+            WHERE PersonType = 'Instructor' AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
+              AND Location IS NOT NULL AND Location != ''
+            LIMIT 1
+        `).get(periodNumber, activityName);
+        if (legacyRow) return legacyRow.Location;
+    }
+    const actRow = db.prepare("SELECT Location FROM Activities WHERE Name = ? COLLATE NOCASE").get(activityName);
+    return actRow?.Location || null;
+}
+
 // Returns campers for a counselor, preferring week-keyed CamperHomeGroups over legacy HomeGroupCounselorID.
 // CamperWeekData is LEFT JOINed so week-specific fields (bus, extended hours) come from the week row
 // rather than the base Campers table, which may have stale or missing values from earlier imports.
@@ -1738,9 +1763,41 @@ app.get('/staff', (req, res) => {
     }
     const announcement = db.prepare("SELECT content FROM HubContent WHERE id='announcement'").get()?.content || '';
     const released = getReleasedWeek();
-    const releasedSchedule = (released && cid)
-        ? db.prepare('SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID=? AND WeekNumber=? ORDER BY PeriodNumber').all(cid, released.weekNumber)
-        : null;
+    // Unit Leaders/Sports Leaders and Instructors don't have CounselorWeekSchedules
+    // rows — their schedules live in CounselorScheduleAssignments/StaffWeekSchedules
+    // (and legacy Schedules for Instructors), same sources as the map and attendance
+    // filters use. Location is resolved and included for these roles only.
+    let releasedSchedule = null;
+    if (released && cid) {
+        const rw = released.weekNumber;
+        if (['Unit Leader', 'Sports Leader'].includes(cRow?.StaffRole)) {
+            const rows = db.prepare(`
+                SELECT PeriodNumber, ActivityName FROM CounselorScheduleAssignments
+                WHERE PersonType='Instructor' AND PersonID=? AND WeekNumber=?
+                UNION
+                SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules
+                WHERE CounselorID=? AND WeekNumber=?
+                UNION
+                SELECT PeriodNumber, ActivityName FROM StaffWeekSchedules
+                WHERE StaffID=? AND WeekNumber=?
+                ORDER BY PeriodNumber
+            `).all(cid, rw, cid, rw, cid, rw);
+            releasedSchedule = rows.map(r => ({ ...r, Location: resolveClassLocation(r.PeriodNumber, r.ActivityName, rw) }));
+        } else if (cRow?.StaffRole === 'Instructor') {
+            const includeLegacy = rw === getActiveWeek() ? 1 : 0;
+            const rows = db.prepare(`
+                SELECT PeriodNumber, ActivityName, Location FROM Schedules
+                WHERE PersonType='Instructor' AND PersonID=? AND ? = 1
+                UNION
+                SELECT PeriodNumber, ActivityName, Location FROM StaffWeekSchedules
+                WHERE StaffID=? AND WeekNumber=?
+                ORDER BY PeriodNumber
+            `).all(cid, includeLegacy, cid, rw);
+            releasedSchedule = rows.map(r => ({ ...r, Location: r.Location || resolveClassLocation(r.PeriodNumber, r.ActivityName, rw) }));
+        } else {
+            releasedSchedule = db.prepare('SELECT PeriodNumber, ActivityName FROM CounselorWeekSchedules WHERE CounselorID=? AND WeekNumber=? ORDER BY PeriodNumber').all(cid, rw);
+        }
+    }
     const releasedSessionLabel = released?.label ?? null;
     const yesterdayWinner = db.prepare(`
         SELECT p.counselorName, p.imageUrl, COUNT(v.id) as votes
