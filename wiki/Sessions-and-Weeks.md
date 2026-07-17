@@ -45,6 +45,8 @@ const targetWeek = getPrepTargetWeek() || getActiveWeek();
 - `GET /master-schedule` — renders the schedule for the prep target week
 - `GET /audit` — audits the prep target week
 - `POST /upload-campers` — imports camper roster into the prep target week
+- `GET /counselor-profile/:id` — admins see the prep week's schedule, campers, and week attributes (banner shows the prep week); staff always see the active week
+- `POST /update-staff-info/:id` — mirrors week attributes into the prep week for admins (same week the profile displays)
 
 **Toggling:** `POST /set-prep-week` accepts `{ weekNumber }`. It clears `isPrepTarget` on all rows, then sets it on the given week. Sending the same week number again unsets it (toggle behavior). Managed from the Settings page ("Set Prep" / "Unset Prep" buttons in Session Management).
 

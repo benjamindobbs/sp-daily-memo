@@ -77,7 +77,7 @@ Counselor attributes that can change week to week are stored in `CounselorWeekAt
 | `ExtendedHours` | Extended care duty |
 | `SpecialtyGroup` | SPLIT/specialty grouping when applicable |
 
-When a counselor profile is edited (`POST /update-staff-info/:id`), both `Counselors` (base record) and `CounselorWeekAttributes` (active week) are updated in one transaction.
+When a counselor profile is edited (`POST /update-staff-info/:id`), both `Counselors` (base record) and `CounselorWeekAttributes` are updated. The week-attributes row targets the same week the profile page displays: the prep target week for admins when one is set, otherwise the active week.
 
 ---
 

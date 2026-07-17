@@ -41,9 +41,9 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | GET | `/search` | | Camper search by name |
 | GET | `/counselor-directory` | | Staff directory grouped by role |
 | GET | `/staff-lookup` | | Redirect → `/counselor-directory` |
-| GET | `/counselor-profile/:id` | | Individual staff profile |
+| GET | `/counselor-profile/:id` | | Individual staff profile. For admins, schedule/campers/week attributes reflect the prep target week when one is set (with a banner noting the prep week); staff always see the active week |
 | POST | `/delete-counselor/:id` | ✓ | Delete a counselor record |
-| POST | `/update-staff-info/:id` | ✓ | Edit all counselor profile fields incl. `gender` (base record + active week attributes) |
+| POST | `/update-staff-info/:id` | ✓ | Edit all counselor profile fields incl. `gender` (base record + week attributes for the same week the profile displays: prep target for admins, else active week) |
 | GET | `/mass-edit-staff` | ✓ | Spreadsheet-style editor: one row per staff member with all profile fields plus Gender; filter by name/role/gender |
 | POST | `/mass-edit-staff/save` | ✓ | JSON bulk save of every row (transaction); mirrors group/schedule/bus/extended into `CounselorWeekAttributes` for the active week |
 | POST | `/update-staff-period` | ✓ | Add/update one period on an instructor's weekly schedule |

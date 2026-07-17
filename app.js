@@ -2893,7 +2893,9 @@ app.get('/faculty-summer', (req, res) => {
 });
 
 app.get('/counselor-profile/:id', (req, res) => {
-    const aw = getActiveWeek();
+    const isAdmin = req.cookies.adminAuth === 'true';
+    const aw = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
+    const isPrepping = isAdmin && getPrepTargetWeek() === aw && aw !== getActiveWeek();
     const counselor = db.prepare(`
         SELECT c.*,
                COALESCE(cwa.HomeGroupColor, c.HomeGroupColor) AS HomeGroupColor,
@@ -2935,7 +2937,10 @@ app.get('/counselor-profile/:id', (req, res) => {
         : [];
     const campers = isCounselor ? getWeekCampersForCounselor(parseInt(req.params.id), aw) : [];
     const message = req.query.message || null;
-    res.render('counselor-view', { counselor, schedule, instructorSchedule, campers, staffWeekSchedules, allActivities, message });
+    const prepWeekLabel = isPrepping
+        ? (db.prepare("SELECT label FROM Sessions WHERE weekNumber = ?").get(aw)?.label || `Week ${aw}`)
+        : null;
+    res.render('counselor-view', { counselor, schedule, instructorSchedule, campers, staffWeekSchedules, allActivities, message, prepWeekLabel });
 });
 
 app.post('/delete-counselor/:id', (req, res) => {
@@ -4246,7 +4251,10 @@ app.post('/update-staff-info/:id', (req, res) => {
             ScheduleType = ?, BusRoute = ?, ExtendedHours = ?, Phone = ?, Email = ?, Gender = ?
         WHERE CounselorID = ?
     `).run(firstName, lastName, staffRole, homeGroupColor, scheduleType, busRoute, extendedHours, phone, email, gender, id);
-    const aw = getActiveWeek();
+    // Mirror week attributes into the same week the profile page displays
+    // (prep target for admins, else active week)
+    const isAdmin = req.cookies.adminAuth === 'true';
+    const aw = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
     db.prepare(`
         INSERT INTO CounselorWeekAttributes (CounselorID, WeekNumber, HomeGroupColor, ScheduleType, BusRoute, ExtendedHours)
         VALUES (?, ?, ?, ?, ?, ?)
