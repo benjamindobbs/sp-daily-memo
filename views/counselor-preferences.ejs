@@ -118,7 +118,7 @@
 
             <div class="card" style="margin-bottom: 28px;" id="activityPrefSection">
                 <h3 style="margin:0 0 6px;">Activity Preferences</h3>
-                <p class="text-muted" style="margin:0 0 16px; font-size:0.85rem;">Select all activities you would enjoy teaching. Check as many as you like.</p>
+                <p class="text-muted" style="margin:0 0 16px; font-size:0.85rem;">Select all activities you would enjoy teaching. Check as many as you like.<% if (activitiesWeekLabel) { %> Showing offerings for <strong><%= activitiesWeekLabel %></strong>.<% } %></p>
 
                 <div style="margin-bottom: 12px;">
                     <input type="text" id="activityFilter" placeholder="&#128269; Filter activities..."

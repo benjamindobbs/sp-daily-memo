@@ -132,7 +132,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 
 | Method | Path | Admin only | Description |
 |---|---|:---:|---|
-| GET | `/counselor-preferences` | ✓ | View all counselor preferences |
+| GET | `/counselor-preferences` | ✓ | Preferences form. Activity list shows next week's `WeeklyOfferings` if uploaded, else the current week's, else the full `Activities` catalog; the form notes which week is shown |
 | POST | `/counselor-preferences` | ✓ | Save preferences for one counselor |
 | GET | `/api/counselor-preferences/:id` | ✓ | Ajax: get preferences for one counselor |
 | GET | `/counselor-preferences-summary` | ✓ | Admin summary table: all main counselors with home group, schedule, and activity preferences; activity prefs split by Sports/Enrichment; pref-match count shows how many assigned classes appear in the counselor's preferences |

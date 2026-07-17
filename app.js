@@ -6938,12 +6938,23 @@ app.post('/alerts/groups/:id/members', (req, res) => {
 app.get('/counselor-preferences', (req, res) => {
     const counselors = db.prepare("SELECT CounselorID, FirstName, LastName, HomeGroupColor, StaffRole FROM Counselors ORDER BY LastName, FirstName").all();
     const activeWeek = getActiveWeek();
-    const weekActivities = db.prepare(
+    // Preferences are for the upcoming week, so prefer next week's offerings
+    // when they've been uploaded; otherwise show the current week's.
+    const weekActivitiesStmt = db.prepare(
         "SELECT DISTINCT ActivityName AS Name, SideOfCamp FROM WeeklyOfferings WHERE WeekNumber = ? ORDER BY SideOfCamp, ActivityName"
-    ).all(activeWeek);
+    );
+    let activitiesWeek = activeWeek + 1;
+    let weekActivities = weekActivitiesStmt.all(activitiesWeek);
+    if (!weekActivities.length) {
+        activitiesWeek = activeWeek;
+        weekActivities = weekActivitiesStmt.all(activitiesWeek);
+    }
     const activities = weekActivities.length
         ? weekActivities
         : db.prepare("SELECT Name, SideOfCamp FROM Activities ORDER BY SideOfCamp, Name").all();
+    const activitiesWeekLabel = weekActivities.length
+        ? (db.prepare("SELECT label FROM Sessions WHERE weekNumber = ?").get(activitiesWeek)?.label || `Week ${activitiesWeek}`)
+        : null;
     const alertMessage = req.query.message || null;
     const selectedCounselorId = parseInt(req.cookies.selectedCounselor) || null;
     const existingPrefs = selectedCounselorId
@@ -6951,7 +6962,7 @@ app.get('/counselor-preferences', (req, res) => {
         : null;
     const savedActivityPrefs = existingPrefs?.ActivityPreferences ? JSON.parse(existingPrefs.ActivityPreferences) : [];
     const selectedCounselorRole = counselors.find(c => c.CounselorID === selectedCounselorId)?.StaffRole || null;
-    res.render('counselor-preferences', { counselors, activities, alertMessage, selectedCounselorId, selectedCounselorRole, existingPrefs, savedActivityPrefs });
+    res.render('counselor-preferences', { counselors, activities, activitiesWeekLabel, alertMessage, selectedCounselorId, selectedCounselorRole, existingPrefs, savedActivityPrefs });
 });
 
 app.get('/counselor-preferences-summary', (_req, res) => {
