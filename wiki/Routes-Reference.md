@@ -38,7 +38,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | GET | `/class-roster/:period/:activity` | | Camper list for one class/period. Respects prep mode (uses prep target week when admin is in prep mode). Dance & Cheerleading merge detected at query time — both activities served under one roster when they share a period. Camper names link to camper profiles. |
 | GET | `/map` | | Interactive camp map. Two maps (enrichment/sports) with building pins; toggles for My Class / This Period / All / period selector. |
 | POST | `/update-class-location` | ✓ | Update location on a class roster |
-| GET | `/search` | | Camper search by name |
+| GET | `/search` | | Camper search by name. Lists every camper enrolled in the active week (a `CamperWeekData` row **or** any `Schedules` row) — so schedule-less campers (KP/LP, some SPLIT) are included. Group/bus/extended filter values are week-scoped via `COALESCE(cwd.*, c.*)` |
 | GET | `/counselor-directory` | | Staff directory grouped by role |
 | GET | `/staff-lookup` | | Redirect → `/counselor-directory` |
 | GET | `/counselor-profile/:id` | | Individual staff profile. For admins, schedule/campers/week attributes reflect the prep target week when one is set (with a banner noting the prep week); staff always see the active week |
