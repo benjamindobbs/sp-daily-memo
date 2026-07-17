@@ -180,7 +180,7 @@
                             <div class="counselor-chips">
                                 <% cls.counselors.forEach(function(c) { %>
                                     <a href="/counselor-profile/<%= c.CounselorID %>"
-                                       class="counselor-chip <%= c.HomeGroupColor %>">
+                                       class="counselor-chip <%= c.HomeGroupColor || 'no-group' %>">
                                         <%= c.FirstName %> <%= c.LastName %>
                                     </a>
                                 <% }); %>

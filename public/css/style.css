@@ -691,6 +691,8 @@ body {
 .counselor-chips { display: flex; flex-wrap: wrap; gap: 5px; }
 .counselor-chip  { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; color: white; text-decoration: none; transition: opacity 0.15s; white-space: nowrap; }
 .counselor-chip:hover { opacity: 0.82; }
+/* Counselors without a color group: neutral chip instead of invisible white-on-white */
+.counselor-chip.no-group { background-color: #64748b; }
 
 .location-text { font-size: 0.82rem; color: var(--text-muted); }
 

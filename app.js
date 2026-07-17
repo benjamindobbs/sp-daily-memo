@@ -2177,13 +2177,19 @@ app.get('/master-schedule', (req, res) => {
             ORDER BY s.PeriodNumber, s.ActivityName
         `).all(aw);
 
-        const getLocation = db.prepare(`
-            SELECT Location FROM Schedules
-            WHERE PersonType = 'Instructor' AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
-              AND Location IS NOT NULL AND Location != ''
-            UNION
+        // Legacy Schedules Instructor rows are week-agnostic — only valid when
+        // viewing the active week. In prep mode staff/locations must come solely
+        // from the week-scoped tables (StaffWeekSchedules, CSA) or stale data bleeds in.
+        const includeLegacy = aw === getActiveWeek() ? 1 : 0;
+        const getLocationWeek = db.prepare(`
             SELECT Location FROM StaffWeekSchedules
             WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
+              AND Location IS NOT NULL AND Location != ''
+            LIMIT 1
+        `);
+        const getLocationLegacy = db.prepare(`
+            SELECT Location FROM Schedules
+            WHERE PersonType = 'Instructor' AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
               AND Location IS NOT NULL AND Location != ''
             LIMIT 1
         `);
@@ -2200,7 +2206,7 @@ app.get('/master-schedule', (req, res) => {
         const getStaff = db.prepare(`
             SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
             FROM Counselors st JOIN Schedules s ON st.CounselorID = s.PersonID AND s.PersonType = 'Instructor'
-            WHERE s.PeriodNumber = ? AND s.ActivityName = ?
+            WHERE s.PeriodNumber = ? AND s.ActivityName = ? AND ? = 1
             UNION
             SELECT st.CounselorID, st.FirstName, st.LastName, st.StaffRole AS StaffType
             FROM Counselors st JOIN StaffWeekSchedules sws ON sws.StaffID = st.CounselorID
@@ -2236,13 +2242,14 @@ app.get('/master-schedule', (req, res) => {
 
         // Each row in Schedules now uses clock blocks (1-6) — no P3 AM/PM split needed.
         const enriched = classes.map(cls => {
-            const locRow = getLocation.get(cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName);
+            const locRow = getLocationWeek.get(aw, cls.periodNumber, cls.activityName)
+                || (includeLegacy ? getLocationLegacy.get(cls.periodNumber, cls.activityName) : null);
             return {
                 ...cls,
                 location:     locRow ? locRow.Location : (cls.location || null),
                 enrolled:     getEnrollment.get(aw, cls.periodNumber, cls.activityName, aw).n,
                 colorGroups:  getColorGroups.all(aw, cls.periodNumber, cls.activityName).map(r => r.HomeGroupColor),
-                staff:        getStaff.all(cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName),
+                staff:        getStaff.all(cls.periodNumber, cls.activityName, includeLegacy, aw, cls.periodNumber, cls.activityName, aw, cls.periodNumber, cls.activityName),
                 counselors:   getCounselors.all(aw, cls.periodNumber, cls.activityName, aw),
                 busPresent:   !!getBusPresence.get(aw, cls.periodNumber, cls.activityName),
                 extGroups:    getExtGroups.all(aw, cls.periodNumber, cls.activityName).map(r => r.ExtendedHours),
