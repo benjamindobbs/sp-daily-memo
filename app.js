@@ -2359,8 +2359,20 @@ app.get('/map', (req, res) => {
     let myPeriods = [];
     if (cid) {
         if (role === 'Unit Leader' || role === 'Sports Leader') {
-            myPeriods = db.prepare('SELECT PeriodNumber AS period, ActivityName AS activity FROM StaffWeekSchedules WHERE StaffID=? AND WeekNumber=?')
-                .all(cid, aw);
+            // UL/SL schedules span three tables: sports slots assigned via the
+            // scheduler land in CounselorScheduleAssignments (PersonType='Instructor'),
+            // enrichment slots (placed as counselor) in CounselorWeekSchedules, and
+            // instructor-style uploads in StaffWeekSchedules.
+            myPeriods = db.prepare(`
+                SELECT PeriodNumber AS period, ActivityName AS activity
+                FROM CounselorScheduleAssignments WHERE PersonID=? AND WeekNumber=?
+                UNION
+                SELECT PeriodNumber, ActivityName
+                FROM CounselorWeekSchedules WHERE CounselorID=? AND WeekNumber=?
+                UNION
+                SELECT PeriodNumber, ActivityName
+                FROM StaffWeekSchedules WHERE StaffID=? AND WeekNumber=?
+            `).all(cid, aw, cid, aw, cid, aw);
         } else if (role === 'Instructor') {
             myPeriods = db.prepare('SELECT PeriodNumber AS period, ActivityName AS activity FROM Schedules WHERE PersonType=\'Instructor\' AND PersonID=?')
                 .all(cid);

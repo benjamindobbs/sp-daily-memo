@@ -249,9 +249,10 @@
     const SPORTS_LABELS           = <%- JSON.stringify(sportsPeriodLabels) %>;
     const DEFAULT_MAP             = '<%= defaultMap %>';
 
-    // My activities: period → activity name
+    // My activities: period → activity name (normalized — table sources differ in case)
+    const normAct = a => (a || '').trim().toLowerCase();
     const myMap = {};
-    for (const mp of MY_PERIODS) myMap[mp.period] = mp.activity;
+    for (const mp of MY_PERIODS) myMap[mp.period] = normAct(mp.activity);
 
     let currentMap    = DEFAULT_MAP;
     let currentMode   = MY_PERIODS.length > 0 ? 'mine' : 'period';
@@ -368,18 +369,18 @@
             if (currentMode === 'mine') {
                 const period     = currentPeriod;
                 const myActivity = period ? myMap[period] : null;
-                highlight = classes.some(c => c.activity === myActivity && c.period === period);
+                highlight = classes.some(c => normAct(c.activity) === myActivity && c.period === period);
                 show = highlight;
             } else if (currentMode === 'period') {
                 const period = sel || currentPeriod;
                 show = classes.some(c => c.period === period);
-                highlight = MY_PERIODS.length > 0 && show && classes.some(c => c.activity === myMap[period] && c.period === period);
+                highlight = MY_PERIODS.length > 0 && show && classes.some(c => normAct(c.activity) === myMap[period] && c.period === period);
             } else {
                 // All mode: show every configured building; dim ones with no scheduled classes
                 show = true;
                 dim  = classes.length === 0;
                 if (!dim && currentPeriod) {
-                    highlight = MY_PERIODS.length > 0 && classes.some(c => c.activity === myMap[currentPeriod] && c.period === currentPeriod);
+                    highlight = MY_PERIODS.length > 0 && classes.some(c => normAct(c.activity) === myMap[currentPeriod] && c.period === currentPeriod);
                 }
             }
 
@@ -479,9 +480,14 @@
         const btn = document.getElementById(initModeBtn);
         if (btn) btn.classList.add('active');
     })();
-    // Hide the non-default image immediately
-    if (DEFAULT_MAP === 'enrichment') imgSports.style.display = 'none';
-    else imgEnrichment.style.display = 'none';
+    // Show the default map's image and hide the other. (The markup defaults to
+    // enrichment visible / sports hidden, so a sports default must explicitly
+    // un-hide the sports image or the map is blank on entry.)
+    imgEnrichment.style.display = DEFAULT_MAP === 'enrichment' ? 'block' : 'none';
+    imgSports.style.display     = DEFAULT_MAP === 'sports'     ? 'block' : 'none';
+    // Re-place pins now that the default image is actually visible — if it was
+    // already cached, the earlier build ran while it was hidden (clientWidth 0).
+    positionPins();
     </script>
 </body>
 </html>
