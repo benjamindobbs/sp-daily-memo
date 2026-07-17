@@ -92,6 +92,7 @@
             const extPM = extSessions.filter(s => s.session === 'pm');
             const spAM  = specialtySessions.filter(s => s.session === 'am');
             const spPM  = specialtySessions.filter(s => s.session === 'pm');
+            const spHD  = (typeof halfDaySessions !== 'undefined' && halfDaySessions) ? halfDaySessions : [];
 
             // Period map for class sections
             const byPeriod = {};
@@ -134,6 +135,7 @@
             spAM.forEach(s => flatItems.push({ icon: '&#11088;', cat: 'Specialty AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             classSessions.filter(s => parseInt(s.periodKey) <= 3).forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null }));
             hgLunch.forEach(s => flatItems.push({ icon: '&#127869;', cat: 'Home Group Lunch', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
+            spHD.forEach(s => flatItems.push({ icon: '&#128337;', cat: 'Specialty Half Day', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             classSessions.filter(s => parseInt(s.periodKey) > 3).forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null }));
             spPM.forEach(s => flatItems.push({ icon: '&#11088;', cat: 'Specialty PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             hgPM.forEach(s => flatItems.push({ icon: '&#127968;', cat: 'Home Group PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
@@ -363,6 +365,35 @@
         </details>
         <% } %>
         <% }); %>
+
+        <%/* ── Specialty Half Day (midday check-out: KP/LP half-day campers + SPRC) ── */%>
+        <% if (spHD.length > 0) { %>
+        <% const spHDStat = secStat(spHD); %>
+        <details class="att-section" id="section-sp-hd" data-section="pm-services">
+            <summary>
+                &#128337; Specialty Half Day
+                <% if (spHDStat) { %><span class="sec-count <%= spHDStat.cls %>"><%= spHDStat.sub %>/<%= spHDStat.tot %></span><% } %>
+            </summary>
+            <div class="att-section-body">
+                <div class="sub-filter-bar">
+                    <button class="sub-pill active" onclick="setSubFilter('section-sp-hd','all',this)">All</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-sp-hd','pending',this)">Pending</button>
+                    <button class="sub-pill" onclick="setSubFilter('section-sp-hd','submitted',this)">Submitted</button>
+                </div>
+                <div class="att-grid">
+                    <% spHD.forEach(function(s) { %>
+                    <a href="<%= s.link %>" class="att-card" data-submitted="<%= s.submitted ? 'true' : 'false' %>" data-search="<%= s.label.toLowerCase() %>">
+                        <div class="att-card-label">
+                            <span class="tag <%= s.color %>" style="font-size:0.68rem; padding:1px 7px; margin-right:6px;"><%= s.label.split('—')[0].trim() %></span>
+                            Half Day
+                        </div>
+                        <span class="<%= s.submitted ? 'badge-submitted' : 'badge-pending' %>"><%= s.submitted ? 'Submitted' : 'Pending' %></span>
+                    </a>
+                    <% }); %>
+                </div>
+            </div>
+        </details>
+        <% } %>
 
         <%/* ── Home Groups PM ── */%>
         <% if (hgPM.length > 0) { %>

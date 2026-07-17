@@ -150,6 +150,7 @@
                         <span style="font-size:0.7rem; font-weight:600; background:#fef3c7; color:#92400e; border-radius:4px; padding:1px 7px; white-space:nowrap;">&#9200; Extended</span>
                         <% } %>
                         <div class="camper-badges">
+                            <% if (c.halfDay) { %><span style="font-size:0.7rem; font-weight:600; background:#fce7f3; color:#9d174d; border-radius:9999px; padding:1px 8px; white-space:nowrap;">&#128337; Half Day</span><% } %>
                             <% if (c.campLunch === 'Yes') { %><span class="badge-lunch-camp">&#127857; Camp Lunch</span><% } else if (c.campLunch === 'Allergy') { %><span class="badge-lunch-allergy">&#9888; Allergy Meal</span><% } %>
                             <% if (c.shirtQty) { %>
                                 <% if (c.shirtsReceived) { %>

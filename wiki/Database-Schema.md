@@ -36,6 +36,22 @@ Primary record for every enrolled camper.
 
 ---
 
+## CamperWeekData
+
+Week-scoped camper attributes — the authoritative source for the active week; the same-named `Campers` columns are legacy fallbacks. One row per camper per week, PK `(CamperID, WeekNumber)`, FK → `Campers` with `ON DELETE CASCADE`.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `CamperID` | INTEGER | NOT NULL, PK part | |
+| `WeekNumber` | INTEGER | NOT NULL, PK part, CHECK 1–6 | |
+| `HomeGroupColor` | TEXT | | Set by ACR-005 import |
+| `CampLunch` | TEXT | DEFAULT `'No'` | Set by ACR-005 import (`Allergy` values are preserved across re-imports; pages without a Lunch column leave it untouched) |
+| `ExtendedHours` | TEXT | | `AM`, `PM`, `Both`, or NULL. SP campers: from ACR-255. Specialty campers: from ACR-005's `Ext AM`/`Ext PM` columns when populated, or the ACR-003 KP/LP import |
+| `BusRoute` / `BusRidesAM` / `BusRidesPM` / `BusStopAM` / `BusStopPM` | | | Set by ACR-132/133 bus imports |
+| `ScheduleType` | TEXT | | **[migrated]** — `'Full Day'` / `'Half Day'` for KP/LP campers, from the ACR-003 import's Dismissal column. Drives the Specialty Half Day attendance session and PM roster exclusion. NULL for everyone else (treated as full day) |
+
+---
+
 ## Counselors
 
 Unified people table for all staff. Replaced the legacy `Staff` table.

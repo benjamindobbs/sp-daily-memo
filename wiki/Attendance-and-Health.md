@@ -17,6 +17,7 @@ One row per mark. The unique constraint `(Date, CamperID, SessionType, PeriodNum
 | `bus_am` / `bus_pm` | Bus route AM or PM direction | `0` | `''` |
 | `extended` | Extended hours AM/PM | `0` | `''` |
 | `specialty` | LilPlace, KinderPlace, SPLIT AM | `0` | `''` |
+| `specialty_halfday` | Midday check-out: KP/LP campers with `ScheduleType='Half Day'`, plus all of SPRC | `0` | `''` |
 | `late-arrival` | Campers who arrive after normal start | `0` | `''` |
 
 `Status` values: `'present'` or `'absent'`.
@@ -32,7 +33,8 @@ One row per mark. The unique constraint `(Date, CamperID, SessionType, PeriodNum
 | `GET /attendance` | Overview — links to all roster types | — |
 | `GET /attendance/homegroup/counselor/:counselorId/:session` | One counselor's home group | `AM` or `PM` |
 | `GET /attendance/homegroup/:color/:session` | All home groups in a color combined | `AM` or `PM` |
-| `GET /attendance/specialty/:color/:session` | Specialty program roster | `AM` or `PM` |
+| `GET /attendance/specialty/:color/:session` | Specialty program roster. AM lists every camper in the camp (Half Day campers get a 🕑 Half Day pill); PM excludes `ScheduleType='Half Day'` campers. SPRC has no PM card on the overview (exclusively half day) | `AM` or `PM` |
+| `GET /attendance/specialty-halfday/:color` | Specialty Half Day midday check-out roster. KP/LP: only `ScheduleType='Half Day'` campers (from the ACR-003 import); SPRC: the whole camp | — |
 | `GET /attendance/class/:period/:activity` | One class period | clock block |
 | `GET /attendance/bus/:route/:session` | One bus route | `AM` or `PM` |
 | `GET /attendance/extended/:session` | Extended hours | `AM` or `PM` |

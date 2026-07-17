@@ -156,7 +156,8 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | GET | `/attendance` | | Attendance overview |
 | GET | `/attendance/homegroup/counselor/:counselorId/:session` | | Home group roster by counselor |
 | GET | `/attendance/homegroup/:color/:session` | | Home group roster by color |
-| GET | `/attendance/specialty/:color/:session` | | Specialty program roster |
+| GET | `/attendance/specialty/:color/:session` | | Specialty program roster. AM: all campers, with a 🕑 Half Day pill on `ScheduleType='Half Day'` campers; PM: Half Day campers excluded |
+| GET | `/attendance/specialty-halfday/:color` | | Specialty Half Day midday check-out roster (`specialty_halfday` session). KP/LP: half-day campers only; SPRC: whole camp (no PM session exists for SPRC) |
 | GET | `/attendance/class/:period/:activity` | | Class attendance sheet |
 | GET | `/attendance/bus/:route/:session` | | Bus route attendance |
 | GET | `/attendance/extended/:session` | | Extended care attendance |
@@ -230,6 +231,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/upload-campers-schedule` | ✓ | CSV import for master schedule (ACR-255). Sets grade, extended hours, and class schedule — does not touch bus data |
 | POST | `/upload-bus-am` | ✓ | CSV import of ACR-132 (AM Bus Attendance). Sets `BusRoute` + `BusRidesAM` per camper from the report's bus sections |
 | POST | `/upload-bus-pm` | ✓ | CSV import of ACR-133 (PM Bus Attendance). Sets `BusRoute` + `BusRidesPM` |
+| POST | `/upload-kp-lp` | ✓ | CSV import of ACR-003 (Group Attendance Sheet with KP/LP). Sets `CamperWeekData.ScheduleType` (Full/Half Day) and `ExtendedHours` for KP/LP campers for the selected week. Update-only |
 | POST | `/upload-counselors` | ✓ | CSV import for all staff roster |
 | POST | `/upload-instructors` | ✓ | CSV import for instructor schedules |
 | POST | `/upload-staff-week/:weekNumber` | ✓ | Faculty full summer CSV upload for one week |

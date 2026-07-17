@@ -15,12 +15,14 @@ Imports have dependencies. Always follow this sequence for a fresh setup:
 4. Master Camper Schedule (ACR-255)
 5. AM Bus Attendance (ACR-132)
 6. PM Bus Attendance (ACR-133)
-7. Instructor Schedules (can be done any time after staff)
+7. KP/LP Schedule Types (ACR-003)
+8. Instructor Schedules (can be done any time after staff)
 ```
 
 - **Camper Roster** depends on staff already existing (it may link counselors).
 - **Master Camper Schedule (ACR-255)** depends on campers existing (enriches rows with grade, extended hours, and schedule data).
 - **Bus reports (ACR-132/133)** depend on campers existing (update-only by name).
+- **KP/LP Schedule Types (ACR-003)** depends on campers existing (update-only by name).
 - Importing in the wrong order will result in missing relationships or failed lookups.
 
 ---
@@ -59,8 +61,10 @@ Imports have dependencies. Always follow this sequence for a fresh setup:
 **What it does:**
 - Creates or updates camper records in `Campers`.
 - Sets: `FirstName`, `LastName`, `HomeGroupColor`, `CampLunch`, `ShirtSize`, `SessionCodes` (raw `Sessions` cell, e.g. `"SP01/SP02/SP03"`).
+- Sets `CamperWeekData.ExtendedHours` from the `Ext AM` / `Ext PM` columns — but only when the page actually contains ext data. KP/LP exports have been observed with the columns present but entirely blank while ACR-003 had the real values, so a blank page never wipes previously imported extended hours.
 - Does **not** touch bus data (`BusRoute`, `BusRidesAM`, `BusRidesPM`) — all bus data comes from ACR-132/133.
 - Does **not** set schedule data — that comes from the Master Camper Schedule (ACR-255) import.
+- Pages without a `Lunch` column leave `CampLunch` untouched instead of resetting it to `'No'`; `Allergy` values are always preserved.
 
 `SessionCodes` drives the shirt-order pills on the Monday AM Home Group attendance sheet (main camp colors only) — see [Attendance-and-Health](./Attendance-and-Health.md#shirt-order-pills).
 
@@ -86,6 +90,21 @@ So a camper riding Bus 2 in the AM but not PM appears under `Bus 2 → Northwest
 **Application:** update-only by name (campers must already exist). The route is written only when the report knows it (so a top-`No Bus` camper keeps any existing route); the direction's ride flag is always written. AM report → `BusRidesAM`; PM report → `BusRidesPM`.
 
 > West Hartford (2/5) and Wolcott Park/Bishops Corner (3/4) riders are listed under their actual `Bus N` section in these reports, so no manual audit is needed.
+
+---
+
+## KP/LP Schedule Types (ACR-003)
+
+**Route:** `POST /upload-kp-lp`
+**Report:** ACR-003: Group Attendance Sheet with KP/LP
+
+**How to run in CB:** Filter the Session to the KP and LP weeks for the target week → Run report as CSV. The settings form has a Target Week selector (defaults to the prep target, else the active week).
+
+**What it does (update-only — never inserts; ACR-005 is the roster authority):**
+- Looks up each camper by name and upserts `CamperWeekData` for the target week.
+- Sets `ScheduleType` from the report's `Dismissal` column: `Full Day` or `Half Day`. This drives the Specialty Half Day attendance session and excludes Half Day campers from PM specialty rosters.
+- Sets `ExtendedHours` from the `Ext. Hrs.` column pair (AM under the header, PM in the adjacent unlabeled column → `AM` / `PM` / `Both`). **This report is the extended-hours authority for KP/LP campers** — ACR-255 only covers Summer Place campers, so KP/LP extended hours never come from it.
+- Reports how many campers were updated and lists any names not found in the roster.
 
 ---
 
@@ -230,3 +249,4 @@ Notable migrations in order:
 | `Campers.SessionCodes` added | **[migrated]** — Raw ACR-005 `Sessions` cell text (e.g. `"SP01/SP02/SP03"`). Drives the shirt-order pills on the Monday AM Home Group attendance sheet. |
 | `AppConfig` created | Key/value store for persistent server config (currently VAPID keys for web push). Auto-generates VAPID keys on first startup. |
 | `PushSubscriptions` created | Stores web push subscriptions for counselor attendance nudge notifications. One row per browser endpoint. |
+| `CamperWeekData.ScheduleType` added | **[migrated]** — per-week `'Full Day'` / `'Half Day'` for KP/LP campers, set by the ACR-003 KP/LP import. |

@@ -463,7 +463,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/faculty-summer', '/upload-staff-week', '/clear-staff-week',
     '/counselor-directory', '/counselor-view', '/promotions',
     '/promote-waitlist', '/force-promote-waitlist', '/promote-all', '/remove-waitlist', '/upload-campers', '/upload-campers-schedule', '/upload-counselors',
-    '/upload-bus-am', '/upload-bus-pm',
+    '/upload-bus-am', '/upload-bus-pm', '/upload-kp-lp',
     '/upload-staff', '/upload-instructors', '/upload-activity-rules', '/add-activity',
     '/delete-activity', '/update-activity', '/add-activity-period-group',
     '/delete-activity-period-group', '/sync-activity-groups',
@@ -857,6 +857,7 @@ db.exec(`
         BusRidesPM     INTEGER DEFAULT 1,
         BusStopAM      TEXT,
         BusStopPM      TEXT,
+        ScheduleType   TEXT,
         PRIMARY KEY (CamperID, WeekNumber),
         FOREIGN KEY (CamperID) REFERENCES Campers(CamperID) ON DELETE CASCADE
     );
@@ -1261,6 +1262,15 @@ try {
 } catch {
     db.exec("ALTER TABLE Schedules ADD COLUMN WeekNumber INTEGER");
 }
+
+// Migration: per-week camper schedule type ('Full Day' / 'Half Day') for KP/LP campers.
+// Imported from the ACR-003 Group Attendance Sheet with KP/LP.
+try {
+    const cwdCols = db.prepare("PRAGMA table_info(CamperWeekData)").all().map(c => c.name);
+    if (!cwdCols.includes('ScheduleType')) {
+        db.exec("ALTER TABLE CamperWeekData ADD COLUMN ScheduleType TEXT");
+    }
+} catch(e) { console.error('[migration] CamperWeekData.ScheduleType:', e.message); }
 
 // One-time backfill: copy Campers attributes into CamperWeekData for the active week.
 // Only runs when there is no CamperWeekData for that week yet, so server restarts never
@@ -3703,7 +3713,18 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
             }
         }
 
-        sections.push({ counselorName, dataRows });
+        // Column availability varies by export — only write what the page carries,
+        // so re-imports never reset data the page doesn't contain. Ext hours also
+        // require at least one populated cell: KP/LP exports have been seen with
+        // the Ext AM/PM columns present but entirely blank while the ACR-003
+        // report (the KP/LP ext-hours authority) had the real values — a blank
+        // page must not wipe those.
+        const heads = headerFields.map(h => h.trim());
+        const hasLunchCol = heads.includes('Lunch');
+        const cellVal = v => { const s = (v || '').trim(); return s.toLowerCase() === 'null' ? '' : s; };
+        const hasExtData = (heads.includes('Ext AM') || heads.includes('Ext PM'))
+            && dataRows.some(r => cellVal(r['Ext AM']) || cellVal(r['Ext PM']));
+        sections.push({ counselorName, dataRows, hasLunchCol, hasExtData });
     }
 
     if (sections.length === 0) return res.redirect('/settings?message=Invalid+file+format+(ACR-005+expected)');
@@ -3713,12 +3734,16 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
     const findCamperWd  = db.prepare("SELECT CampLunch FROM CamperWeekData WHERE CamperID=? AND WeekNumber=?");
     const insertCamper  = db.prepare("INSERT INTO Campers (FirstName, LastName, ShirtSize, SessionCodes) VALUES (?,?,?,?)");
     const updateCamper  = db.prepare("UPDATE Campers SET ShirtSize=?, SessionCodes=? WHERE CamperID=?");
+    // Lunch and extended hours are only overwritten when the page actually has
+    // those columns (@hasLunch / @hasExt). ACR-005 is the ExtendedHours source
+    // for specialty campers — ACR-255 only covers Summer Place.
     const upsertWeekData = db.prepare(`
-        INSERT INTO CamperWeekData (CamperID, WeekNumber, HomeGroupColor, CampLunch)
-        VALUES (?,?,?,?)
+        INSERT INTO CamperWeekData (CamperID, WeekNumber, HomeGroupColor, CampLunch, ExtendedHours)
+        VALUES (@id, @wk, @color, COALESCE(@lunch, 'No'), @ext)
         ON CONFLICT(CamperID, WeekNumber) DO UPDATE SET
             HomeGroupColor = excluded.HomeGroupColor,
-            CampLunch      = excluded.CampLunch
+            CampLunch      = CASE WHEN @hasLunch THEN excluded.CampLunch      ELSE CamperWeekData.CampLunch      END,
+            ExtendedHours  = CASE WHEN @hasExt   THEN excluded.ExtendedHours  ELSE CamperWeekData.ExtendedHours  END
     `);
     const findCounselor = db.prepare("SELECT CounselorID FROM Counselors WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
     const upsertHg      = db.prepare("INSERT OR REPLACE INTO CamperHomeGroups (CamperID, WeekNumber, CounselorID) VALUES (?,?,?)");
@@ -3759,7 +3784,14 @@ app.post('/upload-campers', upload.single('file'), (req, res) => {
                     // Preserve Allergy lunch flag — never overwrite with a non-allergy value
                     const existingWd = findCamperWd.get(camperId, aw);
                     const lunch = existingWd?.CampLunch === 'Allergy' ? 'Allergy' : (lunchRaw || 'No');
-                    upsertWeekData.run(camperId, aw, color, lunch);
+                    const extAM = safeTrim(row['Ext AM']);
+                    const extPM = safeTrim(row['Ext PM']);
+                    const ext = (extAM && extPM) ? 'Both' : (extAM ? 'AM' : (extPM ? 'PM' : null));
+                    upsertWeekData.run({
+                        id: camperId, wk: aw, color, lunch, ext,
+                        hasLunch: section.hasLunchCol ? 1 : 0,
+                        hasExt:   section.hasExtData  ? 1 : 0
+                    });
 
                     if (counselorId && camperId) {
                         upsertHg.run(camperId, aw, counselorId);
@@ -3866,6 +3898,78 @@ app.post('/upload-bus-pm', upload.single('file'), (req, res) => {
         res.redirect(`/settings?message=PM+Bus+Import+Success+(${matched}+campers)`);
     } catch (err) {
         console.error('ACR-133 PM bus upload error:', err);
+        res.redirect('/settings?message=Database+Error+Check+Console');
+    }
+});
+
+// --- KP/LP SCHEDULE TYPES (ACR-003 Group Attendance Sheet with KP/LP) ---
+// Sets each Kinder Place / Li'l Place camper's per-week ScheduleType ('Full Day' /
+// 'Half Day', from the report's Dismissal column) and ExtendedHours (from the
+// Ext. Hrs. AM/PM column pair — ACR-255 only covers Summer Place campers, so this
+// report is the extended-hours authority for KP/LP). Update-only — never inserts
+// (ACR-005 is the roster authority).
+app.post('/upload-kp-lp', upload.single('file'), (req, res) => {
+    if (!req.file) return res.redirect('/settings?message=No+file+uploaded');
+    let rawText;
+    try { rawText = fs.readFileSync(req.file.path, 'utf8'); }
+    catch (e) { return res.redirect('/settings?message=File+Read+Error'); }
+    finally { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); }
+    if (!/ACR-003 Group Attendance Sheet/i.test(rawText))
+        return res.redirect('/settings?message=Invalid+file+format+(ACR-003+Group+Attendance+Sheet+expected)');
+
+    const wk = parseInt(req.body.weekNumber) || getPrepTargetWeek() || getActiveWeek();
+    const safeTrim = v => { const s = (v && typeof v === 'string') ? v.trim() : ''; return s.toLowerCase() === 'null' ? '' : s; };
+    const findCamper = db.prepare("SELECT CamperID FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?) LIMIT 1");
+    const upsertWd = db.prepare(`
+        INSERT INTO CamperWeekData (CamperID, WeekNumber, ScheduleType, ExtendedHours)
+        VALUES (?,?,?,?)
+        ON CONFLICT(CamperID, WeekNumber) DO UPDATE SET
+            ScheduleType  = excluded.ScheduleType,
+            ExtendedHours = excluded.ExtendedHours
+    `);
+
+    // The report repeats a "Camper,Grade,..." header on every page. Column layout
+    // varies, so indices are read from each header row. "Ext. Hrs." spans two
+    // unlabeled cells: AM under the header, PM in the following column.
+    let updated = 0;
+    const notFound = [];
+    try {
+        db.transaction(() => {
+            let iDismissal = -1, iExt = -1;
+            for (const line of rawText.split(/\r?\n/)) {
+                const l = line.trim();
+                if (!l) continue;
+                const fields = parseCsvLine(l);
+                if (fields[0].trim() === 'Camper') {
+                    iDismissal = fields.findIndex(f => f.trim() === 'Dismissal');
+                    iExt = fields.findIndex(f => f.trim().replace(/\.$/, '') === 'Ext. Hrs');
+                    continue;
+                }
+                if (iDismissal === -1) continue;                       // before first header
+                if (!fields[0].includes(',')) continue;                // not a "Last, First" camper row
+                if (l.startsWith('ACR-003')) continue;                 // page footer
+
+                const { firstName, lastName } = parseLastFirst(safeTrim(fields[0]));
+                if (!firstName && !lastName) continue;
+                const camper = findCamper.get(`${firstName} ${lastName}`);
+                if (!camper) { notFound.push(`${firstName} ${lastName}`); continue; }
+
+                const dismissalRaw = safeTrim(fields[iDismissal]);
+                const scheduleType = /half/i.test(dismissalRaw) ? 'Half Day'
+                                   : /full/i.test(dismissalRaw) ? 'Full Day' : null;
+                const amExt = iExt !== -1 ? safeTrim(fields[iExt]) : '';
+                const pmExt = iExt !== -1 ? safeTrim(fields[iExt + 1]) : '';
+                const extHours = (amExt && pmExt) ? 'Both' : (amExt || pmExt || null);
+
+                upsertWd.run(camper.CamperID, wk, scheduleType, extHours);
+                updated++;
+            }
+        })();
+        let msg = `KP/LP+Import+Success+(${updated}+campers,+W${wk})`;
+        if (notFound.length) msg += `+—+${notFound.length}+not+found:+${encodeURIComponent(notFound.slice(0, 5).join(', '))}`;
+        res.redirect(`/settings?message=${msg}`);
+    } catch (err) {
+        console.error('ACR-003 KP/LP upload error:', err);
         res.redirect('/settings?message=Database+Error+Check+Console');
     }
 });
@@ -4649,7 +4753,7 @@ function getScheduledPickupMap(date) {
 }
 
 // Sessions that should show the "absent AM" indicator (i.e. everything after homegroup_am)
-const SHOW_AM_INDICATOR = new Set(['class','homegroup_lunch','homegroup_pm','bus_pm','extended_pm','specialty_pm']);
+const SHOW_AM_INDICATOR = new Set(['class','homegroup_lunch','homegroup_pm','bus_pm','extended_pm','specialty_pm','specialty_halfday']);
 
 // --- ATTENDANCE OVERVIEW ---
 app.get('/attendance', (req, res) => {
@@ -4901,32 +5005,66 @@ app.get('/attendance', (req, res) => {
         }
     }
 
-    // Specialty camp sessions — color-based shared view
+    // Specialty camp sessions — color-based shared view.
+    // Half Day campers (KP/LP, from the ACR-003 import) leave midday: they get a
+    // Specialty Half Day check-out session and are excluded from PM. SPRC is an
+    // exclusively half-day program, so it appears in AM + Half Day but never PM.
     const specialtySessions = [];
+    const halfDaySessions = [];
+    const spTotalStmt = db.prepare("SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor=?");
+    const spFullTotalStmt = db.prepare("SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor=? AND COALESCE(ScheduleType,'') != 'Half Day'");
+    const spHalfTotalStmt = db.prepare("SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor=? AND ScheduleType='Half Day'");
+    const mkSpHandled = (subset) => db.prepare(`
+        SELECT COUNT(*) as n FROM (
+            SELECT CamperID FROM Attendance
+            WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor=? ${subset})
+            UNION
+            SELECT CamperID FROM EarlyDismissals WHERE Date=?
+              AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor=? ${subset})
+        )
+    `);
+    const spHandledAll  = mkSpHandled('');
+    const spHandledFull = mkSpHandled("AND COALESCE(ScheduleType,'') != 'Half Day'");
+    const spHandledHalf = mkSpHandled("AND ScheduleType='Half Day'");
     for (const color of SPECIALTY_CAMP_COLORS) {
-        const total = db.prepare(
-            "SELECT COUNT(*) as n FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor=?"
-        ).get(aw, color)?.n || 0;
+        const total = spTotalStmt.get(aw, color)?.n || 0;
         if (total === 0) continue;
-        const checkSpHandled = db.prepare(`
-            SELECT COUNT(*) as n FROM (
-                SELECT CamperID FROM Attendance
-                WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''
-                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor=?)
-                UNION
-                SELECT CamperID FROM EarlyDismissals WHERE Date=?
-                  AND CamperID IN (SELECT CamperID FROM CamperWeekData WHERE WeekNumber=? AND HomeGroupColor=?)
-            )
-        `);
-        for (const session of ['am', 'pm']) {
-            const sessionType = `specialty_${session}`;
-            const handled = checkSpHandled.get(date, sessionType, aw, color, date, aw, color)?.n || 0;
-            specialtySessions.push({
-                label: `${HOME_GROUP_LABELS[color] || color} — ${session.toUpperCase()}`,
-                color, session,
-                link: `/attendance/specialty/${color}/${session}?date=${date}`,
-                submitted: total > 0 && handled >= total
-            });
+        const camp = HOME_GROUP_LABELS[color] || color;
+
+        // AM — every camper in the camp
+        const amHandled = spHandledAll.get(date, 'specialty_am', aw, color, date, aw, color)?.n || 0;
+        specialtySessions.push({
+            label: `${camp} — AM`, color, session: 'am',
+            link: `/attendance/specialty/${color}/am?date=${date}`,
+            submitted: amHandled >= total
+        });
+
+        // PM — full-day campers only; SPRC has no PM
+        if (color !== 'SPRC') {
+            const pmTotal = spFullTotalStmt.get(aw, color)?.n || 0;
+            if (pmTotal > 0) {
+                const pmHandled = spHandledFull.get(date, 'specialty_pm', aw, color, date, aw, color)?.n || 0;
+                specialtySessions.push({
+                    label: `${camp} — PM`, color, session: 'pm',
+                    link: `/attendance/specialty/${color}/pm?date=${date}`,
+                    submitted: pmHandled >= pmTotal
+                });
+            }
+        }
+
+        // Specialty Half Day — KP/LP half-day campers; all of SPRC
+        if (['LilPlace', 'KinderPlace', 'SPRC'].includes(color)) {
+            const hdTotal = color === 'SPRC' ? total : (spHalfTotalStmt.get(aw, color)?.n || 0);
+            if (hdTotal > 0) {
+                const hdStmt = color === 'SPRC' ? spHandledAll : spHandledHalf;
+                const hdHandled = hdStmt.get(date, 'specialty_halfday', aw, color, date, aw, color)?.n || 0;
+                halfDaySessions.push({
+                    label: `${camp} — Half Day`, color, session: 'halfday',
+                    link: `/attendance/specialty-halfday/${color}?date=${date}`,
+                    submitted: hdHandled >= hdTotal
+                });
+            }
         }
     }
 
@@ -4940,6 +5078,7 @@ app.get('/attendance', (req, res) => {
     let filteredBusSessions = busSessions;
     let filteredExtSessions = extSessions;
     let filteredSpecialtySessions = specialtySessions;
+    let filteredHalfDaySessions = halfDaySessions;
     if (filterCid) {
         filteredClassSessions = classSessions.filter(s =>
             allowedClasses.has(`${s.filterPeriod}|${s.activityName.toLowerCase()}`)
@@ -4950,6 +5089,7 @@ app.get('/attendance', (req, res) => {
             filteredBusSessions = [];
             filteredExtSessions = [];
             filteredSpecialtySessions = [];
+            filteredHalfDaySessions = [];
         } else {
             filteredHomegroupSessions = homegroupSessions.filter(s => s.counselorId === filterCid);
             filteredBusSessions = counselorBusRoute
@@ -4963,6 +5103,9 @@ app.get('/attendance', (req, res) => {
             filteredSpecialtySessions = SPECIALTY_CAMP_COLORS.includes(counselorGroupColor)
                 ? specialtySessions.filter(s => s.color === counselorGroupColor)
                 : [];
+            filteredHalfDaySessions = SPECIALTY_CAMP_COLORS.includes(counselorGroupColor)
+                ? halfDaySessions.filter(s => s.color === counselorGroupColor)
+                : [];
         }
     }
 
@@ -4973,6 +5116,7 @@ app.get('/attendance', (req, res) => {
         busSessions: filteredBusSessions,
         extSessions: filteredExtSessions,
         specialtySessions: filteredSpecialtySessions,
+        halfDaySessions: filteredHalfDaySessions,
         lateCount,
         counselorFilterActive: !!filterCid,
         selectedCounselorName
@@ -5139,13 +5283,15 @@ app.get('/attendance/specialty/:color/:session', (req, res) => {
     const showAmIndicator = SHOW_AM_INDICATOR.has(sessionType);
     const aw = getActiveWeek();
 
+    // PM excludes Half Day campers — they leave midday (Specialty Half Day session)
+    const halfDayFilter = session === 'pm' ? "AND COALESCE(cwd.ScheduleType,'') != 'Half Day'" : '';
     const campers = db.prepare(`
         SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize,
                cwd.HomeGroupColor, cwd.CampLunch, cwd.ExtendedHours,
-               cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM
+               cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM, cwd.ScheduleType
         FROM Campers c
         JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
-        WHERE cwd.HomeGroupColor = ?
+        WHERE cwd.HomeGroupColor = ? ${halfDayFilter}
         ORDER BY c.LastName, c.FirstName
     `).all(aw, color);
 
@@ -5179,7 +5325,8 @@ app.get('/attendance/specialty/:color/:session', (req, res) => {
         caseLog: caseLogSet3.has(c.CamperID),
         dismissed: dismissedSet.has(c.CamperID),
         seenEarlier: seenEarlierSet.has(c.CamperID),
-        scheduledPickup: pickupMap3[c.CamperID] || null
+        scheduledPickup: pickupMap3[c.CamperID] || null,
+        halfDay: session === 'am' && c.ScheduleType === 'Half Day'
     }));
 
     const isSplitAM = color === 'SPLIT' && session === 'am';
@@ -5195,6 +5342,69 @@ app.get('/attendance/specialty/:color/:session', (req, res) => {
         backLink: `/attendance?date=${date}`,
         roster,
         isSplitAM, fieldTripActive,
+        splitColor: color
+    });
+});
+
+// --- ATTENDANCE FORM: SPECIALTY HALF DAY (midday check-out) ---
+// KP/LP: only campers marked 'Half Day' (ACR-003 import). SPRC: the whole camp —
+// that program is exclusively half day and has no PM session.
+app.get('/attendance/specialty-halfday/:color', (req, res) => {
+    const { color } = req.params;
+    const date = req.query.date || todayStr();
+    const sessionType = 'specialty_halfday';
+    const aw = getActiveWeek();
+
+    const subset = color === 'SPRC' ? '' : "AND cwd.ScheduleType = 'Half Day'";
+    const campers = db.prepare(`
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize,
+               cwd.HomeGroupColor, cwd.CampLunch, cwd.ExtendedHours,
+               cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM, cwd.ScheduleType
+        FROM Campers c
+        JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
+        WHERE cwd.HomeGroupColor = ? ${subset}
+        ORDER BY c.LastName, c.FirstName
+    `).all(aw, color);
+
+    const absentAMSet = new Set(
+        db.prepare("SELECT CamperID FROM Attendance WHERE Date=? AND SessionType='specialty_am' AND Status='absent'")
+            .all(date).map(r => r.CamperID)
+    );
+    const dismissedSet = new Set(
+        db.prepare("SELECT CamperID FROM EarlyDismissals WHERE Date=?").all(date).map(r => r.CamperID)
+    );
+    const statusMap = {};
+    db.prepare("SELECT CamperID, Status FROM Attendance WHERE Date=? AND SessionType=? AND PeriodNumber=0 AND ActivityName=''")
+        .all(date, sessionType).forEach(r => { statusMap[r.CamperID] = r.Status; });
+    const seenEarlierSet = new Set(
+        db.prepare(`SELECT DISTINCT CamperID FROM Attendance
+                    WHERE Date = ? AND Status IN ('present','late')
+                      AND NOT (SessionType = ? AND PeriodNumber = 0 AND ActivityName = '')`)
+            .all(date, sessionType).map(r => r.CamperID)
+    );
+
+    const nurseAMSetHd = getNurseAMSet(date);
+    const caseLogSetHd = getCaseLogSet(date);
+    const pickupMapHd = getScheduledPickupMap(date);
+    const roster = campers.map(c => ({
+        ...c,
+        currentStatus: statusMap[c.CamperID] || null,
+        absentAM: absentAMSet.has(c.CamperID),
+        nurseAM: nurseAMSetHd.has(c.CamperID),
+        caseLog: caseLogSetHd.has(c.CamperID),
+        dismissed: dismissedSet.has(c.CamperID),
+        seenEarlier: seenEarlierSet.has(c.CamperID),
+        scheduledPickup: pickupMapHd[c.CamperID] || null
+    }));
+
+    res.render('attendance-form', {
+        title: `${HOME_GROUP_LABELS[color] || color} — Half Day`,
+        sessionType, date,
+        periodNumber: 0, activityName: '',
+        selfLink: `/attendance/specialty-halfday/${color}`,
+        backLink: `/attendance?date=${date}`,
+        roster,
+        isSplitAM: false, fieldTripActive: false,
         splitColor: color
     });
 });
