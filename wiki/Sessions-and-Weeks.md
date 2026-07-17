@@ -86,6 +86,22 @@ After switching the active week, the admin typically needs to:
 
 ---
 
+## Automatic Week Rollover
+
+`checkWeekRollover()` (app.js) runs at server startup and every 60 seconds. Once it is past **23:59 Eastern on the Saturday** of the active session's start week, it:
+
+1. Activates the session with `weekNumber + 1` (deactivating all others).
+2. Closes talent show submissions (`TalentMeta.submissions_open = 0`).
+3. Runs `syncActivityGroups()` for the new week.
+
+Details:
+- The Saturday is derived from the active session's `startDate` (day-of-week math uses noon-UTC anchors so it is stable across DST).
+- Dates are compared as numeric `YYYYMMDD` values built from `Intl.formatToParts` — never as locale-formatted strings, whose lexicographic ordering is wrong when the runtime formats dates as `M/D/YYYY` (this previously caused mid-week rollovers, e.g. `"7/9" > "7/10"`).
+- If there is no next session row (end of summer), nothing happens.
+- The startup call catches any rollover missed while the server was down.
+
+---
+
 ## Released vs Active
 
 A week can be in any combination of these states:

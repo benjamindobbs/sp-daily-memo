@@ -1617,7 +1617,7 @@ function syncActivityGroups(weekNumber) {
 }
 
 // --- AUTO WEEK ROLLOVER ---
-// Rolls the active week to the next one at 23:59 on the Friday of the active session's start week.
+// Rolls the active week to the next one at 23:59 on the Saturday of the active session's start week.
 function checkWeekRollover() {
     const activeSession = db.prepare("SELECT * FROM Sessions WHERE isActive=1 LIMIT 1").get();
     if (!activeSession || !activeSession.startDate) return;
@@ -1627,17 +1627,27 @@ function checkWeekRollover() {
     const startNoon = new Date(Date.UTC(sy, sm - 1, sd, 12, 0, 0));
     const DOW = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
     const dowName = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'long' }).format(startNoon);
-    const daysToFriday = (5 - (DOW[dowName] ?? 0) + 7) % 7;
+    const daysToSaturday = (6 - (DOW[dowName] ?? 0) + 7) % 7;
 
-    // Get the Eastern date string for that Friday
-    const fridayNoon = new Date(Date.UTC(sy, sm - 1, sd + daysToFriday, 12, 0, 0));
-    const fridayEastern = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(fridayNoon);
+    // Compare dates as YYYYMMDD numbers built from formatToParts — never via
+    // locale-formatted strings, whose ordering breaks if the runtime falls back
+    // to M/D/YYYY (this caused mid-week rollovers, e.g. "7/9" > "7/10").
+    const estDateNum = (d) => {
+        const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).formatToParts(d);
+        const get = t => parseInt(parts.find(p => p.type === t).value);
+        return get('year') * 10000 + get('month') * 100 + get('day');
+    };
 
-    // Roll over once it's past Friday 23:59 Eastern
-    const todayEastern = getTodayEST();
+    const saturdayNoon = new Date(Date.UTC(sy, sm - 1, sd + daysToSaturday, 12, 0, 0));
+    const saturdayNum = estDateNum(saturdayNoon);
+    const todayNum = estDateNum(new Date());
+
+    // Roll over once it's past Saturday 23:59 Eastern
     const estMins = getESTMins();
-    const pastCutoff = todayEastern > fridayEastern ||
-        (todayEastern === fridayEastern && estMins >= 23 * 60 + 59);
+    const pastCutoff = todayNum > saturdayNum ||
+        (todayNum === saturdayNum && estMins >= 23 * 60 + 59);
 
     if (!pastCutoff) return;
 
