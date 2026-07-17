@@ -20,6 +20,9 @@
         .audit-meta { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 24px; }
         .count-pill { font-size: 0.75rem; font-weight: 700; background: #fee2e2; color: #991b1b; border-radius: 9999px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; }
         .count-ok   { background: #dcfce7; color: #166534; }
+        .section-toggle { margin-left: 10px; padding: 3px 12px; font-size: 0.75rem; font-weight: 600; border: 1px solid var(--border-color); border-radius: 9999px; background: white; color: var(--text-muted); cursor: pointer; vertical-align: middle; }
+        .section-toggle:hover { background: #f8fafc; }
+        .audit-section.collapsed .section-body { display: none; }
     </style>
 </head>
 <body>
@@ -55,7 +58,7 @@
     </p>
 
     <%/* ── Camper Flags ── */%>
-    <div class="audit-section">
+    <div class="audit-section" data-key="campers">
         <h2>
             Camper Flags
             <% const totalCamperFlags = noCounselor.length + missingSchedule.length; %>
@@ -64,7 +67,9 @@
             <% } else { %>
                 <span class="count-pill count-ok">All clear</span>
             <% } %>
+            <button type="button" class="section-toggle">Hide</button>
         </h2>
+        <div class="section-body">
 
         <%/* No counselor assigned */%>
         <div class="card" style="margin-bottom:16px; padding:0; overflow:hidden;">
@@ -137,10 +142,11 @@
                 </table>
             <% } %>
         </div>
+        </div>
     </div>
 
     <%/* ── Class Name Suspects ── */%>
-    <div class="audit-section">
+    <div class="audit-section" data-key="suspects">
         <h2>
             Class Name Suspects
             <% if (suspects.length > 0) { %>
@@ -148,7 +154,9 @@
             <% } else { %>
                 <span class="count-pill count-ok">All clear</span>
             <% } %>
+            <button type="button" class="section-toggle">Hide</button>
         </h2>
+        <div class="section-body">
         <p class="audit-meta" style="margin-top:-8px;">Classes with 3 or fewer campers enrolled — likely typos or accidental duplicates. Merging moves all enrolled campers into the target class and removes the suspect entry.</p>
 
         <% if (suspects.length === 0) { %>
@@ -193,10 +201,11 @@
             </div>
             <% }) %>
         <% } %>
+        </div>
     </div>
 
     <%/* ── Unclassified Activities ── */%>
-    <div class="audit-section">
+    <div class="audit-section" data-key="unclassified">
         <h2>
             Unclassified Activities
             <% if (unclassifiedActivities.length > 0) { %>
@@ -204,7 +213,9 @@
             <% } else { %>
                 <span class="count-pill count-ok">All clear</span>
             <% } %>
+            <button type="button" class="section-toggle">Hide</button>
         </h2>
+        <div class="section-body">
         <p class="audit-meta" style="margin-top:-8px;">Activities not assigned to Sports or Enrichment. These will be excluded from counselor scheduling and the preferences checklist until a side is set.</p>
 
         <% if (unclassifiedActivities.length === 0) { %>
@@ -252,10 +263,11 @@
                 </table>
             </div>
         <% } %>
+        </div>
     </div>
 
     <%/* ── Counselor Flags ── */%>
-    <div class="audit-section">
+    <div class="audit-section" data-key="counselors">
         <h2>
             Counselor Flags
             <% if (counselorMismatch.length > 0) { %>
@@ -263,7 +275,9 @@
             <% } else { %>
                 <span class="count-pill count-ok">All clear</span>
             <% } %>
+            <button type="button" class="section-toggle">Hide</button>
         </h2>
+        <div class="section-body">
 
         <div class="card" style="padding:0; overflow:hidden;">
             <div style="padding:12px 16px; border-bottom:1px solid var(--border); font-weight:600; font-size:0.9rem; display:flex; align-items:center; gap:8px;">
@@ -301,8 +315,33 @@
                 </table>
             <% } %>
         </div>
+        </div>
     </div>
 </div>
+
+<script>
+    (function() {
+        const STORE_KEY = 'auditCollapsedSections';
+        let collapsed;
+        try { collapsed = JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { collapsed = {}; }
+
+        document.querySelectorAll('.audit-section').forEach(section => {
+            const key = section.dataset.key;
+            const btn = section.querySelector('.section-toggle');
+            if (!btn) return;
+            const apply = () => {
+                section.classList.toggle('collapsed', !!collapsed[key]);
+                btn.textContent = collapsed[key] ? 'Show' : 'Hide';
+            };
+            btn.addEventListener('click', () => {
+                collapsed[key] = !collapsed[key];
+                localStorage.setItem(STORE_KEY, JSON.stringify(collapsed));
+                apply();
+            });
+            apply();
+        });
+    })();
+</script>
 
 </body>
 </html>
