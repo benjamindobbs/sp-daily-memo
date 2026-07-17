@@ -129,6 +129,12 @@
                         <% } %>
                     </div>
 
+                    <% if (todayPickups.length > 0) { %>
+                    <input type="text" id="pickupFilter" placeholder="&#128269; Filter pickups by name&hellip;" oninput="filterPickups()"
+                        style="width:100%; box-sizing:border-box; padding:8px 12px; margin-bottom:12px; border:1px solid var(--border-color); border-radius:8px; font-size:0.88rem; font-family:inherit;">
+                    <div id="pickupNoMatch" style="display:none; text-align:center; padding:16px 0; color:var(--text-muted); font-size:0.85rem;">No pickups match.</div>
+                    <% } %>
+
                     <% if (todayPickups.length === 0) { %>
                         <div class="empty-state" style="padding:32px 0;">
                             <span style="font-size:2rem;">&#9989;</span>
@@ -136,7 +142,7 @@
                         </div>
                     <% } else { %>
                         <% todayPickups.forEach(function(p) { %>
-                            <div class="pickup-card">
+                            <div class="pickup-card" data-name="<%= (p.FirstName + ' ' + p.LastName).toLowerCase() %>">
                                 <div class="pickup-card-info">
                                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
                                         <span class="tag <%= p.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px;"><%= p.HomeGroupColor %></span>
@@ -153,11 +159,21 @@
                                         <div class="pickup-meta">Logged by <%= p.CreatedBy %></div>
                                     <% } %>
                                 </div>
-                                <form action="/dismissals/cancel" method="POST" style="margin-left:12px;"
-                                      onsubmit="return confirm('Remove this scheduled pickup?')">
-                                    <input type="hidden" name="pickupId" value="<%= p.PickupID %>">
-                                    <button type="submit" class="cancel-btn">Remove</button>
-                                </form>
+                                <div style="margin-left:12px; display:flex; flex-direction:column; gap:6px; align-items:stretch;">
+                                    <form action="/attendance/early-dismissal" method="POST" style="margin:0;"
+                                          onsubmit="return confirm('Dismiss <%= p.FirstName %> <%= p.LastName %> now?')">
+                                        <input type="hidden" name="date" value="<%= today %>">
+                                        <input type="hidden" name="camperId" value="<%= p.CamperID %>">
+                                        <input type="hidden" name="notes" value="<%= p.Notes || '' %>">
+                                        <input type="hidden" name="returnTo" value="/dismissals">
+                                        <button type="submit" class="btn btn-small" style="width:100%; background:#dcfce7; color:#166534; border-color:#86efac; white-space:nowrap;">&#128663; Quick Dismiss</button>
+                                    </form>
+                                    <form action="/dismissals/cancel" method="POST" style="margin:0;"
+                                          onsubmit="return confirm('Remove this scheduled pickup?')">
+                                        <input type="hidden" name="pickupId" value="<%= p.PickupID %>">
+                                        <button type="submit" class="cancel-btn" style="width:100%;">Remove</button>
+                                    </form>
+                                </div>
                             </div>
                         <% }); %>
                     <% } %>
@@ -177,6 +193,18 @@
             }))) %>,
             onSelect: c => { window.location.href = '/dismissals?camperId=' + c.id; }
         });
+
+        function filterPickups() {
+            const q = document.getElementById('pickupFilter').value.trim().toLowerCase();
+            let visible = 0;
+            document.querySelectorAll('.pickup-card').forEach(card => {
+                const show = !q || (card.dataset.name || '').includes(q);
+                card.style.display = show ? '' : 'none';
+                if (show) visible++;
+            });
+            const noMatch = document.getElementById('pickupNoMatch');
+            if (noMatch) noMatch.style.display = visible === 0 ? 'block' : 'none';
+        }
     </script>
     <% if (selectedCamper) { %>
     <script>
