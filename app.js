@@ -6029,15 +6029,20 @@ app.get('/dismissals', (req, res) => {
     }
 
     const _daw = getActiveWeek();
+    // ed join marks pickups whose camper has already been dismissed today —
+    // those rows move to the Completed section and lose the Quick Dismiss button
     const todayPickups = db.prepare(`
         SELECT sp.PickupID, sp.PickupTime, sp.PeriodNumber, sp.Notes, sp.CreatedBy,
                c.CamperID, c.FirstName, c.LastName, cwd.HomeGroupColor,
-               s.ActivityName
+               s.ActivityName,
+               CASE WHEN ed.CamperID IS NULL THEN 0 ELSE 1 END AS Dismissed,
+               ed.DismissalTime, ed.CreatedAt AS DismissedAt
         FROM ScheduledPickups sp
         JOIN Campers c ON c.CamperID = sp.CamperID
         LEFT JOIN CamperWeekData cwd ON cwd.CamperID = c.CamperID AND cwd.WeekNumber = ?
         LEFT JOIN Schedules s ON s.PersonType='Camper' AND s.PersonID=sp.CamperID
             AND s.PeriodNumber=sp.PeriodNumber AND s.WeekNumber=?
+        LEFT JOIN EarlyDismissals ed ON ed.CamperID = sp.CamperID AND ed.Date = sp.Date
         WHERE sp.Date = ?
         ORDER BY sp.PickupTime
     `).all(_daw, _daw, today);

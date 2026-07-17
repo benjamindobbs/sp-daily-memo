@@ -135,13 +135,15 @@
                     <div id="pickupNoMatch" style="display:none; text-align:center; padding:16px 0; color:var(--text-muted); font-size:0.85rem;">No pickups match.</div>
                     <% } %>
 
+                    <% const pendingPickups = todayPickups.filter(p => !p.Dismissed); %>
+                    <% const donePickups    = todayPickups.filter(p => p.Dismissed); %>
                     <% if (todayPickups.length === 0) { %>
                         <div class="empty-state" style="padding:32px 0;">
                             <span style="font-size:2rem;">&#9989;</span>
                             <p style="font-weight:600; margin-top:8px; color:var(--text-muted);">No pickups scheduled for today.</p>
                         </div>
                     <% } else { %>
-                        <% todayPickups.forEach(function(p) { %>
+                        <% pendingPickups.forEach(function(p) { %>
                             <div class="pickup-card" data-name="<%= (p.FirstName + ' ' + p.LastName).toLowerCase() %>">
                                 <div class="pickup-card-info">
                                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
@@ -161,7 +163,8 @@
                                 </div>
                                 <div style="margin-left:12px; display:flex; flex-direction:column; gap:6px; align-items:stretch;">
                                     <form action="/attendance/early-dismissal" method="POST" style="margin:0;"
-                                          onsubmit="return confirm('Dismiss <%= p.FirstName %> <%= p.LastName %> now?')">
+                                          data-name="<%= p.FirstName %> <%= p.LastName %>"
+                                          onsubmit="return qdConfirm(this.dataset.name)">
                                         <input type="hidden" name="date" value="<%= today %>">
                                         <input type="hidden" name="camperId" value="<%= p.CamperID %>">
                                         <input type="hidden" name="notes" value="<%= p.Notes || '' %>">
@@ -176,6 +179,39 @@
                                 </div>
                             </div>
                         <% }); %>
+
+                        <% if (donePickups.length > 0) { %>
+                            <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin:<%= pendingPickups.length > 0 ? '18px' : '0' %> 0 8px;">
+                                &#9989; Dismissed Today
+                            </div>
+                            <% donePickups.forEach(function(p) { %>
+                                <% const dismissedLabel = p.DismissalTime
+                                       ? fmtPickupTime(p.DismissalTime)
+                                       : (p.DismissedAt
+                                           ? new Date(p.DismissedAt.replace(' ', 'T') + 'Z').toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' })
+                                           : null); %>
+                                <div class="pickup-card" data-name="<%= (p.FirstName + ' ' + p.LastName).toLowerCase() %>" style="opacity:0.75; background:#f8fafc;">
+                                    <div class="pickup-card-info">
+                                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                                            <span class="tag <%= p.HomeGroupColor %>" style="font-size:0.65rem; padding:1px 7px;"><%= p.HomeGroupColor %></span>
+                                            <strong><%= p.FirstName %> <%= p.LastName %></strong>
+                                            <span style="margin-left:auto; font-size:0.75rem; font-weight:700; background:#dcfce7; color:#166534; border-radius:9999px; padding:2px 10px; white-space:nowrap;">
+                                                &#128663; Dismissed<% if (dismissedLabel) { %> <%= dismissedLabel %><% } %>
+                                            </span>
+                                        </div>
+                                        <div class="pickup-meta">Scheduled for <%= fmtPickupTime(p.PickupTime) %></div>
+                                        <% if (p.Notes) { %>
+                                            <div class="pickup-meta">&#128221; <%= p.Notes %></div>
+                                        <% } %>
+                                    </div>
+                                    <form action="/dismissals/cancel" method="POST" style="margin-left:12px;"
+                                          onsubmit="return confirm('Remove this scheduled pickup?')">
+                                        <input type="hidden" name="pickupId" value="<%= p.PickupID %>">
+                                        <button type="submit" class="cancel-btn">Remove</button>
+                                    </form>
+                                </div>
+                            <% }); %>
+                        <% } %>
                     <% } %>
                 </div>
             </div>
@@ -193,6 +229,11 @@
             }))) %>,
             onSelect: c => { window.location.href = '/dismissals?camperId=' + c.id; }
         });
+
+        function qdConfirm(name) {
+            const now = new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
+            return confirm(`Dismiss ${name} at ${now} (now)?`);
+        }
 
         function filterPickups() {
             const q = document.getElementById('pickupFilter').value.trim().toLowerCase();

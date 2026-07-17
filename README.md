@@ -302,7 +302,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 
 | Page | URL | Description |
 |---|---|---|
-| Dismissals | `/dismissals` | Schedule an early pickup, view all pending dismissals, and mark them complete. Today's Scheduled Pickups has a name filter; each pickup row has a **Quick Dismiss** button (logs the dismissal immediately, carrying over the pickup notes) above **Remove** (deletes the scheduled pickup) — both ask for confirmation. |
+| Dismissals | `/dismissals` | Schedule an early pickup, view all pending dismissals, and mark them complete. Today's Scheduled Pickups has a name filter; each pending pickup row has a **Quick Dismiss** button (confirmation shows the current time, notes carry over) above **Remove** (deletes the scheduled pickup) — both ask for confirmation. Once a camper is dismissed, their pickup moves to a **Dismissed Today** section showing the dismissal time, with Quick Dismiss removed. |
 | All Dismissals | `/dismissals/all` | Full dismissal list across all sessions. |
 
 ---
