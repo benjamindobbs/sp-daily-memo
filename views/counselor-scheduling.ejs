@@ -1034,6 +1034,9 @@
             // Build available set from current group-assignment schedule dropdowns
             const available = new Set();
             getAssignablePool().forEach(c => {
+                // Dual-enrolled staff (Sports Leader/Counselor, Instructor/Counselor)
+                // teaching this period are not available counselors
+                if ((STAFF_BUSY[c.CounselorID] || []).includes(periodNum)) return;
                 const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                 const schedType = sel ? sel.value : (c.ScheduleType || '');
                 if (schedType && isCounselorAvailableFor(schedType, periodNum, side)) available.add(c.CounselorID);

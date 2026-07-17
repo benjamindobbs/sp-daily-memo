@@ -2051,9 +2051,34 @@ app.get('/audit', (req, res) => {
         ORDER BY c.LastName
     `).all(activeWeek, activeWeek);
 
+    // Dual-enrolled staff (e.g. Sports Leader/Counselor, Instructor/Counselor) cover
+    // some periods under their staff identity — count those periods as filled so the
+    // counselor row isn't falsely flagged as short on classes.
+    const auditBusyRows = db.prepare(`
+        SELECT c2.CounselorID, x.PeriodNumber
+        FROM (
+            SELECT csa.PersonID AS pid, csa.PeriodNumber FROM CounselorScheduleAssignments csa
+            WHERE csa.PersonType = 'Instructor' AND csa.WeekNumber = ?
+            UNION
+            SELECT s.PersonID, s.PeriodNumber FROM Schedules s WHERE s.PersonType = 'Instructor'
+            UNION
+            SELECT sws.StaffID, sws.PeriodNumber FROM StaffWeekSchedules sws WHERE sws.WeekNumber = ?
+        ) x
+        JOIN Counselors c1 ON c1.CounselorID = x.pid
+        JOIN Counselors c2 ON c2.FirstName = c1.FirstName AND c2.LastName = c1.LastName
+    `).all(activeWeek, activeWeek);
+    const auditBusyMap = {};
+    for (const r of auditBusyRows) (auditBusyMap[r.CounselorID] ??= new Set()).add(r.PeriodNumber);
+    const cwsPeriodMap = {};
+    db.prepare('SELECT CounselorID, PeriodNumber FROM CounselorWeekSchedules WHERE WeekNumber = ?')
+        .all(activeWeek)
+        .forEach(r => (cwsPeriodMap[r.CounselorID] ??= new Set()).add(r.PeriodNumber));
+
     const counselorMismatch = allCounselors.filter(c => {
         const expected = EXPECTED[c.ScheduleType];
-        return expected != null && c.classCount !== expected;
+        if (expected == null) return false;
+        const covered = new Set([...(cwsPeriodMap[c.CounselorID] || []), ...(auditBusyMap[c.CounselorID] || [])]);
+        return c.classCount !== expected && covered.size !== expected;
     });
 
     const suspectRows = db.prepare(`
@@ -6317,7 +6342,13 @@ app.get('/counselor-scheduling', (req, res) => {
         JOIN Counselors c1 ON c1.CounselorID = s.PersonID
         JOIN Counselors c2 ON c2.FirstName = c1.FirstName AND c2.LastName = c1.LastName
         WHERE s.PersonType = 'Instructor'
-    `).all(planWeek);
+        UNION
+        SELECT c2.CounselorID, sws.PeriodNumber
+        FROM StaffWeekSchedules sws
+        JOIN Counselors c1 ON c1.CounselorID = sws.StaffID
+        JOIN Counselors c2 ON c2.FirstName = c1.FirstName AND c2.LastName = c1.LastName
+        WHERE sws.WeekNumber = ?
+    `).all(planWeek, planWeek);
     const staffBusy = {};
     for (const r of staffBusyRows) {
         if (!staffBusy[r.CounselorID]) staffBusy[r.CounselorID] = [];

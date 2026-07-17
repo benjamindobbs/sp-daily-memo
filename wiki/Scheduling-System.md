@@ -129,6 +129,7 @@ Key constants available to the builder at page load:
 - `OFFERINGS` — all `WeeklyOfferings` rows for the active week
 - `COUNSELORS` — all counselors with their `CounselorWeekAttributes` for the active week
 - `MAIN_COUNSELORS` — subset of `COUNSELORS` where `StaffRole` is `Counselor` or `Swim Counselor`
+- `STAFF_BUSY` — `CounselorID → [periods]` where the person teaches under a dual-enrolled staff identity (same name, different `Counselors` row). Sourced from `CounselorScheduleAssignments` (PersonType `Instructor`), legacy `Schedules` instructor rows, and `StaffWeekSchedules` for the plan week. The builder skips busy counselors for those periods, and the per-block availability counter chips exclude them from the remaining count.
 
 **Schedule Types** — controls which clock blocks a counselor is eligible for:
 

@@ -87,7 +87,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/save-split-assignments` | ✓ | Save SPLIT period assignments |
 | POST | `/split-field-trip/mark` | ✓ | Flag today as a SPLIT field trip |
 | POST | `/split-field-trip/clear` | ✓ | Remove today's SPLIT field trip flag |
-| GET | `/audit` | ✓ | Audit page — flags scheduling issues. Uses the prep target week if one is set, otherwise the active week. |
+| GET | `/audit` | ✓ | Audit page — flags scheduling issues. Uses the prep target week if one is set, otherwise the active week. Counselor class-count check credits periods covered under a dual-enrolled staff identity (same name, e.g. Sports Leader/Counselor), so dual staff aren't falsely flagged short. |
 | GET | `/counselor-week-assignments/:week` | ✓ | Ajax: get all assignments for a given week |
 
 ---
