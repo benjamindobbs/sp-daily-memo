@@ -2526,7 +2526,7 @@ app.get('/spartan-games', (req, res) => {
 
     const events = db.prepare('SELECT * FROM SpartanEvents ORDER BY date, block, name').all();
     const allSignups = db.prepare('SELECT * FROM SpartanSignups ORDER BY id').all();
-    const allCounselors = db.prepare("SELECT CounselorID, FirstName, LastName FROM Counselors WHERE StaffRole IN ('Counselor', 'Swim Counselor') ORDER BY LastName, FirstName").all();
+    const allCounselors = db.prepare("SELECT CounselorID, FirstName, LastName FROM Counselors WHERE StaffRole IN ('Counselor', 'Swim Counselor','Equipment Manager') ORDER BY LastName, FirstName").all();
 
     // Map full name -> Gender ('M'/'F'/null) for gender-ratio validation
     const genderByName = {};
