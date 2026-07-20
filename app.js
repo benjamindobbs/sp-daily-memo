@@ -2521,7 +2521,7 @@ app.get('/spartan-games', (req, res) => {
 
     const events = db.prepare('SELECT * FROM SpartanEvents ORDER BY date, block, name').all();
     const allSignups = db.prepare('SELECT * FROM SpartanSignups ORDER BY id').all();
-    const allCounselors = db.prepare("SELECT CounselorID, FirstName, LastName FROM Counselors WHERE StaffRole = 'Counselor' ORDER BY LastName, FirstName").all();
+    const allCounselors = db.prepare("SELECT CounselorID, FirstName, LastName FROM Counselors WHERE StaffRole IN ('Counselor', 'Swim Counselor') ORDER BY LastName, FirstName").all();
 
     // Group signups by event, parsing JSON participant arrays
     const signupsByEvent = {};
