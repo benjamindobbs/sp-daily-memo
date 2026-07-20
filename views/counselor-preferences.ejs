@@ -67,23 +67,23 @@
                 </select>
             </div>
 
-            <div id="noPrefsMsg" class="card" style="margin-bottom:20px; text-align:center; color:var(--text-muted); display:<%= (selectedCounselorId && selectedCounselorRole !== 'Counselor') ? '' : 'none' %>;">
+            <div id="noPrefsMsg" class="card" style="margin-bottom:20px; text-align:center; color:var(--text-muted); display:<%= (selectedCounselorId && selectedCounselorRole !== 'Counselor' && selectedCounselorRole !== 'Swim Counselor') ? '' : 'none' %>;">
                 Schedule preferences are only available for Counselors.
             </div>
 
-            <button type="submit" id="saveNameBtn" class="btn btn-primary" style="width:100%; padding:14px; font-size:1rem; margin-bottom:20px; display:<%= (selectedCounselorId && selectedCounselorRole !== 'Counselor') ? '' : 'none' %>;">
+            <button type="submit" id="saveNameBtn" class="btn btn-primary" style="width:100%; padding:14px; font-size:1rem; margin-bottom:20px; display:<%= (selectedCounselorId && selectedCounselorRole !== 'Counselor' && selectedCounselorRole !== 'Swim Counselor') ? '' : 'none' %>;">
                 Save Name
             </button>
 
-            <div id="prefsContainer" style="display:<%= selectedCounselorRole === 'Counselor' ? '' : 'none' %>;">
+            <div id="prefsContainer" style="display:<%= (selectedCounselorRole === 'Counselor' || selectedCounselorRole === 'Swim Counselor') ? '' : 'none' %>;">
 
-            <div class="card" style="margin-bottom: 20px;" id="groupPrefSection">
+            <div class="card" style="margin-bottom: 20px; display:<%= selectedCounselorRole === 'Swim Counselor' ? 'none' : '' %>;" id="groupPrefSection">
                 <h3 style="margin:0 0 6px;">Home Group Preference</h3>
                 <p class="text-muted" style="margin:0 0 16px; font-size:0.85rem;">Which home group would you prefer to be assigned to?</p>
                 <div style="display:flex; flex-wrap:wrap; gap:10px;">
                     <% ['Red', 'Carolina', 'Green', 'Navy', 'No Preference'].forEach(function(grp) { %>
                         <label style="display:flex; align-items:center; gap:8px; padding:10px 16px; border:1px solid var(--border-color); border-radius:8px; cursor:pointer; font-size:0.9rem; background:white; flex:1; min-width:120px;">
-                            <input type="radio" name="homeGroupPreference" value="<%= grp %>" required <%= existingPrefs && existingPrefs.HomeGroupPreference === grp ? 'checked' : '' %>>
+                            <input type="radio" name="homeGroupPreference" value="<%= grp %>" <%= selectedCounselorRole === 'Swim Counselor' ? '' : 'required' %> <%= existingPrefs && existingPrefs.HomeGroupPreference === grp ? 'checked' : '' %>>
                             <% if (grp !== 'No Preference') { %>
                                 <span class="tag <%= grp %>" style="margin:0;"><%= grp %></span>
                             <% } else { %>
@@ -94,7 +94,7 @@
                 </div>
             </div>
 
-            <div class="card" style="margin-bottom: 20px;" id="schedulePrefSection">
+            <div class="card" style="margin-bottom: 20px; display:<%= selectedCounselorRole === 'Swim Counselor' ? 'none' : '' %>;" id="schedulePrefSection">
                 <h3 style="margin:0 0 6px;">Schedule Preference</h3>
                 <p class="text-muted" style="margin:0 0 16px; font-size:0.85rem;">What type of schedule would you prefer?</p>
                 <div style="display:flex; flex-direction:column; gap:10px;">
@@ -106,7 +106,7 @@
                         { value: 'No Preference',               label: 'No Preference',               desc: 'No preference — assign wherever needed' }
                     ].forEach(function(opt) { %>
                         <label style="display:flex; align-items:flex-start; gap:12px; padding:12px 16px; border:1px solid var(--border-color); border-radius:8px; cursor:pointer; background:white;">
-                            <input type="radio" name="schedulePreference" value="<%= opt.value %>" required style="margin-top:2px; flex-shrink:0;" <%= existingPrefs && existingPrefs.SchedulePreference === opt.value ? 'checked' : '' %>>
+                            <input type="radio" name="schedulePreference" value="<%= opt.value %>" <%= selectedCounselorRole === 'Swim Counselor' ? '' : 'required' %> style="margin-top:2px; flex-shrink:0;" <%= existingPrefs && existingPrefs.SchedulePreference === opt.value ? 'checked' : '' %>>
                             <div>
                                 <div style="font-weight:600; font-size:0.9rem;"><%= opt.label %></div>
                                 <div class="text-muted" style="font-size:0.78rem;"><%= opt.desc %></div>
@@ -230,9 +230,11 @@
         }
 
         function onCounselorChange(val) {
-            const prefsContainer = document.getElementById('prefsContainer');
-            const noPrefsMsg     = document.getElementById('noPrefsMsg');
-            const saveNameBtn    = document.getElementById('saveNameBtn');
+            const prefsContainer   = document.getElementById('prefsContainer');
+            const noPrefsMsg       = document.getElementById('noPrefsMsg');
+            const saveNameBtn      = document.getElementById('saveNameBtn');
+            const groupPrefSection = document.getElementById('groupPrefSection');
+            const schedulePrefSection = document.getElementById('schedulePrefSection');
             const role = getRoleForValue(val);
 
             if (!val) {
@@ -243,11 +245,24 @@
                 return;
             }
 
-            if (role === 'Counselor') {
+            if (role === 'Counselor' || role === 'Swim Counselor') {
                 prefsContainer.style.display = '';
                 noPrefsMsg.style.display     = 'none';
                 saveNameBtn.style.display    = 'none';
                 setPrefsDisabled(false);
+
+                const isSwim = role === 'Swim Counselor';
+                groupPrefSection.style.display    = isSwim ? 'none' : '';
+                schedulePrefSection.style.display = isSwim ? 'none' : '';
+                groupPrefSection.querySelectorAll('input').forEach(function(el) {
+                    el.required = !isSwim;
+                    el.disabled = isSwim;
+                });
+                schedulePrefSection.querySelectorAll('input').forEach(function(el) {
+                    el.required = !isSwim;
+                    el.disabled = isSwim;
+                });
+
                 fetch('/api/counselor-preferences/' + val)
                     .then(function(r) { return r.json(); })
                     .then(function(prefs) { applyPrefs(prefs); })

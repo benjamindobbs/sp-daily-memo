@@ -108,6 +108,8 @@ This is separate from `Campers.HomeGroupCounselorID`. The `HomeGroupAssignment` 
 
 The auto-scheduler uses `ActivityPreferences` as a tiebreaker when two eligible counselors have equal assignment counts: preferred activities are deprioritized from the opposite-block exclusion check.
 
+`Swim Counselor`s only submit `ActivityPreferences` (class preferences) via `/counselor-preferences` — the Home Group and Schedule Type sections are hidden for that role since swim staff don't have a home group or a Sports/Enrichment schedule type. `HomeGroupPreference`/`SchedulePreference` stay `NULL` for their row.
+
 ---
 
 ## Staff Directory vs Counselor Profiles

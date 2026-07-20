@@ -2526,7 +2526,7 @@ app.get('/spartan-games', (req, res) => {
 
     const events = db.prepare('SELECT * FROM SpartanEvents ORDER BY date, block, name').all();
     const allSignups = db.prepare('SELECT * FROM SpartanSignups ORDER BY id').all();
-    const allCounselors = db.prepare("SELECT CounselorID, FirstName, LastName FROM Counselors WHERE StaffRole IN ('Counselor', 'Swim Counselor','Equipment Manager') ORDER BY LastName, FirstName").all();
+    const allCounselors = db.prepare("SELECT CounselorID, FirstName, LastName FROM Counselors WHERE StaffRole IN ('Counselor', 'Swim Counselor','Equipment Manager','Unit Leader','Sports Leader') ORDER BY LastName, FirstName").all();
 
     // Map full name -> Gender ('M'/'F'/null) for gender-ratio validation
     const genderByName = {};
@@ -7386,7 +7386,8 @@ app.get('/counselor-preferences-summary', (_req, res) => {
         const hgMatch = c.HomeGroupPreference && effectiveColor && c.HomeGroupPreference === effectiveColor;
         const schedMatch = c.SchedulePreference && c.weekScheduleType && c.SchedulePreference === c.weekScheduleType;
 
-        return { ...c, sports, enrichment, unclassified, hasPrefs: !!c.HomeGroupPreference, excludeFromStats,
+        const hasPrefs = !!c.HomeGroupPreference || prefs.length > 0;
+        return { ...c, sports, enrichment, unclassified, hasPrefs, excludeFromStats,
                  assignedCount, matchedCount, hgMatch, schedMatch,
                  hasNotifications: subscribedIds.has(c.CounselorID) };
     });
@@ -7402,12 +7403,14 @@ app.post('/counselor-preferences', (req, res) => {
 
     const parsedId = parseInt(counselorID, 10);
     if (!parsedId) return res.redirect('/counselor-preferences?message=Please+select+a+counselor.');
-    const counselorExists = db.prepare("SELECT 1 FROM Counselors WHERE CounselorID = ?").get(parsedId);
-    if (!counselorExists) return res.redirect('/counselor-preferences?message=Counselor+not+found.+Please+re-select+your+name.');
+    const counselor = db.prepare("SELECT StaffRole FROM Counselors WHERE CounselorID = ?").get(parsedId);
+    if (!counselor) return res.redirect('/counselor-preferences?message=Counselor+not+found.+Please+re-select+your+name.');
 
     res.cookie('selectedCounselor', parsedId, { httpOnly: true, maxAge: 365 * 24 * 60 * 60 * 1000 });
 
-    if (!homeGroupPreference) {
+    // Swim Counselors only pick class (activity) preferences — no home group / schedule type.
+    const isSwimCounselor = counselor.StaffRole === 'Swim Counselor';
+    if (!homeGroupPreference && !(isSwimCounselor && activityPreferences.length)) {
         return res.redirect('/counselor-preferences?message=Name+saved!');
     }
 
