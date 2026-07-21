@@ -211,7 +211,9 @@ This is purely a computed, render-time display (same convention as `getSwimWarni
 
 ### Show/hide per period
 
-Each period card is a `<details>`/`<summary>` (open by default), same collapsible convention used elsewhere in this feature (`/swim-levels`, Edit Swim Certifications, Recent Merges) — click the "Period N" header to collapse/expand that period's guards, lesson groups, and Send to Sports box. Display-only, no state persisted across page loads.
+Each period card is a `<details>`/`<summary>` (open by default), same collapsible convention used elsewhere in this feature (`/swim-levels`, Edit Swim Certifications, Recent Merges) — click the "Period N" header to collapse/expand that period's guards, lesson groups, and Send to Sports box.
+
+Since every save/assign action here is a normal form POST + redirect (full page reload, no client-side routing), a small inline script restores each period's open/closed state from `localStorage` on load and saves it on every `toggle` event, keyed `swimSchedulingOpen_<week>_<period>` — so collapsing a period and then saving a guard/instructor assignment elsewhere on the page doesn't force it back open.
 
 ### Greyed-out names in the manual pickers
 

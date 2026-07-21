@@ -191,7 +191,7 @@
         <% } %>
 
         <% periods.forEach(function(p) { %>
-        <details class="card swim-period-card" open>
+        <details class="card swim-period-card" data-period="<%= p.period %>" open>
             <summary style="cursor:pointer; margin:0 0 12px; font-size:1.15rem; font-weight:700;">Period <%= p.period %></summary>
 
             <%
@@ -447,5 +447,22 @@
         <% }) %>
 
     </div>
+
+    <script>
+        // Every save/assign action is a normal form POST + redirect (full page reload), so
+        // without this, collapsing a period would keep re-opening on every action. Restore
+        // each period's open/closed state from localStorage (per week) on load, and save it
+        // whenever the director toggles one, so a closed section stays closed across reloads.
+        (function() {
+            var week = <%= week %>;
+            document.querySelectorAll('.swim-period-card').forEach(function(details) {
+                var key = 'swimSchedulingOpen_' + week + '_' + details.dataset.period;
+                if (localStorage.getItem(key) === '0') details.open = false;
+                details.addEventListener('toggle', function() {
+                    localStorage.setItem(key, details.open ? '1' : '0');
+                });
+            });
+        })();
+    </script>
 </body>
 </html>
