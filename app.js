@@ -1283,6 +1283,16 @@ try {
     }
 } catch(e) { console.error('[migration] SwimLessonGroups.LevelRangeMax:', e.message); }
 
+// Migration: a group of exactly 5 campers needs a co-instructor rather than one person
+// teaching alone; a group over 5 should be split (see /swim-scheduling/split-group) rather
+// than adding a third slot. NULL means no second instructor assigned (yet).
+try {
+    const slg2Cols = db.prepare("PRAGMA table_info(SwimLessonGroups)").all().map(c => c.name);
+    if (!slg2Cols.includes('CounselorID2')) {
+        db.exec("ALTER TABLE SwimLessonGroups ADD COLUMN CounselorID2 INTEGER");
+    }
+} catch(e) { console.error('[migration] SwimLessonGroups.CounselorID2:', e.message); }
+
 // Required Rec Swim lifeguard count from enrollment (same in AM and PM).
 function requiredRecGuards(enrolledCount) {
     if (enrolledCount > 15) return 3;
@@ -1306,7 +1316,9 @@ function chunkCampers(list, maxSize) {
 // that level — a sub-level becomes its own pool only with >=3 campers, otherwise it's
 // merged into one mixed pool for the level. Newly-tested campers (a CamperSwimLevels row
 // written this week) are chunked separately at a smaller size (2-4) so they seed their
-// own small groups instead of topping off an existing class. Existing Locked groups (and
+// own small groups instead of topping off an existing class; returning campers are capped
+// at 5 per group (a group of exactly 5 gets a second instructor slot in the UI; over 5 and
+// it needs a manual split — see /swim-scheduling/split-group). Existing Locked groups (and
 // their campers) are left untouched; all other unlocked groups for the period are
 // replaced. Campers with no recorded level are left ungrouped (shown separately in the UI
 // as needing testing). Returns the number of groups created.
@@ -1365,7 +1377,7 @@ function generateGroupsForWeek(week) {
                 for (const pool of pools) {
                     const newly = pool.campers.filter(c => c.isNew);
                     const returning = pool.campers.filter(c => !c.isNew);
-                    const chunks = [...chunkCampers(newly, 4), ...chunkCampers(returning, 6)];
+                    const chunks = [...chunkCampers(newly, 4), ...chunkCampers(returning, 5)];
                     for (const chunk of chunks) {
                         if (chunk.length === 0) continue;
                         const info = insGroup.run(week, period, levelNumber, pool.subLevel);
@@ -1380,8 +1392,9 @@ function generateGroupsForWeek(week) {
     return groupsCreated;
 }
 
-// CounselorID -> {inWater, outWater} for the given week: all guard duty counts as
-// in-water; teaching a level 1-3 group counts as in-water (required), 4-6 as out-of-water.
+// CounselorID -> {inWater, outWater} for the given week. Per the swim director: guarding
+// (watching from the deck/chair) is out-of-water duty; teaching a lesson group — any level,
+// either instructor slot — is in-water, since you're in the pool with the campers.
 function getCounselorWaterTally(week) {
     const tally = {};
     const bump = (id, inWater) => {
@@ -1389,47 +1402,70 @@ function getCounselorWaterTally(week) {
         tally[id][inWater ? 'inWater' : 'outWater']++;
     };
     db.prepare('SELECT CounselorID FROM SwimGuardAssignments WHERE WeekNumber = ?')
+        .all(week).forEach(r => bump(r.CounselorID, false));
+    db.prepare('SELECT CounselorID FROM SwimLessonGroups WHERE WeekNumber = ? AND CounselorID IS NOT NULL')
         .all(week).forEach(r => bump(r.CounselorID, true));
-    db.prepare('SELECT CounselorID, LevelNumber FROM SwimLessonGroups WHERE WeekNumber = ? AND CounselorID IS NOT NULL')
-        .all(week).forEach(r => bump(r.CounselorID, r.LevelNumber <= 3));
+    db.prepare('SELECT CounselorID2 FROM SwimLessonGroups WHERE WeekNumber = ? AND CounselorID2 IS NOT NULL')
+        .all(week).forEach(r => bump(r.CounselorID2, true));
     return tally;
 }
 
-// Historical AM (period 1-3) in-water tally for weeks strictly before `week` — Phase 4's
-// auto-assign uses this to bias early-morning water duty toward whoever has done the least
-// of it so far this summer, before within-week balancing kicks in as a tie-break.
+// CounselorID -> {amIn, amOut, pmIn, pmOut} for the roster panel: periods 1-3 are AM, 4-6
+// PM; same in/out-of-water classification as getCounselorWaterTally(), split by period block
+// so the director can see morning vs. afternoon load separately.
+function getCounselorWaterBreakdown(week) {
+    const breakdown = {};
+    const bump = (id, key) => {
+        breakdown[id] ??= { amIn: 0, amOut: 0, pmIn: 0, pmOut: 0 };
+        breakdown[id][key]++;
+    };
+    db.prepare('SELECT CounselorID, PeriodNumber FROM SwimGuardAssignments WHERE WeekNumber = ?')
+        .all(week).forEach(r => bump(r.CounselorID, r.PeriodNumber <= 3 ? 'amOut' : 'pmOut'));
+    db.prepare('SELECT CounselorID, PeriodNumber FROM SwimLessonGroups WHERE WeekNumber = ? AND CounselorID IS NOT NULL')
+        .all(week).forEach(r => bump(r.CounselorID, r.PeriodNumber <= 3 ? 'amIn' : 'pmIn'));
+    db.prepare('SELECT CounselorID2, PeriodNumber FROM SwimLessonGroups WHERE WeekNumber = ? AND CounselorID2 IS NOT NULL')
+        .all(week).forEach(r => bump(r.CounselorID2, r.PeriodNumber <= 3 ? 'amIn' : 'pmIn'));
+    return breakdown;
+}
+
+// Historical AM (period 1-3) guard-duty tally for weeks strictly before `week` — guarding is
+// out-of-water duty, and this is the "taking turns on morning duty" fairness signal Phase
+// 4's auto-assign uses to bias early guard slots toward whoever has done the least of it so
+// far this summer, before within-week balancing kicks in as a tie-break.
 function getAmFairnessTally(week) {
     const tally = {};
     const bump = id => { tally[id] = (tally[id] || 0) + 1; };
     db.prepare('SELECT CounselorID FROM SwimGuardAssignments WHERE WeekNumber < ? AND PeriodNumber <= 3')
         .all(week).forEach(r => bump(r.CounselorID));
-    db.prepare('SELECT CounselorID FROM SwimLessonGroups WHERE WeekNumber < ? AND PeriodNumber <= 3 AND CounselorID IS NOT NULL AND LevelNumber <= 3')
-        .all(week).forEach(r => bump(r.CounselorID));
     return tally;
 }
 
-// Fills every open guard slot and un-instructored lesson group for the week. Never removes
-// or changes anything already set — Locked groups, groups that already have a CounselorID,
-// and existing SwimGuardAssignments rows are left as-is; this only fills the gaps. Greedy,
-// period-by-period, in this order per period: lesson groups highest effective level to
-// lowest, THEN Rec guards, THEN Lessons guards — high-level groups have the smallest
-// eligible pool (only counselors certified that high), so they get first pick before that
-// pool is drawn down by guard duty or low-level groups that anyone could fill instead:
-//   - Eligibility: a lesson group needs COALESCE(SwimMaxLevel,3) >= its effective max level;
-//     anyone on the swim staff can guard.
+// Fills every open guard slot and un-instructored lesson group slot for the week. Never
+// removes or changes anything already set — Locked groups, instructor slots that already
+// have a CounselorID, and existing SwimGuardAssignments rows are left as-is; this only fills
+// the gaps. Greedy, period-by-period, in this order per period: lesson groups highest
+// effective level to lowest, THEN Rec guards, THEN Lessons guards — high-level groups have
+// the smallest eligible pool (only counselors certified that high), so they get first pick
+// before that pool is drawn down by guard duty or low-level groups that anyone could fill
+// instead:
+//   - Eligibility: a lesson group instructor slot needs COALESCE(SwimMaxLevel,3) >= the
+//     group's effective max level; anyone on the swim staff can guard.
+//   - A group with exactly 5 campers gets a second instructor slot; over 5 needs a manual
+//     split (/swim-scheduling/split-group) — the solver fills whatever slots exist but
+//     doesn't split groups itself.
 //   - No counselor is used twice in the same period (guard duty and teaching are mutually
-//     exclusive within a period).
+//     exclusive within a period, and a group's two instructor slots can't be the same
+//     person).
 //   - Within a slot's eligible pool, a CERT_RESERVE_WEIGHT penalty per level of unneeded
 //     headroom (SwimMaxLevel above what the slot actually requires — 3 for guarding/levels
 //     1-3, the group's own effective level for levels 4-6) pushes minimally-qualified
 //     candidates to the front, so a Level 6-certified counselor isn't spent guarding or
 //     teaching Level 1 while a Level 6 class still needs staffing that period.
-//   - In-water slots (guarding, or a level 1-3 group) then prefer, in AM periods (1-3),
-//     whoever has the least cumulative AM in-water duty across prior weeks this summer; in
-//     PM periods (4-6) they prefer whoever has the fewest in-water assignments so far
-//     *this* week, targeting ~2 in-water PM slots per counselor.
-//   - Out-of-water slots (level 4-6 groups) then prefer whoever has the fewest out-of-water
-//     assignments so far this week, targeting ~1 per counselor.
+//   - Guarding is out-of-water: guard slots then prefer, in AM periods (1-3), whoever has
+//     the least cumulative AM guard duty across prior weeks this summer; in PM periods (4-6)
+//     they prefer whoever has guarded the least so far *this* week.
+//   - Teaching a lesson group is in-water (any level): instructor slots prefer whoever has
+//     taught the least so far this week, so teaching time balances out across the staff.
 // Returns {filled, unfilled} slot counts for the summary message.
 const CERT_RESERVE_WEIGHT = 10;
 
@@ -1451,9 +1487,9 @@ function autoAssignWeek(week) {
     // requiredLevel is the true floor a slot needs (3 for guarding/levels 1-3, since that's
     // the default everyone-can-teach ceiling); any cert above that is unused headroom.
     const certPenalty = (id, requiredLevel) => Math.max(0, (certById[id] ?? 3) - requiredLevel) * CERT_RESERVE_WEIGHT;
-    const scoreInWater = (id, period) =>
-        certPenalty(id, 3) + (period <= 3 ? (amHistTally[id] || 0) * 100 : 0) + (runningTally[id]?.inWater || 0);
-    const scoreOutWater = (id, requiredLevel) => certPenalty(id, requiredLevel) + (runningTally[id]?.outWater || 0);
+    const scoreGuard = (id, period) =>
+        certPenalty(id, 3) + (period <= 3 ? (amHistTally[id] || 0) * 100 : 0) + (runningTally[id]?.outWater || 0);
+    const scoreTeach = (id, requiredLevel) => certPenalty(id, requiredLevel) + (runningTally[id]?.inWater || 0);
 
     // Best-scoring eligible counselor not already used this period, or null if none qualify.
     const pick = (usedThisPeriod, eligibleIds, scoreFn) => {
@@ -1467,7 +1503,8 @@ function autoAssignWeek(week) {
     };
 
     const insGuard = db.prepare('INSERT INTO SwimGuardAssignments (WeekNumber, PeriodNumber, GuardRole, CounselorID) VALUES (?, ?, ?, ?)');
-    const updGroup = db.prepare('UPDATE SwimLessonGroups SET CounselorID = ? WHERE GroupID = ?');
+    const updGroup1 = db.prepare('UPDATE SwimLessonGroups SET CounselorID = ? WHERE GroupID = ?');
+    const updGroup2 = db.prepare('UPDATE SwimLessonGroups SET CounselorID2 = ? WHERE GroupID = ?');
 
     let filled = 0, unfilled = 0;
 
@@ -1477,37 +1514,56 @@ function autoAssignWeek(week) {
             if (p.rec) p.rec.guards.forEach(g => usedThisPeriod.add(g.CounselorID));
             if (p.lessons) {
                 p.lessons.guards.forEach(g => usedThisPeriod.add(g.CounselorID));
-                p.lessons.groups.forEach(g => { if (g.CounselorID) usedThisPeriod.add(g.CounselorID); });
+                p.lessons.groups.forEach(g => {
+                    if (g.CounselorID) usedThisPeriod.add(g.CounselorID);
+                    if (g.CounselorID2) usedThisPeriod.add(g.CounselorID2);
+                });
             }
 
             if (p.lessons) {
                 const openGroups = p.lessons.groups
-                    .filter(g => !g.Locked && !g.CounselorID)
+                    .filter(g => !g.Locked && (!g.CounselorID || (g.needsSecondInstructor && !g.CounselorID2)))
                     .slice()
                     .sort((a, b) => b.effectiveMaxLevel - a.effectiveMaxLevel);
 
                 for (const g of openGroups) {
-                    const inWater = g.effectiveMaxLevel <= 3;
+                    const requiredLevel = Math.max(3, g.effectiveMaxLevel);
                     const eligible = swimCounselors
                         .filter(c => (c.SwimMaxLevel ?? 3) >= g.effectiveMaxLevel)
                         .map(c => c.CounselorID);
-                    const id = pick(usedThisPeriod, eligible, cid => inWater ? scoreInWater(cid, p.period) : scoreOutWater(cid, g.effectiveMaxLevel));
-                    if (id == null) { unfilled++; continue; }
-                    updGroup.run(id, g.GroupID);
-                    usedThisPeriod.add(id);
-                    bumpRunning(id, inWater);
-                    filled++;
+
+                    if (!g.CounselorID) {
+                        const id = pick(usedThisPeriod, eligible, cid => scoreTeach(cid, requiredLevel));
+                        if (id == null) unfilled++;
+                        else {
+                            updGroup1.run(id, g.GroupID);
+                            usedThisPeriod.add(id);
+                            bumpRunning(id, true);
+                            filled++;
+                            g.CounselorID = id;
+                        }
+                    }
+                    if (g.needsSecondInstructor && !g.CounselorID2) {
+                        const id = pick(usedThisPeriod, eligible, cid => scoreTeach(cid, requiredLevel));
+                        if (id == null) unfilled++;
+                        else {
+                            updGroup2.run(id, g.GroupID);
+                            usedThisPeriod.add(id);
+                            bumpRunning(id, true);
+                            filled++;
+                        }
+                    }
                 }
             }
 
             if (p.rec) {
                 const need = p.rec.requiredGuards - p.rec.guards.length;
                 for (let i = 0; i < need; i++) {
-                    const id = pick(usedThisPeriod, allIds, cid => scoreInWater(cid, p.period));
+                    const id = pick(usedThisPeriod, allIds, cid => scoreGuard(cid, p.period));
                     if (id == null) { unfilled++; continue; }
                     insGuard.run(week, p.period, 'Rec', id);
                     usedThisPeriod.add(id);
-                    bumpRunning(id, true);
+                    bumpRunning(id, false);
                     filled++;
                 }
             }
@@ -1515,11 +1571,11 @@ function autoAssignWeek(week) {
             if (p.lessons) {
                 const guardNeed = p.lessons.requiredGuards - p.lessons.guards.length;
                 for (let i = 0; i < guardNeed; i++) {
-                    const id = pick(usedThisPeriod, allIds, cid => scoreInWater(cid, p.period));
+                    const id = pick(usedThisPeriod, allIds, cid => scoreGuard(cid, p.period));
                     if (id == null) { unfilled++; continue; }
                     insGuard.run(week, p.period, 'Lessons', id);
                     usedThisPeriod.add(id);
-                    bumpRunning(id, true);
+                    bumpRunning(id, false);
                     filled++;
                 }
             }
@@ -3402,10 +3458,12 @@ function getSwimSchedulingData(week) {
             `).all(week, period);
 
             const groupRows = db.prepare(`
-                SELECT g.GroupID, g.LevelNumber, g.LevelRangeMax, g.SubLevel, g.CounselorID, g.Locked,
-                       co.FirstName AS CounselorFirstName, co.LastName AS CounselorLastName, co.SwimMaxLevel
+                SELECT g.GroupID, g.LevelNumber, g.LevelRangeMax, g.SubLevel, g.CounselorID, g.CounselorID2, g.Locked,
+                       co.FirstName AS CounselorFirstName, co.LastName AS CounselorLastName, co.SwimMaxLevel,
+                       co2.FirstName AS Counselor2FirstName, co2.LastName AS Counselor2LastName, co2.SwimMaxLevel AS SwimMaxLevel2
                 FROM SwimLessonGroups g
                 LEFT JOIN Counselors co ON co.CounselorID = g.CounselorID
+                LEFT JOIN Counselors co2 ON co2.CounselorID = g.CounselorID2
                 WHERE g.WeekNumber = ? AND g.PeriodNumber = ?
                 ORDER BY g.LevelNumber, g.SubLevel, g.GroupID
             `).all(week, period);
@@ -3449,13 +3507,24 @@ function getSwimSchedulingData(week) {
                         return { label: isRanged ? `Level ${e.levelNumber} (${subText})` : subText, count: e.count };
                     });
 
+                // A group of exactly 5 needs a co-instructor; over 5 needs a manual split
+                // (see /swim-scheduling/split-group) rather than a third slot.
+                const needsSecondInstructor = members.length >= 5;
+                const overSized = members.length > 5;
+                const aboveLevel1 = !!g.CounselorID && (g.SwimMaxLevel ?? 3) < effectiveMaxLevel;
+                const aboveLevel2 = !!g.CounselorID2 && (g.SwimMaxLevel2 ?? 3) < effectiveMaxLevel;
+
                 return {
                     ...g,
                     effectiveMaxLevel,
                     levelLabel: `Level ${g.LevelNumber}${isRanged ? '–' + g.LevelRangeMax : ''}`,
                     members,
                     composition,
-                    aboveLevel: !!g.CounselorID && (g.SwimMaxLevel ?? 3) < effectiveMaxLevel
+                    needsSecondInstructor,
+                    overSized,
+                    aboveLevel1,
+                    aboveLevel2,
+                    aboveLevel: aboveLevel1 || aboveLevel2
                 };
             });
 
@@ -3477,6 +3546,35 @@ function getSwimSchedulingData(week) {
         periods.push({ period, rec, lessons });
     }
     return periods;
+}
+
+// Attaches `sendToSportsReady`/`sendToSports` to each period in place: once a period's Rec
+// Swim guards, Swim Lessons pool guards, and every non-empty lesson group's instructor
+// slot(s) are fully staffed, any swim counselor not used anywhere that period is genuinely
+// spare and can be sent to help Sports instead. Before that (still short-staffed), nobody is
+// "spare" — an unassigned counselor might still be needed for swim, so the list stays empty
+// rather than wrongly suggesting they're free.
+function attachSendToSports(periods, swimCounselors) {
+    for (const p of periods) {
+        const usedIds = new Set();
+        if (p.rec) p.rec.guards.forEach(g => usedIds.add(g.CounselorID));
+        if (p.lessons) {
+            p.lessons.guards.forEach(g => usedIds.add(g.CounselorID));
+            p.lessons.groups.forEach(g => {
+                if (g.CounselorID) usedIds.add(g.CounselorID);
+                if (g.CounselorID2) usedIds.add(g.CounselorID2);
+            });
+        }
+
+        const recReady = !p.rec || p.rec.guards.length >= p.rec.requiredGuards;
+        const lessonsReady = !p.lessons || (
+            p.lessons.guards.length >= p.lessons.requiredGuards &&
+            p.lessons.groups.every(g => g.members.length === 0 || (g.CounselorID && (!g.needsSecondInstructor || g.CounselorID2)))
+        );
+
+        p.sendToSportsReady = recReady && lessonsReady;
+        p.sendToSports = p.sendToSportsReady ? swimCounselors.filter(c => !usedIds.has(c.CounselorID)) : [];
+    }
 }
 
 // Plain-language issues the swim director should look at: under-guarded periods, empty
@@ -3504,10 +3602,21 @@ function getSwimWarnings(periods) {
             p.lessons.guards.forEach(g => bump(p.period, g.CounselorID, `${g.FirstName} ${g.LastName} guarding Swim Lessons`));
             p.lessons.groups.forEach(g => {
                 if (g.members.length === 0) warnings.push(`Period ${p.period}: ${g.levelLabel} group is empty`);
+                if (g.overSized) {
+                    warnings.push(`Period ${p.period}: ${g.levelLabel} group has ${g.members.length} campers (max 5 per group) — split it into two groups`);
+                } else if (g.needsSecondInstructor && (!g.CounselorID || !g.CounselorID2)) {
+                    warnings.push(`Period ${p.period}: ${g.levelLabel} group has 5 campers and needs a second instructor`);
+                }
                 if (g.CounselorID) {
                     bump(p.period, g.CounselorID, `${g.CounselorFirstName} ${g.CounselorLastName} teaching ${g.levelLabel}`);
-                    if (g.aboveLevel) {
+                    if (g.aboveLevel1) {
                         warnings.push(`Period ${p.period}: ${g.CounselorFirstName} ${g.CounselorLastName} is teaching ${g.levelLabel}, above their max level`);
+                    }
+                }
+                if (g.CounselorID2) {
+                    bump(p.period, g.CounselorID2, `${g.Counselor2FirstName} ${g.Counselor2LastName} teaching ${g.levelLabel}`);
+                    if (g.aboveLevel2) {
+                        warnings.push(`Period ${p.period}: ${g.Counselor2FirstName} ${g.Counselor2LastName} is teaching ${g.levelLabel}, above their max level`);
                     }
                 }
             });
@@ -3532,10 +3641,11 @@ app.get('/swim-scheduling', (req, res) => {
     const periods = getSwimSchedulingData(week);
     const warnings = getSwimWarnings(periods);
 
-    const tally = getCounselorWaterTally(week);
+    const breakdown = getCounselorWaterBreakdown(week);
     const swimCounselors = db.prepare(
         "SELECT CounselorID, FirstName, LastName, SwimMaxLevel FROM Counselors WHERE StaffRole = 'Swim Counselor' ORDER BY LastName, FirstName"
-    ).all().map(c => ({ ...c, inWater: tally[c.CounselorID]?.inWater || 0, outWater: tally[c.CounselorID]?.outWater || 0 }));
+    ).all().map(c => ({ ...c, ...(breakdown[c.CounselorID] || { amIn: 0, amOut: 0, pmIn: 0, pmOut: 0 }) }));
+    attachSendToSports(periods, swimCounselors);
 
     res.render('swim-scheduling', {
         week, weekLabel, sessions, periods, warnings, swimCounselors,
@@ -3566,6 +3676,37 @@ app.post('/swim-scheduling/delete-group', (req, res) => {
     const week = parseInt(req.body.weekNumber);
     db.prepare('DELETE FROM SwimLessonGroups WHERE GroupID = ?').run(groupId);
     res.redirect(`/swim-scheduling?week=${week}&message=Group+deleted`);
+});
+
+// Splits an oversized group (>5 campers) into evenly-sized groups of <=5 via chunkCampers,
+// each with its own single instructor slot — the original group keeps the first chunk (and
+// whatever instructor(s) it already had); the rest become new, unlocked, uninstructed
+// groups at the same level/period.
+app.post('/swim-scheduling/split-group', (req, res) => {
+    const week = parseInt(req.body.weekNumber);
+    const groupId = parseInt(req.body.groupId);
+    const group = db.prepare('SELECT * FROM SwimLessonGroups WHERE GroupID = ?').get(groupId);
+    if (!group) return res.redirect(`/swim-scheduling?week=${week}&message=Group+not+found`);
+
+    const memberIds = db.prepare('SELECT CamperID FROM SwimLessonGroupMembers WHERE GroupID = ?').all(groupId).map(m => m.CamperID);
+    if (memberIds.length <= 5) return res.redirect(`/swim-scheduling?week=${week}&message=Group+does+not+need+splitting`);
+
+    const chunks = chunkCampers(memberIds, 5);
+    const insGroupStmt = db.prepare('INSERT INTO SwimLessonGroups (WeekNumber, PeriodNumber, LevelNumber, LevelRangeMax, SubLevel) VALUES (?, ?, ?, ?, ?)');
+    const insMember = db.prepare('INSERT INTO SwimLessonGroupMembers (GroupID, CamperID) VALUES (?, ?)');
+    const delMember = db.prepare('DELETE FROM SwimLessonGroupMembers WHERE GroupID = ? AND CamperID = ?');
+
+    db.transaction(() => {
+        for (let i = 1; i < chunks.length; i++) {
+            const info = insGroupStmt.run(group.WeekNumber, group.PeriodNumber, group.LevelNumber, group.LevelRangeMax, group.SubLevel);
+            for (const camperId of chunks[i]) {
+                delMember.run(groupId, camperId);
+                insMember.run(info.lastInsertRowid, camperId);
+            }
+        }
+    })();
+
+    res.redirect(`/swim-scheduling?week=${week}&message=Group+split+into+${chunks.length}+groups`);
 });
 
 // Combines two groups in the same period into one — for small adjacent-level classes
@@ -3614,11 +3755,14 @@ app.post('/swim-scheduling/toggle-group-lock', (req, res) => {
     res.redirect(`/swim-scheduling?week=${week}&message=Lock+updated`);
 });
 
+// `slot` selects which instructor column to update — "2" for the second slot a group of
+// exactly 5 campers gets, otherwise the first/only slot.
 app.post('/swim-scheduling/assign-instructor', (req, res) => {
     const groupId = parseInt(req.body.groupId);
     const week = parseInt(req.body.weekNumber);
     const counselorId = parseInt(req.body.counselorId) || null;
-    db.prepare('UPDATE SwimLessonGroups SET CounselorID = ? WHERE GroupID = ?').run(counselorId, groupId);
+    const column = req.body.slot === '2' ? 'CounselorID2' : 'CounselorID';
+    db.prepare(`UPDATE SwimLessonGroups SET ${column} = ? WHERE GroupID = ?`).run(counselorId, groupId);
     res.redirect(`/swim-scheduling?week=${week}&message=Instructor+updated`);
 });
 

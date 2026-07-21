@@ -73,6 +73,7 @@ CREATE TABLE SwimLessonGroups (
     CounselorID  INTEGER,           -- nullable until assigned
     Locked       INTEGER DEFAULT 0, -- protects from Generate Groups regeneration
     LevelRangeMax INTEGER CHECK(LevelRangeMax BETWEEN 1 AND 6 OR LevelRangeMax IS NULL), -- [migrated]
+    CounselorID2 INTEGER, -- [migrated] second instructor slot, used when the group has exactly 5 campers
     FOREIGN KEY (CounselorID) REFERENCES Counselors(CounselorID) ON DELETE SET NULL
 );
 CREATE TABLE SwimLessonGroupMembers (
@@ -98,9 +99,15 @@ Runs per period offering `'Swim Lessons'` that week (checked against `WeeklyOffe
 1. Deletes all **unlocked** `SwimLessonGroups` for that week+period; campers already in a **Locked** group are excluded from re-bucketing entirely (their group and membership are untouched).
 2. Everyone else currently enrolled in Swim Lessons that period is bucketed by `getEffectiveSwimLevel()` — campers with no recorded level are left out (they surface in the UI as "Not yet in a group" instead of being silently dropped).
 3. Within a level, each sub-level (`Low`/`High`/plain) with **≥3** campers becomes its own pool; sub-levels with **<3** are merged into one mixed pool for that level.
-4. Each pool is split into `isNew` (a `CamperSwimLevels` row written *this* week — i.e. freshly tested) vs `returning`, chunked separately via `chunkCampers()`: newly-tested campers at max size 4 (so they seed their own small group, 2-4 kids, rather than topping off an existing class), returning campers at max size 6. `chunkCampers()` splits as evenly as possible (11 campers at max 6 → `[6,5]`, not a lopsided `[6,6,-1]`).
+4. Each pool is split into `isNew` (a `CamperSwimLevels` row written *this* week — i.e. freshly tested) vs `returning`, chunked separately via `chunkCampers()`: newly-tested campers at max size 4 (so they seed their own small group, 2-4 kids, rather than topping off an existing class), returning campers at max size **5** (a group's hard cap — see below). `chunkCampers()` splits as evenly as possible (11 campers at max 5 → `[4,4,3]`, not a lopsided `[5,5,1]`).
 
 A same-level pool can end up with more than one `SubLevel = NULL` group in one run (e.g. a ≥3 "plain" pool and a separate <3-sublevel mixed-leftover pool) — both are valid, correctly-sized groups; merging them (below) is one way to consolidate that ambiguity by hand.
+
+### Group size limit: second instructor slot & splitting
+
+A single instructor can teach up to 4 campers alone. At exactly **5** campers, `getSwimSchedulingData()` sets `needsSecondInstructor = true` and the group card shows a second "Instructor 2" picker (`CounselorID2`) — both slots are independent `POST /swim-scheduling/assign-instructor` submits distinguished by a `slot` field (`"2"` targets `CounselorID2`, anything else targets `CounselorID`). Over 5 campers (`overSized = true`, e.g. from manually adding campers to a group or a merge that pushed it past 5), the group needs a hard split rather than a third slot — `getSwimWarnings()` flags it, and the group card shows a **Split** button.
+
+`POST /swim-scheduling/split-group` re-chunks an oversized group's members via `chunkCampers(memberIds, 5)`: the original `GroupID` keeps the first chunk (and whatever instructor(s) it already had), and each remaining chunk becomes a brand-new unlocked, uninstructed `SwimLessonGroups` row at the same week/period/level/sub-level. `autoAssignWeek()` fills whichever instructor slots a group has (1 or 2, depending on `needsSecondInstructor`) but does not split oversized groups itself — that's a manual/deliberate action.
 
 ### Merging groups (`POST /swim-scheduling/merge-group`)
 
@@ -120,31 +127,44 @@ On merge: the source group's campers move into the target group (`SwimLessonGrou
 
 Rendered as small pill tags under the group header in `views/swim-scheduling.ejs`, and reused as a compact `"N label, N label"` string in the "add to group" and "merge into" dropdown option text so two same-range groups with different makeups aren't indistinguishable in a `<select>`.
 
-### `getCounselorWaterTally(week)`
+### `getCounselorWaterTally(week)` / `getCounselorWaterBreakdown(week)`
 
-Returns `{CounselorID: {inWater, outWater}}` for the roster panel: all guard duty (`SwimGuardAssignments`, either role) counts as in-water; teaching a lesson group counts as in-water for levels 1-3 (required in the water) and out-of-water for levels 4-6 (not required). Used for the roster panel display, and as the seed/live-updated state for `autoAssignWeek()`'s balancing (below).
+Per the swim director: **guarding is out-of-water** duty (watching from the deck/chair) and **teaching a lesson group is in-water** (any level — you're in the pool with the campers), counting either instructor slot (`CounselorID` or `CounselorID2`).
+
+- `getCounselorWaterTally(week)` returns `{CounselorID: {inWater, outWater}}` for the whole week — the seed/live-updated running state `autoAssignWeek()` balances against as it assigns.
+- `getCounselorWaterBreakdown(week)` returns `{CounselorID: {amIn, amOut, pmIn, pmOut}}` — the same classification split by period block (1-3 = AM, 4-6 = PM), used only for the roster panel's four-column display so the director can see morning vs. afternoon load separately.
 
 ### Full Auto Assign (`POST /swim-scheduling/auto-assign`)
 
-Fills every open guard slot and un-instructored lesson group for the week in one pass, via `autoAssignWeek(week)`. It never removes or changes anything already set — Locked groups, groups that already have a `CounselorID`, and existing `SwimGuardAssignments` rows are left exactly as they are; the solver only fills gaps. Processed period by period, in this order within each period: **lesson groups, highest effective level to lowest, first**; then Rec Swim guards; then Swim Lessons pool guards. High-level groups have the smallest eligible pool (only counselors certified that high), so they get first pick before that pool is drawn down by guard duty or low-level groups that any swim counselor could just as easily fill — otherwise a Level 6-certified counselor could get soaked up guarding Period 5 while that period's Level 6 group goes unfilled.
+Fills every open guard slot and un-instructored lesson-group instructor slot for the week in one pass, via `autoAssignWeek(week)`. It never removes or changes anything already set — Locked groups, instructor slots that already have a `CounselorID`, and existing `SwimGuardAssignments` rows are left exactly as they are; the solver only fills gaps. Processed period by period, in this order within each period: **lesson groups, highest effective level to lowest, first**; then Rec Swim guards; then Swim Lessons pool guards. High-level groups have the smallest eligible pool (only counselors certified that high), so they get first pick before that pool is drawn down by guard duty or low-level groups that any swim counselor could just as easily fill — otherwise a Level 6-certified counselor could get soaked up guarding Period 5 while that period's Level 6 group goes unfilled. A group with `needsSecondInstructor` gets two picks (its `CounselorID` and `CounselorID2` slots filled independently, in that order — a counselor already picked for slot 1 can't also fill slot 2, same as any other double-booking).
 
 Rules:
-- **Eligibility**: a lesson group needs `COALESCE(SwimMaxLevel, 3) >= effectiveMaxLevel`; anyone on the swim staff (`StaffRole = 'Swim Counselor'`) can guard.
+- **Eligibility**: a lesson group instructor slot needs `COALESCE(SwimMaxLevel, 3) >= effectiveMaxLevel`; anyone on the swim staff (`StaffRole = 'Swim Counselor'`) can guard.
 - **No double-booking**: a counselor already used anywhere in a period (guard or group, including pre-existing manual assignments) is excluded from every other slot in that same period.
 - **Cert reservation**: within a slot's eligible pool, each candidate is scored with a `CERT_RESERVE_WEIGHT` (10) penalty per level of unneeded certification headroom — `SwimMaxLevel` above what the slot actually requires (3 for guarding/level 1-3 groups, since that's the everyone-qualifies floor; the group's own effective level for level 4-6 groups). A Level 3-only counselor has zero penalty guarding or teaching Level 1-3; a Level 6-certified counselor picks up 30 points of penalty for the same slot, pushing them to the back of the line so they're saved for a level that actually needs their certification. Combined with the level-descending processing order above, this is the mechanism that keeps the solver from running out of highly-certified counselors for the classes that require them.
-- **In-water slots** (guarding, or a level 1-3 group): after the cert-reservation penalty, in AM periods (1-3) the picker weights each candidate's historical AM in-water count from `getAmFairnessTally(week)` — every prior week's periods 1-3 — 100x over their running count *this* run, so whoever has done the least early-morning duty across the summer wins; only ties fall back to this-week balance. In PM periods (4-6), history is ignored entirely and the picker just takes whoever has the fewest in-water assignments so far this week, targeting roughly 2 per counselor.
-- **Out-of-water slots** (level 4-6 groups): after the cert-reservation penalty, picked by fewest out-of-water assignments so far this week, targeting roughly 1 per counselor.
-- This is a greedy heuristic, not an optimal solver — it targets the cert-reservation, ~2-in-water/~1-out-of-water PM balance, and AM fairness described above, but doesn't guarantee an exact optimum. If it still can't fill a slot (no eligible, not-yet-used counselor), that slot is left open and counted in the `unfilled` total shown in the result message; `getSwimWarnings()` will then flag the resulting under-guarded period or empty group on the next render.
+- **Guard slots** (out-of-water): after the cert-reservation penalty, in AM periods (1-3) the picker weights each candidate's historical AM guard-duty count from `getAmFairnessTally(week)` — every prior week's periods 1-3 — 100x over their running out-of-water count *this* run, so whoever has done the least early-morning guarding across the summer wins; only ties fall back to this-week balance. In PM periods (4-6), history is ignored entirely and the picker just takes whoever has guarded the least so far this week.
+- **Lesson-group instructor slots** (in-water): after the cert-reservation penalty, picked by fewest teaching assignments so far this week, so teaching load balances out across the swim staff.
+- This is a greedy heuristic, not an optimal solver — it targets the cert-reservation and fairness balancing described above, but doesn't guarantee an exact optimum. If it still can't fill a slot (no eligible, not-yet-used counselor), that slot is left open and counted in the `unfilled` total shown in the result message; `getSwimWarnings()` will then flag the resulting under-guarded period, empty group, or missing second instructor on the next render.
 
-`getAmFairnessTally(week)` is the same in/out classification as `getCounselorWaterTally()`, restricted to periods 1-3 and weeks strictly before the target week.
+`getAmFairnessTally(week)` counts only guard assignments (`SwimGuardAssignments`, since guarding is the out-of-water duty being rotated fairly week to week), restricted to periods 1-3 and weeks strictly before the target week.
+
+### Send to Sports
+
+Each period card ends with a "Send to Sports" box: once that period is **fully staffed** — Rec Swim guards met, Swim Lessons pool guards met, and every non-empty lesson group has all its instructor slot(s) filled (both `CounselorID` and `CounselorID2` when `needsSecondInstructor`) — any swim counselor not used anywhere in that period genuinely has nothing to do in swim and can be sent to help Sports instead.
+
+Computed by `attachSendToSports(periods, swimCounselors)` in `app.js`, called from the `GET /swim-scheduling` handler right after `swimCounselors` is built (it needs the full roster to know who's unused). It mutates each period in place with:
+- `sendToSportsReady` — `true` once the period's guard/instructor requirements are all met (an **empty** lesson group doesn't block readiness — no campers, nothing to staff).
+- `sendToSports` — the list of unused swim counselors, only populated when `sendToSportsReady` is `true`. While a period is still short-staffed, this stays empty on purpose: an unassigned counselor might still be needed for swim, so nobody is claimed as "spare" until the period's real needs are actually covered.
+
+This is purely a computed, render-time display (same convention as `getSwimWarnings()`) — no new table, no persisted state, no action button. Running **Full Auto Assign** is the normal way to get a period to `sendToSportsReady`, but the box updates from whatever staffing state exists (manual or automatic) on every render.
 
 ### Greyed-out names in the manual pickers
 
-The Rec Swim guard checklist, Swim Lessons pool guard checklist, and each group's instructor `<select>` grey out (and label with what they're already doing) any counselor who's assigned to something else in that same period — computed inline per period card in `views/swim-scheduling.ejs` from `p.rec.guards`, `p.lessons.guards`, and `p.lessons.groups`. This is display-only: greyed names stay clickable/selectable, since the director may deliberately want to double-book someone (e.g. a brief overlap) — `getSwimWarnings()` still catches and flags any resulting double-booking on the next render.
+The Rec Swim guard checklist, Swim Lessons pool guard checklist, and each group's instructor `<select>`(s) grey out (and label with what they're already doing) any counselor who's assigned to something else in that same period — computed inline per period card in `views/swim-scheduling.ejs` from `p.rec.guards`, `p.lessons.guards`, and `p.lessons.groups`. A group's two instructor slots use distinct role tags (`group-<id>-1` / `group-<id>-2`) so picking someone for slot 1 correctly greys them out of slot 2 of the *same* group too. This is display-only: greyed names stay clickable/selectable, since the director may deliberately want to double-book someone (e.g. a brief overlap) — `getSwimWarnings()` still catches and flags any resulting double-booking on the next render.
 
 ### `getSwimWarnings(periods)`
 
-Computed at render time, never stored. Flags: a period's Rec Swim or Swim Lessons guard count below the required threshold; an empty lesson group; a counselor assigned to teach a group above their `SwimMaxLevel`; and any counselor appearing in more than one guard/instructor slot in the same period (double-booked) — tracked via a `period|counselorId` map built while walking the same `periods` structure the page renders.
+Computed at render time, never stored. Flags: a period's Rec Swim or Swim Lessons guard count below the required threshold; an empty lesson group; a group over 5 campers that needs splitting; a group of exactly 5 campers missing one or both instructors; a counselor assigned to teach a group above their `SwimMaxLevel` (checked per slot); and any counselor appearing in more than one guard/instructor slot in the same period (double-booked) — tracked via a `period|counselorId` map built while walking the same `periods` structure the page renders.
 
 ### Routes
 
@@ -155,19 +175,20 @@ Computed at render time, never stored. Flags: a period's Rec Swim or Swim Lesson
 | POST | `/swim-scheduling/create-group` | Manually add an empty group (period + level + sub-level) |
 | POST | `/swim-scheduling/delete-group` | Deletes a group; members become "Not yet in a group" (CASCADE) |
 | POST | `/swim-scheduling/merge-group` | Merges a source group into a target group in the same period; widens the target's level range, locks it, deletes the source |
+| POST | `/swim-scheduling/split-group` | Splits a group over 5 campers into groups of 5 or fewer via `chunkCampers()`; original `GroupID` keeps the first chunk, the rest are new unlocked/uninstructed groups |
 | POST | `/swim-scheduling/toggle-group-lock` | Flips `Locked` |
-| POST | `/swim-scheduling/assign-instructor` | Sets a group's `CounselorID` |
+| POST | `/swim-scheduling/assign-instructor` | Sets a group's `CounselorID` (or `CounselorID2` when `slot=2`, for the second instructor a 5-camper group gets) |
 | POST | `/swim-scheduling/assign-camper` | Adds a camper to a group (`INSERT OR IGNORE`) |
 | POST | `/swim-scheduling/remove-camper` | Removes a camper from a group (they become ungrouped, reassignable) |
 | POST | `/swim-scheduling/save-guards` | Full replace of a `(week, period, guardRole)` guard set from a checkbox list |
 | POST | `/swim-scheduling/save-certifications` | Bulk-updates every swim counselor's `Counselors.SwimMaxLevel` in one submit |
-| POST | `/swim-scheduling/auto-assign` | Runs `autoAssignWeek()` — fills open guard slots and un-instructored groups, leaves everything already set untouched |
+| POST | `/swim-scheduling/auto-assign` | Runs `autoAssignWeek()` — fills open guard slots and un-instructored group slots, leaves everything already set untouched |
 
 ### Edit Swim Certifications panel
 
 A collapsible (`<details>`/`<summary>`, closed by default) section on `/swim-scheduling` that bulk-edits `SwimMaxLevel` for every swim counselor at once, instead of going through each counselor's profile individually. One `<select>` per counselor, parallel hidden `counselorId` inputs matching by submission order (same repeated-name-array convention as the guard checkboxes — Express parses same-named fields into arrays in DOM order), one `POST /swim-scheduling/save-certifications` for the whole table.
 
-"Move a camper between groups" and "merge/split a group" aren't dedicated actions — they're composed from `assign-camper`/`remove-camper`/`create-group`/`delete-group`, matching this codebase's convention of small single-purpose routes over one dispatcher endpoint.
+"Move a camper between groups" isn't a dedicated action — it's composed from `assign-camper`/`remove-camper`, matching this codebase's convention of small single-purpose routes over one dispatcher endpoint. Splitting an oversized group *is* dedicated (`split-group`), since re-chunking members evenly needed real logic (`chunkCampers()`), not just a couple of inserts/deletes.
 
 ---
 
