@@ -153,6 +153,28 @@
         <div class="card swim-period-card">
             <h2 style="margin:0 0 12px; font-size:1.15rem;">Period <%= p.period %></h2>
 
+            <%
+                // Who's already doing what else this period, so counselor pickers below can
+                // grey out (and label) names that are taken elsewhere in this same period —
+                // display only, still selectable, since an override may be intentional.
+                var periodAssignments = {};
+                function addAssignment(id, role, label) {
+                    if (!id) return;
+                    (periodAssignments[id] = periodAssignments[id] || []).push({ role: role, label: label });
+                }
+                if (p.rec) { p.rec.guards.forEach(function(g) { addAssignment(g.CounselorID, 'rec-guard', 'guarding Rec Swim'); }); }
+                if (p.lessons) {
+                    p.lessons.guards.forEach(function(g) { addAssignment(g.CounselorID, 'lessons-guard', 'guarding Swim Lessons'); });
+                    p.lessons.groups.forEach(function(g) { if (g.CounselorID) addAssignment(g.CounselorID, 'group-' + g.GroupID, 'teaching ' + g.levelLabel); });
+                }
+                function elsewhereLabel(counselorId, selfRole) {
+                    var list = periodAssignments[counselorId];
+                    if (!list) return null;
+                    var other = list.filter(function(a) { return a.role !== selfRole; });
+                    return other.length > 0 ? other.map(function(a) { return a.label; }).join(', ') : null;
+                }
+            %>
+
             <% if (p.rec) { %>
             <div class="swim-subsection">
                 <h4>&#127946; Rec Swim
@@ -168,10 +190,11 @@
                     <input type="hidden" name="guardRole" value="Rec">
                     <div class="guard-checklist">
                         <% swimCounselors.forEach(function(c) { %>
-                            <label>
+                            <% var elsewhere = elsewhereLabel(c.CounselorID, 'rec-guard'); %>
+                            <label style="<%= elsewhere ? 'color:#94a3b8;' : '' %>">
                                 <input type="checkbox" name="counselorIds" value="<%= c.CounselorID %>"
                                     <%= p.rec.guards.some(function(g) { return g.CounselorID === c.CounselorID; }) ? 'checked' : '' %>>
-                                <%= c.FirstName %> <%= c.LastName %>
+                                <%= c.FirstName %> <%= c.LastName %><% if (elsewhere) { %><span style="font-size:0.72rem;"> (<%= elsewhere %>)</span><% } %>
                             </label>
                         <% }) %>
                     </div>
@@ -193,10 +216,11 @@
                     <input type="hidden" name="guardRole" value="Lessons">
                     <div class="guard-checklist">
                         <% swimCounselors.forEach(function(c) { %>
-                            <label>
+                            <% var elsewhere = elsewhereLabel(c.CounselorID, 'lessons-guard'); %>
+                            <label style="<%= elsewhere ? 'color:#94a3b8;' : '' %>">
                                 <input type="checkbox" name="counselorIds" value="<%= c.CounselorID %>"
                                     <%= p.lessons.guards.some(function(g) { return g.CounselorID === c.CounselorID; }) ? 'checked' : '' %>>
-                                <%= c.FirstName %> <%= c.LastName %>
+                                <%= c.FirstName %> <%= c.LastName %><% if (elsewhere) { %><span style="font-size:0.72rem;"> (<%= elsewhere %>)</span><% } %>
                             </label>
                         <% }) %>
                     </div>
@@ -280,8 +304,9 @@
                             <option value="">— unassigned —</option>
                             <% swimCounselors.forEach(function(c) { %>
                                 <% var eligible = (c.SwimMaxLevel || 3) >= g.effectiveMaxLevel; %>
-                                <option value="<%= c.CounselorID %>" <%= g.CounselorID === c.CounselorID ? 'selected' : '' %> <%= (!eligible && g.CounselorID !== c.CounselorID) ? 'disabled' : '' %>>
-                                    <%= c.FirstName %> <%= c.LastName %><%= eligible ? '' : ' (below level)' %>
+                                <% var elsewhere = elsewhereLabel(c.CounselorID, 'group-' + g.GroupID); %>
+                                <option value="<%= c.CounselorID %>" <%= g.CounselorID === c.CounselorID ? 'selected' : '' %> <%= (!eligible && g.CounselorID !== c.CounselorID) ? 'disabled' : '' %> style="<%= elsewhere ? 'color:#94a3b8;' : '' %>">
+                                    <%= c.FirstName %> <%= c.LastName %><%= eligible ? '' : ' (below level)' %><%= elsewhere ? ' (' + elsewhere + ')' : '' %>
                                 </option>
                             <% }) %>
                         </select>

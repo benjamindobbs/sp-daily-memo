@@ -1411,25 +1411,36 @@ function getAmFairnessTally(week) {
 // Fills every open guard slot and un-instructored lesson group for the week. Never removes
 // or changes anything already set — Locked groups, groups that already have a CounselorID,
 // and existing SwimGuardAssignments rows are left as-is; this only fills the gaps. Greedy,
-// period-by-period, in this order per period: Rec guards, Lessons guards, then lesson
-// groups low level to high:
+// period-by-period, in this order per period: lesson groups highest effective level to
+// lowest, THEN Rec guards, THEN Lessons guards — high-level groups have the smallest
+// eligible pool (only counselors certified that high), so they get first pick before that
+// pool is drawn down by guard duty or low-level groups that anyone could fill instead:
 //   - Eligibility: a lesson group needs COALESCE(SwimMaxLevel,3) >= its effective max level;
 //     anyone on the swim staff can guard.
 //   - No counselor is used twice in the same period (guard duty and teaching are mutually
 //     exclusive within a period).
-//   - In-water slots (guarding, or a level 1-3 group) prefer, in AM periods (1-3), whoever
-//     has the least cumulative AM in-water duty across prior weeks this summer; in PM
-//     periods (4-6) they prefer whoever has the fewest in-water assignments so far *this*
-//     week, targeting ~2 in-water PM slots per counselor.
-//   - Out-of-water slots (level 4-6 groups) prefer whoever has the fewest out-of-water
+//   - Within a slot's eligible pool, a CERT_RESERVE_WEIGHT penalty per level of unneeded
+//     headroom (SwimMaxLevel above what the slot actually requires — 3 for guarding/levels
+//     1-3, the group's own effective level for levels 4-6) pushes minimally-qualified
+//     candidates to the front, so a Level 6-certified counselor isn't spent guarding or
+//     teaching Level 1 while a Level 6 class still needs staffing that period.
+//   - In-water slots (guarding, or a level 1-3 group) then prefer, in AM periods (1-3),
+//     whoever has the least cumulative AM in-water duty across prior weeks this summer; in
+//     PM periods (4-6) they prefer whoever has the fewest in-water assignments so far
+//     *this* week, targeting ~2 in-water PM slots per counselor.
+//   - Out-of-water slots (level 4-6 groups) then prefer whoever has the fewest out-of-water
 //     assignments so far this week, targeting ~1 per counselor.
 // Returns {filled, unfilled} slot counts for the summary message.
+const CERT_RESERVE_WEIGHT = 10;
+
 function autoAssignWeek(week) {
     const periods = getSwimSchedulingData(week);
     const swimCounselors = db.prepare(
         "SELECT CounselorID, SwimMaxLevel FROM Counselors WHERE StaffRole = 'Swim Counselor'"
     ).all();
     const allIds = swimCounselors.map(c => c.CounselorID);
+    const certById = {};
+    swimCounselors.forEach(c => { certById[c.CounselorID] = c.SwimMaxLevel ?? 3; });
 
     const amHistTally = getAmFairnessTally(week);
     const runningTally = getCounselorWaterTally(week); // id -> {inWater, outWater}, updated live as we assign
@@ -1437,9 +1448,12 @@ function autoAssignWeek(week) {
         runningTally[id] ??= { inWater: 0, outWater: 0 };
         runningTally[id][inWater ? 'inWater' : 'outWater']++;
     };
+    // requiredLevel is the true floor a slot needs (3 for guarding/levels 1-3, since that's
+    // the default everyone-can-teach ceiling); any cert above that is unused headroom.
+    const certPenalty = (id, requiredLevel) => Math.max(0, (certById[id] ?? 3) - requiredLevel) * CERT_RESERVE_WEIGHT;
     const scoreInWater = (id, period) =>
-        (period <= 3 ? (amHistTally[id] || 0) * 100 : 0) + (runningTally[id]?.inWater || 0);
-    const scoreOutWater = id => runningTally[id]?.outWater || 0;
+        certPenalty(id, 3) + (period <= 3 ? (amHistTally[id] || 0) * 100 : 0) + (runningTally[id]?.inWater || 0);
+    const scoreOutWater = (id, requiredLevel) => certPenalty(id, requiredLevel) + (runningTally[id]?.outWater || 0);
 
     // Best-scoring eligible counselor not already used this period, or null if none qualify.
     const pick = (usedThisPeriod, eligibleIds, scoreFn) => {
@@ -1466,6 +1480,26 @@ function autoAssignWeek(week) {
                 p.lessons.groups.forEach(g => { if (g.CounselorID) usedThisPeriod.add(g.CounselorID); });
             }
 
+            if (p.lessons) {
+                const openGroups = p.lessons.groups
+                    .filter(g => !g.Locked && !g.CounselorID)
+                    .slice()
+                    .sort((a, b) => b.effectiveMaxLevel - a.effectiveMaxLevel);
+
+                for (const g of openGroups) {
+                    const inWater = g.effectiveMaxLevel <= 3;
+                    const eligible = swimCounselors
+                        .filter(c => (c.SwimMaxLevel ?? 3) >= g.effectiveMaxLevel)
+                        .map(c => c.CounselorID);
+                    const id = pick(usedThisPeriod, eligible, cid => inWater ? scoreInWater(cid, p.period) : scoreOutWater(cid, g.effectiveMaxLevel));
+                    if (id == null) { unfilled++; continue; }
+                    updGroup.run(id, g.GroupID);
+                    usedThisPeriod.add(id);
+                    bumpRunning(id, inWater);
+                    filled++;
+                }
+            }
+
             if (p.rec) {
                 const need = p.rec.requiredGuards - p.rec.guards.length;
                 for (let i = 0; i < need; i++) {
@@ -1486,24 +1520,6 @@ function autoAssignWeek(week) {
                     insGuard.run(week, p.period, 'Lessons', id);
                     usedThisPeriod.add(id);
                     bumpRunning(id, true);
-                    filled++;
-                }
-
-                const openGroups = p.lessons.groups
-                    .filter(g => !g.Locked && !g.CounselorID)
-                    .slice()
-                    .sort((a, b) => a.effectiveMaxLevel - b.effectiveMaxLevel);
-
-                for (const g of openGroups) {
-                    const inWater = g.effectiveMaxLevel <= 3;
-                    const eligible = swimCounselors
-                        .filter(c => (c.SwimMaxLevel ?? 3) >= g.effectiveMaxLevel)
-                        .map(c => c.CounselorID);
-                    const id = pick(usedThisPeriod, eligible, cid => inWater ? scoreInWater(cid, p.period) : scoreOutWater(cid));
-                    if (id == null) { unfilled++; continue; }
-                    updGroup.run(id, g.GroupID);
-                    usedThisPeriod.add(id);
-                    bumpRunning(id, inWater);
                     filled++;
                 }
             }
