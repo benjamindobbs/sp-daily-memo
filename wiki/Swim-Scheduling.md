@@ -209,6 +209,10 @@ Computed by `attachSendToSports(periods, swimCounselors)` in `app.js`, called fr
 
 This is purely a computed, render-time display (same convention as `getSwimWarnings()`) — no new table, no persisted state, no action button. Running **Full Auto Assign** is the normal way to get a period to `sendToSportsReady`, but the box updates from whatever staffing state exists (manual or automatic) on every render.
 
+### Show/hide per period
+
+Each period card is a `<details>`/`<summary>` (open by default), same collapsible convention used elsewhere in this feature (`/swim-levels`, Edit Swim Certifications, Recent Merges) — click the "Period N" header to collapse/expand that period's guards, lesson groups, and Send to Sports box. Display-only, no state persisted across page loads.
+
 ### Greyed-out names in the manual pickers
 
 The Rec Swim guard checklist, Swim Lessons pool guard checklist, and each group's instructor `<select>`(s) grey out (and label with what they're already doing) any counselor who's assigned to something else in that same period — computed inline per period card in `views/swim-scheduling.ejs` from `p.rec.guards`, `p.lessons.guards`, and `p.lessons.groups`. A group's two instructor slots use distinct role tags (`group-<id>-1` / `group-<id>-2`) so picking someone for slot 1 correctly greys them out of slot 2 of the *same* group too. This is display-only: greyed names stay clickable/selectable, since the director may deliberately want to double-book someone (e.g. a brief overlap) — `getSwimWarnings()` still catches and flags any resulting double-booking on the next render.
