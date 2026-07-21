@@ -465,6 +465,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/promote-waitlist', '/force-promote-waitlist', '/promote-all', '/remove-waitlist', '/upload-campers', '/upload-campers-schedule', '/upload-counselors',
     '/upload-bus-am', '/upload-bus-pm', '/upload-kp-lp',
     '/upload-staff', '/upload-staff-contacts', '/upload-instructors', '/upload-activity-rules', '/add-activity',
+    '/swim-levels', '/upload-swim-levels',
     '/delete-activity', '/update-activity', '/add-activity-period-group',
     '/delete-activity-period-group', '/sync-activity-groups',
     '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings', '/sync-offerings-from-schedule', '/api/sync-offerings',
@@ -1194,6 +1195,52 @@ try {
     if (!cCols.includes('IncludeInStaffDropdown')) db.exec("ALTER TABLE Counselors ADD COLUMN IncludeInStaffDropdown INTEGER DEFAULT 0");
     if (!cCols.includes('Gender')) db.exec("ALTER TABLE Counselors ADD COLUMN Gender TEXT CHECK(Gender IN ('M','F') OR Gender IS NULL)");
 } catch(e) { console.error('[migration] Counselors.Phone/Email/IncludeInStaffDropdown/Gender:', e.message); }
+
+// Migration: highest swim-lesson level a counselor is certified to teach (NULL = levels 1-3 only, the default floor)
+try {
+    const cCols = db.prepare("PRAGMA table_info(Counselors)").all().map(c => c.name);
+    if (!cCols.includes('SwimMaxLevel')) db.exec("ALTER TABLE Counselors ADD COLUMN SwimMaxLevel INTEGER CHECK(SwimMaxLevel BETWEEN 1 AND 6 OR SwimMaxLevel IS NULL)");
+} catch(e) { console.error('[migration] Counselors.SwimMaxLevel:', e.message); }
+
+// Camper swim level, snapshotted per week. A missing WeekNumber row means "unchanged since
+// their last recorded level" — getEffectiveSwimLevel() below walks backward to find it.
+db.exec(`CREATE TABLE IF NOT EXISTS CamperSwimLevels (
+    CamperID    INTEGER NOT NULL,
+    WeekNumber  INTEGER NOT NULL CHECK(WeekNumber BETWEEN 1 AND 6),
+    LevelNumber INTEGER NOT NULL CHECK(LevelNumber BETWEEN 1 AND 6),
+    SubLevel    TEXT CHECK(SubLevel IN ('Low','High') OR SubLevel IS NULL),
+    UpdatedAt   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (CamperID, WeekNumber),
+    FOREIGN KEY (CamperID) REFERENCES Campers(CamperID) ON DELETE CASCADE
+)`);
+
+// A camper's swim level as of a given week: their own WeekNumber row if tested that week,
+// otherwise the most recent earlier week's level (levels persist until retested).
+function getEffectiveSwimLevel(camperId, weekNumber) {
+    return db.prepare(`
+        SELECT LevelNumber, SubLevel, WeekNumber
+        FROM CamperSwimLevels
+        WHERE CamperID = ? AND WeekNumber <= ?
+        ORDER BY WeekNumber DESC
+        LIMIT 1
+    `).get(camperId, weekNumber) || null;
+}
+
+// Formats a level for display: "Low 2", "2", "High 2".
+function formatSwimLevel(row) {
+    if (!row) return null;
+    return row.SubLevel ? `${row.SubLevel} ${row.LevelNumber}` : String(row.LevelNumber);
+}
+
+// Parses a swim level export value ("2", "Low 2", "High 3") into {levelNumber, subLevel}. Null if blank/unrecognized.
+function parseSwimLevelValue(raw) {
+    const m = /^(Low|High)?\s*([1-6])$/i.exec((raw || '').trim());
+    if (!m) return null;
+    return {
+        levelNumber: parseInt(m[2], 10),
+        subLevel: m[1] ? (m[1][0].toUpperCase() + m[1].slice(1).toLowerCase()) : null
+    };
+}
 
 // Migration: track schedule types set by hand so auto-build never overwrites them
 try {
@@ -2938,6 +2985,57 @@ app.post('/update-class-location', (req, res) => {
     res.redirect(`/class-roster/${periodNumber}/${encodeURIComponent(activityName)}`);
 });
 
+// --- SWIM LEVELS ---
+const SWIM_ACTIVITY_NAMES = ['Rec Swim', 'Swim Lessons'];
+
+app.get('/swim-levels', (req, res) => {
+    const isAdmin = req.cookies.adminAuth === 'true';
+    const week = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
+    const ph = SWIM_ACTIVITY_NAMES.map(() => '?').join(',');
+
+    const swimmers = db.prepare(`
+        SELECT DISTINCT c.CamperID, c.FirstName, c.LastName
+        FROM Campers c
+        JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper' AND s.WeekNumber = ?
+        WHERE s.ActivityName IN (${ph})
+        ORDER BY c.LastName, c.FirstName
+    `).all(week, ...SWIM_ACTIVITY_NAMES);
+
+    const rows = swimmers.map(c => {
+        const effective = getEffectiveSwimLevel(c.CamperID, week);
+        return {
+            ...c,
+            level: formatSwimLevel(effective),
+            levelNumber: effective ? effective.LevelNumber : null,
+            subLevel: effective ? effective.SubLevel : null,
+            testedThisWeek: !!effective && effective.WeekNumber === week
+        };
+    });
+
+    const weekLabel = db.prepare("SELECT label FROM Sessions WHERE weekNumber = ?").get(week)?.label || `Week ${week}`;
+    res.render('swim-levels', { rows, week, weekLabel, message: req.query.message || null });
+});
+
+app.post('/swim-levels/update', (req, res) => {
+    const camperId = parseInt(req.body.camperId, 10);
+    const week = parseInt(req.body.weekNumber, 10);
+    const levelNumber = parseInt(req.body.levelNumber, 10);
+    const subLevel = ['Low', 'High'].includes(req.body.subLevel) ? req.body.subLevel : null;
+
+    if (!camperId || !week || !levelNumber) return res.redirect('/swim-levels?message=Please+select+a+level.');
+
+    db.prepare(`
+        INSERT INTO CamperSwimLevels (CamperID, WeekNumber, LevelNumber, SubLevel, UpdatedAt)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT (CamperID, WeekNumber) DO UPDATE SET
+            LevelNumber = excluded.LevelNumber,
+            SubLevel    = excluded.SubLevel,
+            UpdatedAt   = CURRENT_TIMESTAMP
+    `).run(camperId, week, levelNumber, subLevel);
+
+    res.redirect('/swim-levels?message=Level+saved!');
+});
+
 app.get('/search', (req, res) => {
     try {
         const query = req.query.name || '';
@@ -4460,6 +4558,67 @@ app.post('/upload-staff-contacts', upload.single('file'), (req, res) => {
     res.redirect(`/settings?message=${msg}`);
 });
 
+// 1c. IMPORT SWIM LEVELS — "Group Attendance Sheet with Swim Level" export from camp
+// management. Same paginated-report chrome as ACR-005 (repeating title/timestamp/header
+// rows, "N/,12" page footers), so it's read as raw text rather than via csv-parser.
+// Camper rows are always "Last, First" (quoted) — everything else (titles, footers, the
+// multi-line filter-criteria block) is skipped by requiring a comma in the name field
+// AND at least one letter in both the parsed first/last name (guards against the
+// filter-criteria block's unterminated quote swallowing trailing commas into one field).
+app.post('/upload-swim-levels', upload.single('file'), (req, res) => {
+    if (!req.file) return res.redirect('/settings?message=No+file+uploaded');
+    let rawText;
+    try { rawText = fs.readFileSync(req.file.path, 'utf8'); }
+    catch (e) { return res.redirect('/settings?message=File+Read+Error'); }
+    finally { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); }
+
+    if (!/Group Attendance Sheet with Swim Level/i.test(rawText)) {
+        return res.redirect('/settings?message=Invalid+file+format+(Group+Attendance+Sheet+with+Swim+Level+expected)');
+    }
+
+    const isAdmin = req.cookies.adminAuth === 'true';
+    const week = parseInt(req.body.weekNumber) || (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
+
+    const NAME_HAS_LETTER = /[A-Za-z]/;
+    const entries = [];
+    for (const line of rawText.split(/\r?\n/)) {
+        const fields = parseCsvLine(line.trim());
+        const nameField = (fields[0] || '').trim();
+        if (!nameField.includes(',')) continue;
+        const { firstName, lastName } = parseLastFirst(nameField);
+        if (!NAME_HAS_LETTER.test(firstName) || !NAME_HAS_LETTER.test(lastName)) continue;
+        const parsed = parseSwimLevelValue(fields[2]);
+        if (!parsed) continue; // blank / not yet tested
+        entries.push({ firstName, lastName, ...parsed });
+    }
+
+    const findCamper = db.prepare("SELECT CamperID FROM Campers WHERE UPPER(FirstName) = UPPER(?) AND UPPER(LastName) = UPPER(?)");
+    const upsert = db.prepare(`
+        INSERT INTO CamperSwimLevels (CamperID, WeekNumber, LevelNumber, SubLevel, UpdatedAt)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT (CamperID, WeekNumber) DO UPDATE SET
+            LevelNumber = excluded.LevelNumber,
+            SubLevel    = excluded.SubLevel,
+            UpdatedAt   = CURRENT_TIMESTAMP
+    `);
+
+    let updated = 0;
+    const unmatched = [], ambiguous = [];
+    db.transaction(() => {
+        for (const e of entries) {
+            const matches = findCamper.all(e.firstName, e.lastName);
+            if (matches.length === 1) { upsert.run(matches[0].CamperID, week, e.levelNumber, e.subLevel); updated++; }
+            else if (matches.length === 0) unmatched.push(`${e.firstName} ${e.lastName}`);
+            else ambiguous.push(`${e.firstName} ${e.lastName}`);
+        }
+    })();
+
+    let msg = `Imported+${updated}+swim+levels`;
+    if (unmatched.length) msg += `.+No+match:+${encodeURIComponent(unmatched.join(', '))}`;
+    if (ambiguous.length) msg += `.+Multiple+matches+skipped:+${encodeURIComponent(ambiguous.join(', '))}`;
+    res.redirect(`/settings?message=${msg}`);
+});
+
 // 2. IMPORT INSTRUCTORS — uploads to target week (prep target if set, else active week)
 // CSV: FirstName, LastName, P1–P6, L1–L6. Unknown names are auto-inserted as Instructors.
 app.post('/upload-instructors', upload.single('file'), (req, res) => {
@@ -4574,12 +4733,14 @@ app.post('/update-staff-info/:id', (req, res) => {
     const phone          = (req.body.phone          || '').trim() || null;
     const email          = (req.body.email          || '').trim() || null;
     const gender         = ['M', 'F'].includes(req.body.gender) ? req.body.gender : null;
+    const swimMaxLevelRaw = parseInt(req.body.swimMaxLevel, 10);
+    const swimMaxLevel   = (swimMaxLevelRaw >= 1 && swimMaxLevelRaw <= 6) ? swimMaxLevelRaw : null;
     db.prepare(`
         UPDATE Counselors
         SET FirstName = ?, LastName = ?, StaffRole = ?, HomeGroupColor = ?,
-            ScheduleType = ?, BusRoute = ?, ExtendedHours = ?, Phone = ?, Email = ?, Gender = ?
+            ScheduleType = ?, BusRoute = ?, ExtendedHours = ?, Phone = ?, Email = ?, Gender = ?, SwimMaxLevel = ?
         WHERE CounselorID = ?
-    `).run(firstName, lastName, staffRole, homeGroupColor, scheduleType, busRoute, extendedHours, phone, email, gender, id);
+    `).run(firstName, lastName, staffRole, homeGroupColor, scheduleType, busRoute, extendedHours, phone, email, gender, swimMaxLevel, id);
     // Mirror week attributes into the same week the profile page displays
     // (prep target for admins, else active week)
     const isAdmin = req.cookies.adminAuth === 'true';

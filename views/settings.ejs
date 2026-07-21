@@ -396,6 +396,30 @@
                                 </form>
                             </div>
 
+                            <div class="upload-section" style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+                                <h4 style="margin-bottom: 5px;">Swim Levels</h4>
+                                <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">
+                                    Export the <strong>Group Attendance Sheet with Swim Level</strong> report from camp management.
+                                    Matches campers by name and records their swim level for the selected week. Blank levels (not yet tested) are skipped.
+                                </p>
+                                <form action="/upload-swim-levels" method="POST" enctype="multipart/form-data" style="display:flex; flex-direction:column; gap:8px;">
+                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                        <label style="font-size:0.8rem; font-weight:600;">Target Week:</label>
+                                        <select name="weekNumber" style="font-size:0.82rem; padding:3px 6px; border:1px solid var(--border-color); border-radius:4px;">
+                                            <% sessions.forEach(s => { %>
+                                            <option value="<%= s.weekNumber %>" <%= (prepTargetWeek ? s.weekNumber === prepTargetWeek : s.isActive) ? 'selected' : '' %>>
+                                                W<%= s.weekNumber %><%= s.label ? ' — ' + s.label : '' %><%= s.isActive ? ' (Active)' : '' %><%= s.isPrepTarget ? ' (Prep)' : '' %>
+                                            </option>
+                                            <% }) %>
+                                        </select>
+                                    </div>
+                                    <div style="display:flex; gap:8px; align-items:center;">
+                                        <input type="file" name="file" accept=".csv" required style="font-size:0.82rem;">
+                                        <button type="submit" class="btn primary btn-small">Import Swim Levels</button>
+                                    </div>
+                                </form>
+                            </div>
+
                             <div class="upload-section">
                                 <h4>Master Camper Schedule (ACR-255)</h4>
                                 <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">

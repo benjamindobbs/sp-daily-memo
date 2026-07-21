@@ -70,6 +70,7 @@ Unified people table for all staff. Replaced the legacy `Staff` table.
 | `Email` | TEXT | | **[migrated]** |
 | `IncludeInStaffDropdown` | INTEGER | DEFAULT `0` | **[migrated]** — `1` = appears in camper home counselor dropdowns |
 | `Gender` | TEXT | CHECK `'M'`/`'F'` or NULL | **[migrated]** — feeds the scheduler's gender-split rules; NULL = unknown (exempt from enforcement) |
+| `SwimMaxLevel` | INTEGER | CHECK 1–6 or NULL | **[migrated]** — highest swim-lesson level this counselor is certified to teach. NULL = levels 1–3 only (the default floor everyone can teach). Set via the counselor profile Edit Profile form. See [Swim Scheduling](./Swim-Scheduling.md). |
 
 **Normalizations applied at startup:**
 - `HomeGroupColor` values that aren't a recognized group name are set to NULL.

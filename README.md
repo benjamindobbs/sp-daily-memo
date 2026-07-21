@@ -55,6 +55,7 @@ All imports happen on the **Settings** page (`/settings`).
 | Camper Roster (ACR-005) | ACR-005 export from camp management | Creates/updates: name, color group, lunch, shirt size, extended hours (when the export's Ext AM/PM columns are populated — the source for specialty campers, who aren't on ACR-255), registered session codes (drives the Monday shirt-order pills). Must run **after** staff import. **In CB:** Select All Seasons → add Session filter → select relevant weeks for all specialty camps and main camp → Run report as CSV. If a **Prep Target** week is set in Session Management, the upload goes to that week instead of the active week. |
 | Master Camper Schedule (ACR-255) | ACR-255 export from camp management | Enriches existing campers with: grade, bus route, extended hours, activity schedule. Must run **after** camper roster import. **In CB:** Select All Seasons → add Session filter → select all SP W[X] - Period sessions (Periods 1–5) → Run report as CSV. Covers Summer Place campers only — KP/LP extended hours come from the ACR-003 import below. |
 | KP/LP Schedule Types (ACR-003) | ACR-003 Group Attendance Sheet with KP/LP | Sets each Kinder Place / Li'l Place camper's **Full Day / Half Day** schedule type and extended hours for the selected week. Half Day campers get their own Specialty Half Day attendance sheet and are excluded from PM specialty rosters. Must run **after** camper roster import. **In CB:** filter Session to the KP and LP weeks for the target week → Run report as CSV. |
+| Swim Levels | Group Attendance Sheet with Swim Level export from camp management | Matches campers by name and records their swim level (e.g. `2`, `Low 2`, `High 3`) for the selected week. Blank levels (not yet tested) are skipped. Only updates campers who already exist, so run **after** camper roster import. Levels can also be edited by hand at `/swim-levels`. |
 | Instructor Schedules | `FirstName`, `LastName`, `P1`–`P6`, `L1`–`L6` | Locations (`L1`–`L6`) are optional. Unknown names are auto-created as Instructors. Uploads to the **Prep Target** week if one is set, otherwise to the active week. |
 
 #### Bus routes & the Bus Route Audit
@@ -204,6 +205,7 @@ All profile editing requires **admin view**. Staff view shows the same pages rea
    - Bus Route
    - Extended Hours
    - Phone, Email
+   - Highest Swim Level Able to Teach (1–6; leave blank if they only teach levels 1–3, the default everyone can teach)
 3. Click **Save** to commit — this updates both the staff record and the active week's scheduling attributes
 4. **Instructors and Unit Leaders** also have a **Weekly Schedule** section below the profile form where you can add, edit, or remove period assignments week by week
 5. To permanently delete the staff member, use the **Delete** button in the page header (confirmation required, cannot be undone)
@@ -281,6 +283,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | Home Group Assignment | `/homegroup-assignment` | Assign counselors to color-group home groups by week. Can mirror assignments from one week to another. |
 | SPLIT Scheduling | `/split-scheduling` | Dedicated view for managing SPLIT camper period assignments (periods 1, 2, 4, 5, 6). |
 | Audit Roster | `/audit` | Flags scheduling issues: missing grades, duplicate assignments, unassigned campers, classes with no counselor. Each section has a Show/Hide toggle; collapsed sections are remembered per browser. |
+| Swim Levels | `/swim-levels` | Campers currently enrolled in Rec Swim or Swim Lessons for the target week, with their current swim level and an inline form to update it. First phase of the swim scheduling feature — see the Swim Levels CSV import above. |
 
 ---
 

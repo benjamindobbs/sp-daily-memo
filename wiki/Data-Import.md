@@ -71,6 +71,24 @@ The CSR-300: Staff Profile export is **not** a normal tabular CSV — it's one v
 
 ---
 
+## Swim Levels
+
+**Route:** `POST /upload-swim-levels`
+**File:** `views/settings.ejs` (Swim Levels card, under Camper Roster)
+**Report:** Group Attendance Sheet with Swim Level
+**Parser:** inline in `app.js`, reusing `parseCsvLine()`/`parseLastFirst()`
+
+Same paginated-report chrome as ACR-005 (repeating title/timestamp/header rows, `"N/","12"` page footers), so it's read as raw text rather than via `csv-parser`. Camper rows are always `"Last, First"`; any line whose first field lacks a comma is page chrome and skipped, plus a letter-presence check on the parsed name filters out the multi-line filter-criteria block (its unterminated quote can swallow trailing commas into one field, which would otherwise pass the comma check).
+
+**What it does:**
+- Parses the `Swim Level` column (3rd field) via `parseSwimLevelValue()` — `"2"` / `"Low 2"` / `"High 3"` → `{levelNumber, subLevel}`. Blank cells (not yet tested) are skipped.
+- Matches campers by exact `FirstName`/`LastName` against `Campers`. Zero or multiple matches are skipped and listed in the redirect summary, same convention as the CSR-300 importer above.
+- Upserts one `CamperSwimLevels` row per matched camper for the week selected in the upload form (defaults to prep target / active week).
+
+**Does not:** create new `Campers` rows, or touch weeks other than the one selected. See [Swim Scheduling](./Swim-Scheduling.md).
+
+---
+
 ## Camper Roster (ACR-005)
 
 **Route:** `POST /upload-campers`

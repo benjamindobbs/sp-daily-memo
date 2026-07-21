@@ -18,6 +18,7 @@ Developer reference for the Camp Hub application. Covers the database schema, ta
 | [Authentication & Authorization](./Auth.md) | Admin vs staff view; session cookie; `ADMIN_ONLY_PREFIXES`; `choose-view` flow |
 | [Data Import Pipeline](./Data-Import.md) | CSV import order; column mappings; what each import creates or updates; migration history |
 | [Instant Alerts](./Instant-Alerts.md) | Sending push notifications to staff groups or individuals; system groups; custom groups; admin hub banner; push subscription setup |
+| [Swim Scheduling](./Swim-Scheduling.md) | Camper swim levels, counselor swim-teaching certification, and (later phases) the independent swim staffing schedule |
 
 ---
 
@@ -63,5 +64,6 @@ wiki/
 ├── Routes-Reference.md        ← full route inventory
 ├── Auth.md                    ← auth and view mode system
 ├── Data-Import.md             ← CSV imports and migrations
-└── Instant-Alerts.md          ← push notifications and admin banner
+├── Instant-Alerts.md          ← push notifications and admin banner
+└── Swim-Scheduling.md         ← swim levels and staffing schedule
 ```
