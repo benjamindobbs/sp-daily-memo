@@ -44,7 +44,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/swim-scheduling/generate-groups` | ✓ | Auto-forms lesson groups for the week from current swim levels; skips `Locked` groups |
 | POST | `/swim-scheduling/create-group` | ✓ | Manually add an empty lesson group |
 | POST | `/swim-scheduling/delete-group` | ✓ | Delete a group; members become ungrouped |
-| POST | `/swim-scheduling/merge-group` | ✓ | Merge a source group into a target group in the same period (widens level range, locks the result) |
+| POST | `/swim-scheduling/merge-group` | ✓ | Merge a source group into a target group in the same period (widens level range, locks the result). Rejected if either group is an active auto-merge target |
 | POST | `/swim-scheduling/undo-merge` | ✓ | Reverse a merge via its history row — recreates the source group, moves back still-present members, restores the target's pre-merge state |
 | POST | `/swim-scheduling/split-group` | ✓ | Split a group over 5 campers into groups of 5 or fewer; original keeps the first chunk, rest are new unlocked/uninstructed groups |
 | POST | `/swim-scheduling/toggle-group-lock` | ✓ | Flip a group's `Locked` flag |

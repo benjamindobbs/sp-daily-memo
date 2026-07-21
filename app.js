@@ -1323,20 +1323,42 @@ db.exec(`
     );
 `);
 
-function recordGroupMerge(week, period, targetGroupId, targetPrev, sourceOriginal, memberCamperIds) {
+// Migration: distinguishes a merge Full Auto Assign made on its own (to free up a guard)
+// from one the director triggered by hand — auto-merged groups are locked out of further
+// merging entirely (see getSwimSchedulingData()'s autoMerged flag and the merge-group route)
+// so an automated last-resort decision doesn't keep compounding; manual merges stay
+// re-mergeable since those are deliberate director choices.
+try {
+    const smhCols = db.prepare("PRAGMA table_info(SwimGroupMergeHistory)").all().map(c => c.name);
+    if (!smhCols.includes('AutoMerged')) {
+        db.exec("ALTER TABLE SwimGroupMergeHistory ADD COLUMN AutoMerged INTEGER DEFAULT 0");
+    }
+} catch(e) { console.error('[migration] SwimGroupMergeHistory.AutoMerged:', e.message); }
+
+function recordGroupMerge(week, period, targetGroupId, targetPrev, sourceOriginal, memberCamperIds, autoMerged) {
     const info = db.prepare(`
         INSERT INTO SwimGroupMergeHistory
             (WeekNumber, PeriodNumber, TargetGroupID,
              TargetPrevLevelNumber, TargetPrevLevelRangeMax, TargetPrevSubLevel, TargetPrevLocked,
-             SourceLevelNumber, SourceLevelRangeMax, SourceSubLevel)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             SourceLevelNumber, SourceLevelRangeMax, SourceSubLevel, AutoMerged)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
         week, period, targetGroupId,
         targetPrev.LevelNumber, targetPrev.LevelRangeMax, targetPrev.SubLevel, targetPrev.Locked ? 1 : 0,
-        sourceOriginal.LevelNumber, sourceOriginal.LevelRangeMax, sourceOriginal.SubLevel
+        sourceOriginal.LevelNumber, sourceOriginal.LevelRangeMax, sourceOriginal.SubLevel,
+        autoMerged ? 1 : 0
     );
     const insMember = db.prepare('INSERT INTO SwimGroupMergeHistoryMembers (MergeID, CamperID) VALUES (?, ?)');
     for (const camperId of memberCamperIds) insMember.run(info.lastInsertRowid, camperId);
+}
+
+// True if this group is the still-standing (un-undone) target of an automatic merge — used
+// to block it from being merged again, in either direction. Checked server-side in the
+// merge-group route itself, not just hidden in the UI.
+function isAutoMergedTarget(groupId) {
+    return !!db.prepare(
+        'SELECT 1 FROM SwimGroupMergeHistory WHERE TargetGroupID = ? AND AutoMerged = 1 AND Undone = 0'
+    ).get(groupId);
 }
 
 // "Level 3" for a single level, "Level 3–5" for a merged/ranged group.
@@ -1687,7 +1709,7 @@ function autoAssignWeek(week) {
                     recordGroupMerge(
                         week, p.period, target.GroupID,
                         { LevelNumber: target.LevelNumber, LevelRangeMax: target.LevelRangeMax, SubLevel: target.SubLevel, Locked: target.Locked },
-                        source, source.members.map(m => m.CamperID)
+                        source, source.members.map(m => m.CamperID), true
                     );
 
                     source.members.forEach(m => insMergeMember.run(target.GroupID, m.CamperID));
@@ -3612,6 +3634,13 @@ app.get('/reports/swim-schedule', (req, res) => {
 // no solver yet (that's Phase 4's /swim-scheduling/auto-assign).
 
 function getSwimSchedulingData(week) {
+    // GroupIDs that are the still-standing target of an automatic merge this week — flagged
+    // per group below so the UI can hide their merge controls entirely (see isAutoMergedTarget()).
+    const autoMergedTargets = new Set(
+        db.prepare('SELECT TargetGroupID FROM SwimGroupMergeHistory WHERE WeekNumber = ? AND AutoMerged = 1 AND Undone = 0')
+            .all(week).map(r => r.TargetGroupID)
+    );
+
     const periods = [];
     for (let period = 1; period <= 6; period++) {
         const recOffered = !!db.prepare(
@@ -3724,7 +3753,8 @@ function getSwimSchedulingData(week) {
                     overSized,
                     aboveLevel1,
                     aboveLevel2,
-                    aboveLevel: aboveLevel1 || aboveLevel2
+                    aboveLevel: aboveLevel1 || aboveLevel2,
+                    autoMerged: autoMergedTargets.has(g.GroupID)
                 };
             });
 
@@ -3942,10 +3972,13 @@ app.post('/swim-scheduling/merge-group', (req, res) => {
     if (!source || !target || source.WeekNumber !== target.WeekNumber || source.PeriodNumber !== target.PeriodNumber) {
         return res.redirect(`/swim-scheduling?week=${week}&message=Groups+must+be+in+the+same+period`);
     }
+    if (isAutoMergedTarget(sourceGroupId) || isAutoMergedTarget(targetGroupId)) {
+        return res.redirect(`/swim-scheduling?week=${week}&message=One+of+these+groups+was+auto-merged+and+cannot+be+merged+again`);
+    }
 
     db.transaction(() => {
         const members = db.prepare('SELECT CamperID FROM SwimLessonGroupMembers WHERE GroupID = ?').all(sourceGroupId);
-        recordGroupMerge(source.WeekNumber, source.PeriodNumber, targetGroupId, target, source, members.map(m => m.CamperID));
+        recordGroupMerge(source.WeekNumber, source.PeriodNumber, targetGroupId, target, source, members.map(m => m.CamperID), false);
 
         const insMember = db.prepare('INSERT OR IGNORE INTO SwimLessonGroupMembers (GroupID, CamperID) VALUES (?, ?)');
         for (const m of members) insMember.run(targetGroupId, m.CamperID);

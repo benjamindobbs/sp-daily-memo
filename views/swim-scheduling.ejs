@@ -304,7 +304,7 @@
                         <div style="font-weight:700; font-size:0.9rem;">
                             <%= g.levelLabel %>
                             <span style="font-weight:400; color:var(--text-muted); font-size:0.8rem;">(<%= g.members.length %>)</span>
-                            <% if (g.Locked) { %><span style="color:#92400e; font-size:0.75rem;">&#128274; locked</span><% } %>
+                            <% if (g.Locked) { %><span style="color:#92400e; font-size:0.75rem;">&#128274; locked<%= g.autoMerged ? ' (auto-merged)' : '' %></span><% } %>
                             <% if (g.overSized) { %><span style="color:#dc2626; font-size:0.72rem; font-weight:600;">&#9888; over 5 — split needed</span>
                             <% } else if (g.needsSecondInstructor) { %><span style="color:#92400e; font-size:0.72rem; font-weight:600;">needs 2 instructors</span><% } %>
                             <div style="margin-top:4px; display:flex; gap:4px; flex-wrap:wrap;">
@@ -314,8 +314,8 @@
                             </div>
                         </div>
                         <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-                            <% var otherGroups = p.lessons.groups.filter(function(og) { return og.GroupID !== g.GroupID; }); %>
-                            <% if (otherGroups.length > 0) { %>
+                            <% var otherGroups = p.lessons.groups.filter(function(og) { return og.GroupID !== g.GroupID && !og.autoMerged; }); %>
+                            <% if (!g.autoMerged && otherGroups.length > 0) { %>
                             <form action="/swim-scheduling/merge-group" method="POST" onsubmit="return confirm('Merge this group into the selected group? Its campers move over, the combined group covers both levels, and it will be locked.');" style="display:flex; gap:4px; align-items:center;">
                                 <input type="hidden" name="weekNumber" value="<%= week %>">
                                 <input type="hidden" name="sourceGroupId" value="<%= g.GroupID %>">

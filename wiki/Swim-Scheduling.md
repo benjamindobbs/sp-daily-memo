@@ -119,6 +119,12 @@ On merge: the source group's campers move into the target group (`SwimLessonGrou
 
 `SwimLessonGroups.effectiveMaxLevel` (`LevelRangeMax || LevelNumber`) is computed in `getSwimSchedulingData()` and used everywhere a group's level needs to be checked against a counselor's `SwimMaxLevel` — including the instructor-eligibility filter, which compares against `effectiveMaxLevel` rather than the raw `LevelNumber`.
 
+### Auto-merged groups are un-mergeable
+
+A group that `autoAssignWeek()`'s merge fallback created (see [Full Auto Assign](#full-auto-assign-post-swim-schedulingauto-assign)) can't be merged again in either direction — not as a source (its own Merge form is hidden) and not as a target (it's excluded from every other group's "merge into" dropdown) — enforced both in the UI and server-side in the `merge-group` route itself (`isAutoMergedTarget()`), so it can't be bypassed by posting the form directly. Manually-merged groups are **not** restricted this way; only ones the solver merged on its own, since that's an automated last-resort decision rather than a deliberate director choice, and letting it keep compounding via further merges (auto or manual) would make it harder to reason about or undo cleanly.
+
+`SwimGroupMergeHistory.AutoMerged` (`0`/`1`, [migrated]) is set by `recordGroupMerge()` at write time — `true` from the auto-assign fallback, `false` from the manual `merge-group` route. `getSwimSchedulingData()` computes a week-scoped `Set` of currently-restricted `TargetGroupID`s (`AutoMerged = 1 AND Undone = 0`) once per call and stamps `autoMerged` onto each group. The restriction is tied to that specific `SwimGroupMergeHistory` row still being active — [undoing the merge](#undoing-a-merge-post-swim-schedulingundo-merge) sets `Undone = 1`, which lifts the restriction along with reverting the group, since there's no longer an active auto-merge holding it down.
+
 ### Undoing a merge (`POST /swim-scheduling/undo-merge`)
 
 Every merge — manual or from Full Auto Assign's guard-shortfall fallback — writes a row to `SwimGroupMergeHistory` (plus `SwimGroupMergeHistoryMembers` for which campers moved) via a shared `recordGroupMerge()` helper, capturing enough to reverse it:
@@ -137,7 +143,8 @@ CREATE TABLE SwimGroupMergeHistory (
     SourceLevelRangeMax     INTEGER,
     SourceSubLevel          TEXT,
     CreatedAt               DATETIME DEFAULT CURRENT_TIMESTAMP,
-    Undone                  INTEGER DEFAULT 0
+    Undone                  INTEGER DEFAULT 0,
+    AutoMerged              INTEGER DEFAULT 0  -- [migrated] 1 = Full Auto Assign made this merge, not the director
 );
 CREATE TABLE SwimGroupMergeHistoryMembers (
     MergeID INTEGER, CamperID INTEGER,
@@ -219,7 +226,7 @@ Computed at render time, never stored. Flags: a period's Rec Swim or Swim Lesson
 | POST | `/swim-scheduling/generate-groups` | Runs `generateGroupsForWeek()` |
 | POST | `/swim-scheduling/create-group` | Manually add an empty group (period + level + sub-level) |
 | POST | `/swim-scheduling/delete-group` | Deletes a group; members become "Not yet in a group" (CASCADE) |
-| POST | `/swim-scheduling/merge-group` | Merges a source group into a target group in the same period; widens the target's level range, locks it, deletes the source |
+| POST | `/swim-scheduling/merge-group` | Merges a source group into a target group in the same period; widens the target's level range, locks it, deletes the source. Rejected if either group is an active auto-merge target |
 | POST | `/swim-scheduling/undo-merge` | Reverses a merge via its `SwimGroupMergeHistory` row — recreates the source group, moves back whichever members are still in the target, restores the target's pre-merge state |
 | POST | `/swim-scheduling/split-group` | Splits a group over 5 campers into groups of 5 or fewer via `chunkCampers()`; original `GroupID` keeps the first chunk, the rest are new unlocked/uninstructed groups |
 | POST | `/swim-scheduling/toggle-group-lock` | Flips `Locked` |
