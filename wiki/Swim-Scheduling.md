@@ -72,6 +72,7 @@ CREATE TABLE SwimLessonGroups (
     SubLevel     TEXT CHECK(SubLevel IN ('Low','High') OR SubLevel IS NULL),
     CounselorID  INTEGER,           -- nullable until assigned
     Locked       INTEGER DEFAULT 0, -- protects from Generate Groups regeneration
+    LevelRangeMax INTEGER CHECK(LevelRangeMax BETWEEN 1 AND 6 OR LevelRangeMax IS NULL), -- [migrated]
     FOREIGN KEY (CounselorID) REFERENCES Counselors(CounselorID) ON DELETE SET NULL
 );
 CREATE TABLE SwimLessonGroupMembers (
@@ -99,7 +100,25 @@ Runs per period offering `'Swim Lessons'` that week (checked against `WeeklyOffe
 3. Within a level, each sub-level (`Low`/`High`/plain) with **≥3** campers becomes its own pool; sub-levels with **<3** are merged into one mixed pool for that level.
 4. Each pool is split into `isNew` (a `CamperSwimLevels` row written *this* week — i.e. freshly tested) vs `returning`, chunked separately via `chunkCampers()`: newly-tested campers at max size 4 (so they seed their own small group, 2-4 kids, rather than topping off an existing class), returning campers at max size 6. `chunkCampers()` splits as evenly as possible (11 campers at max 6 → `[6,5]`, not a lopsided `[6,6,-1]`).
 
-A same-level pool can end up with more than one `SubLevel = NULL` group in one run (e.g. a ≥3 "plain" pool and a separate <3-sublevel mixed-leftover pool) — both are valid, correctly-sized groups; the UI doesn't currently disambiguate which is which beyond showing the actual camper names in each.
+A same-level pool can end up with more than one `SubLevel = NULL` group in one run (e.g. a ≥3 "plain" pool and a separate <3-sublevel mixed-leftover pool) — both are valid, correctly-sized groups; merging them (below) is one way to consolidate that ambiguity by hand.
+
+### Merging groups (`POST /swim-scheduling/merge-group`)
+
+Combines two small adjacent-level groups in the **same period** so they share one instructor (e.g. 2 campers at Level 5 and 1 at Level 6, taught together by a Level-5/6-certified counselor instead of running two near-empty classes). Every group card has a "merge into" dropdown listing the other groups in that period.
+
+On merge: the source group's campers move into the target group (`SwimLessonGroupMembers`, `INSERT OR IGNORE`); the target's `LevelNumber` becomes `min(source, target)` and `LevelRangeMax` becomes `max(source, target)` (left `NULL` if the merge didn't actually widen the range — e.g. merging two same-level groups just consolidates headcount without becoming a "range"); `SubLevel` is cleared (a multi-level group can't be single-sub-level); the target is **locked** so the next Generate Groups run won't split it back apart; and the source group is deleted (`ON DELETE CASCADE` handles its now-empty membership rows). The target keeps whatever instructor it already had — if that leaves them under-qualified for the new range, `getSwimWarnings()` catches it on the next render, same as any other above-max-level assignment.
+
+`SwimLessonGroups.effectiveMaxLevel` (`LevelRangeMax || LevelNumber`) is computed in `getSwimSchedulingData()` and used everywhere a group's level needs to be checked against a counselor's `SwimMaxLevel` — including the instructor-eligibility filter, which compares against `effectiveMaxLevel` rather than the raw `LevelNumber`.
+
+### Composition (Low / Nominal / High breakdown)
+
+`levelLabel` (`"Level 3"`, or `"Level 5–6"` when ranged) is just the header — it no longer carries sub-level detail. That's now a separate `composition` array on each group, computed in `getSwimSchedulingData()` from each **member's actual current effective level** (`getEffectiveSwimLevel()`) rather than from the group's own stored `SubLevel`, so it stays correct after merges and any manual add/remove:
+
+- Members are bucketed by `(LevelNumber, SubLevel)`, sorted Low → Nominal (plain) → High within a level, then by level ascending; anyone with no recorded level buckets separately as "Not tested."
+- For a normal (non-ranged) group, each tag is just the sub-level word — `"Low ×2"`, `"Nominal ×8"` — since the level itself is already the header.
+- For a **ranged (merged) group**, each tag is fully qualified — `"Level 5 (Nominal) ×2"`, `"Level 6 (High) ×1"` — since the header only shows the range and can't distinguish which original level+sub-level each camper came from.
+
+Rendered as small pill tags under the group header in `views/swim-scheduling.ejs`, and reused as a compact `"N label, N label"` string in the "add to group" and "merge into" dropdown option text so two same-range groups with different makeups aren't indistinguishable in a `<select>`.
 
 ### `getCounselorWaterTally(week)`
 
@@ -117,11 +136,17 @@ Computed at render time, never stored. Flags: a period's Rec Swim or Swim Lesson
 | POST | `/swim-scheduling/generate-groups` | Runs `generateGroupsForWeek()` |
 | POST | `/swim-scheduling/create-group` | Manually add an empty group (period + level + sub-level) |
 | POST | `/swim-scheduling/delete-group` | Deletes a group; members become "Not yet in a group" (CASCADE) |
+| POST | `/swim-scheduling/merge-group` | Merges a source group into a target group in the same period; widens the target's level range, locks it, deletes the source |
 | POST | `/swim-scheduling/toggle-group-lock` | Flips `Locked` |
 | POST | `/swim-scheduling/assign-instructor` | Sets a group's `CounselorID` |
 | POST | `/swim-scheduling/assign-camper` | Adds a camper to a group (`INSERT OR IGNORE`) |
 | POST | `/swim-scheduling/remove-camper` | Removes a camper from a group (they become ungrouped, reassignable) |
 | POST | `/swim-scheduling/save-guards` | Full replace of a `(week, period, guardRole)` guard set from a checkbox list |
+| POST | `/swim-scheduling/save-certifications` | Bulk-updates every swim counselor's `Counselors.SwimMaxLevel` in one submit |
+
+### Edit Swim Certifications panel
+
+A collapsible (`<details>`/`<summary>`, closed by default) section on `/swim-scheduling` that bulk-edits `SwimMaxLevel` for every swim counselor at once, instead of going through each counselor's profile individually. One `<select>` per counselor, parallel hidden `counselorId` inputs matching by submission order (same repeated-name-array convention as the guard checkboxes — Express parses same-named fields into arrays in DOM order), one `POST /swim-scheduling/save-certifications` for the whole table.
 
 "Move a camper between groups" and "merge/split a group" aren't dedicated actions — they're composed from `assign-camper`/`remove-camper`/`create-group`/`delete-group`, matching this codebase's convention of small single-purpose routes over one dispatcher endpoint.
 

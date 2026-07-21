@@ -72,6 +72,48 @@
         </div>
         <% } %>
 
+        <details class="card" style="margin-bottom:20px; padding:0; overflow:hidden;">
+            <summary style="cursor:pointer; padding:12px 16px; background:#f8fafc; font-weight:700; font-size:0.9rem;">
+                &#128295; Edit Swim Certifications (highest level each counselor can teach)
+            </summary>
+            <div style="padding:14px; border-top:1px solid var(--border-color);">
+                <% if (swimCounselors.length === 0) { %>
+                    <p style="color:var(--text-muted); font-size:0.85rem; margin:0;">No staff with role "Swim Counselor" found.</p>
+                <% } else { %>
+                <form action="/swim-scheduling/save-certifications" method="POST">
+                    <input type="hidden" name="weekNumber" value="<%= week %>">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.85rem; margin-bottom:12px;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border-color);">
+                                <th style="text-align:left; padding:6px 10px; font-size:0.72rem; text-transform:uppercase; color:var(--text-muted);">Name</th>
+                                <th style="text-align:left; padding:6px 10px; font-size:0.72rem; text-transform:uppercase; color:var(--text-muted);">Highest Level Able to Teach</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% swimCounselors.forEach(function(c) { %>
+                            <tr style="border-bottom:1px solid #f1f5f9;">
+                                <td style="padding:6px 10px; font-weight:600;">
+                                    <%= c.FirstName %> <%= c.LastName %>
+                                    <input type="hidden" name="counselorId" value="<%= c.CounselorID %>">
+                                </td>
+                                <td style="padding:6px 10px;">
+                                    <select name="swimMaxLevel" style="padding:4px 6px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem;">
+                                        <option value="" <%= !c.SwimMaxLevel ? 'selected' : '' %>>— Levels 1-3 only —</option>
+                                        <% [1,2,3,4,5,6].forEach(function(n) { %>
+                                            <option value="<%= n %>" <%= c.SwimMaxLevel === n ? 'selected' : '' %>><%= n %></option>
+                                        <% }) %>
+                                    </select>
+                                </td>
+                            </tr>
+                            <% }) %>
+                        </tbody>
+                    </table>
+                    <button type="submit" class="btn btn-primary btn-small">Save All</button>
+                </form>
+                <% } %>
+            </div>
+        </details>
+
         <div class="card" style="margin-bottom:20px; padding:0; overflow:hidden;">
             <h3 style="margin:0; padding:12px 16px; background:#f8fafc; border-bottom:1px solid var(--border-color); font-size:0.9rem;">Swim Counselors — Water Time This Week</h3>
             <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
@@ -173,7 +215,8 @@
                                 <select name="groupId" style="padding:3px 6px; border:1px solid var(--border-color); border-radius:6px; font-size:0.78rem;">
                                     <option value="">— add to group —</option>
                                     <% p.lessons.groups.forEach(function(g) { %>
-                                        <option value="<%= g.GroupID %>">Level <%= g.LevelNumber %><%= g.SubLevel ? ' (' + g.SubLevel + ')' : '' %> (<%= g.members.length %>)</option>
+                                        <% var compText = g.composition.map(function(co) { return co.count + ' ' + co.label; }).join(', '); %>
+                                        <option value="<%= g.GroupID %>"><%= g.levelLabel %> — <%= compText || 'empty' %></option>
                                     <% }) %>
                                 </select>
                                 <button type="submit" class="btn btn-small" style="background:white; font-size:0.75rem; padding:3px 8px;">Add</button>
@@ -187,11 +230,31 @@
                 <div class="swim-group-card <%= g.Locked ? 'locked' : '' %> <%= g.aboveLevel ? 'above-level' : '' %>">
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
                         <div style="font-weight:700; font-size:0.9rem;">
-                            Level <%= g.LevelNumber %><%= g.SubLevel ? ' (' + g.SubLevel + ')' : '' %>
+                            <%= g.levelLabel %>
                             <span style="font-weight:400; color:var(--text-muted); font-size:0.8rem;">(<%= g.members.length %>)</span>
                             <% if (g.Locked) { %><span style="color:#92400e; font-size:0.75rem;">&#128274; locked</span><% } %>
+                            <div style="margin-top:4px; display:flex; gap:4px; flex-wrap:wrap;">
+                                <% g.composition.forEach(function(co) { %>
+                                    <span style="font-weight:400; font-size:0.72rem; background:#f1f5f9; color:#475569; border-radius:10px; padding:1px 8px;"><%= co.label %> &times;<%= co.count %></span>
+                                <% }) %>
+                            </div>
                         </div>
-                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                            <% var otherGroups = p.lessons.groups.filter(function(og) { return og.GroupID !== g.GroupID; }); %>
+                            <% if (otherGroups.length > 0) { %>
+                            <form action="/swim-scheduling/merge-group" method="POST" onsubmit="return confirm('Merge this group into the selected group? Its campers move over, the combined group covers both levels, and it will be locked.');" style="display:flex; gap:4px; align-items:center;">
+                                <input type="hidden" name="weekNumber" value="<%= week %>">
+                                <input type="hidden" name="sourceGroupId" value="<%= g.GroupID %>">
+                                <select name="targetGroupId" required style="padding:3px 6px; border:1px solid var(--border-color); border-radius:6px; font-size:0.75rem;">
+                                    <option value="">— merge into —</option>
+                                    <% otherGroups.forEach(function(og) { %>
+                                        <% var ogCompText = og.composition.map(function(co) { return co.count + ' ' + co.label; }).join(', '); %>
+                                        <option value="<%= og.GroupID %>"><%= og.levelLabel %> — <%= ogCompText || 'empty' %></option>
+                                    <% }) %>
+                                </select>
+                                <button type="submit" class="btn btn-small" style="background:white; font-size:0.75rem;">Merge</button>
+                            </form>
+                            <% } %>
                             <form action="/swim-scheduling/toggle-group-lock" method="POST">
                                 <input type="hidden" name="weekNumber" value="<%= week %>">
                                 <input type="hidden" name="groupId" value="<%= g.GroupID %>">
@@ -212,7 +275,7 @@
                         <select name="counselorId" style="padding:4px 6px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem;">
                             <option value="">— unassigned —</option>
                             <% swimCounselors.forEach(function(c) { %>
-                                <% var eligible = (c.SwimMaxLevel || 3) >= g.LevelNumber; %>
+                                <% var eligible = (c.SwimMaxLevel || 3) >= g.effectiveMaxLevel; %>
                                 <option value="<%= c.CounselorID %>" <%= g.CounselorID === c.CounselorID ? 'selected' : '' %> <%= (!eligible && g.CounselorID !== c.CounselorID) ? 'disabled' : '' %>>
                                     <%= c.FirstName %> <%= c.LastName %><%= eligible ? '' : ' (below level)' %>
                                 </option>

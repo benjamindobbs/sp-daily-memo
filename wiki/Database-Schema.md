@@ -645,9 +645,10 @@ One `SwimLessonGroups` row per skill-level lesson group per period per week, aut
 | `WeekNumber` | INTEGER | NOT NULL, CHECK 1–6 | |
 | `PeriodNumber` | INTEGER | NOT NULL, CHECK 1–6 | |
 | `LevelNumber` | INTEGER | NOT NULL, CHECK 1–6 | |
-| `SubLevel` | TEXT | CHECK `'Low'`/`'High'` or NULL | Set only when this group is sub-level-specific (≥3 campers at that sub-level) |
+| `SubLevel` | TEXT | CHECK `'Low'`/`'High'` or NULL | Set only when this group is sub-level-specific (≥3 campers at that sub-level). Cleared when a group is merged into a range. |
+| `LevelRangeMax` | INTEGER | CHECK 1–6 or NULL | **[migrated]** — NULL for a normal single-level group; set when two groups are merged, meaning the group spans `LevelNumber..LevelRangeMax`. `effectiveMaxLevel` (`LevelRangeMax \|\| LevelNumber`) is what's checked against a counselor's `SwimMaxLevel`. |
 | `CounselorID` | INTEGER | | Nullable until assigned. FK → `Counselors`, `ON DELETE SET NULL` |
-| `Locked` | INTEGER | DEFAULT `0` | Protects the group from being rebuilt by Generate Groups |
+| `Locked` | INTEGER | DEFAULT `0` | Protects the group from being rebuilt by Generate Groups. Set automatically when a group is the target of a merge. |
 
 `SwimLessonGroupMembers`: `(GroupID, CamperID)` composite PK, both FKs `ON DELETE CASCADE`.
 

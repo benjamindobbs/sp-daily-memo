@@ -1274,6 +1274,15 @@ db.exec(`
     );
 `);
 
+// Migration: lets two adjacent-level groups be merged to share one instructor. NULL means
+// a normal single-level group; when set, the group spans LevelNumber..LevelRangeMax.
+try {
+    const slgCols = db.prepare("PRAGMA table_info(SwimLessonGroups)").all().map(c => c.name);
+    if (!slgCols.includes('LevelRangeMax')) {
+        db.exec("ALTER TABLE SwimLessonGroups ADD COLUMN LevelRangeMax INTEGER CHECK(LevelRangeMax BETWEEN 1 AND 6 OR LevelRangeMax IS NULL)");
+    }
+} catch(e) { console.error('[migration] SwimLessonGroups.LevelRangeMax:', e.message); }
+
 // Required Rec Swim lifeguard count from enrollment (same in AM and PM).
 function requiredRecGuards(enrolledCount) {
     if (enrolledCount > 15) return 3;
@@ -3259,7 +3268,7 @@ function getSwimSchedulingData(week) {
             `).all(week, period);
 
             const groupRows = db.prepare(`
-                SELECT g.GroupID, g.LevelNumber, g.SubLevel, g.CounselorID, g.Locked,
+                SELECT g.GroupID, g.LevelNumber, g.LevelRangeMax, g.SubLevel, g.CounselorID, g.Locked,
                        co.FirstName AS CounselorFirstName, co.LastName AS CounselorLastName, co.SwimMaxLevel
                 FROM SwimLessonGroups g
                 LEFT JOIN Counselors co ON co.CounselorID = g.CounselorID
@@ -3273,11 +3282,48 @@ function getSwimSchedulingData(week) {
                 WHERE m.GroupID = ?
                 ORDER BY c.LastName, c.FirstName
             `);
-            const groups = groupRows.map(g => ({
-                ...g,
-                members: memberStmt.all(g.GroupID),
-                aboveLevel: !!g.CounselorID && (g.SwimMaxLevel ?? 3) < g.LevelNumber
-            }));
+            const SUBLEVEL_SORT_ORDER = { Low: 0, High: 2 }; // plain (undefined) sorts to 1, between Low and High
+            const groups = groupRows.map(g => {
+                const effectiveMaxLevel = g.LevelRangeMax || g.LevelNumber;
+                const isRanged = !!g.LevelRangeMax;
+                const members = memberStmt.all(g.GroupID);
+
+                // Composition is derived from each member's actual current level, not the
+                // group's own LevelNumber/SubLevel — so it stays accurate after merges and
+                // any manual add/remove, and always denotes Low/Nominal/High per sub-group.
+                const compositionMap = new Map();
+                for (const m of members) {
+                    const eff = getEffectiveSwimLevel(m.CamperID, week);
+                    const key = eff ? `${eff.LevelNumber}|${eff.SubLevel || 'none'}` : 'untested';
+                    if (!compositionMap.has(key)) {
+                        compositionMap.set(key, { levelNumber: eff?.LevelNumber ?? null, subLevel: eff?.SubLevel ?? null, count: 0 });
+                    }
+                    compositionMap.get(key).count++;
+                }
+                const composition = [...compositionMap.values()]
+                    .sort((a, b) => {
+                        if (a.levelNumber === null) return 1;
+                        if (b.levelNumber === null) return -1;
+                        if (a.levelNumber !== b.levelNumber) return a.levelNumber - b.levelNumber;
+                        return (SUBLEVEL_SORT_ORDER[a.subLevel] ?? 1) - (SUBLEVEL_SORT_ORDER[b.subLevel] ?? 1);
+                    })
+                    .map(e => {
+                        if (e.levelNumber === null) return { label: 'Not tested', count: e.count };
+                        const subText = e.subLevel || 'Nominal';
+                        // Only spell out "Level N" per tag when the group spans more than one
+                        // level (merged) — otherwise the level is already the group header.
+                        return { label: isRanged ? `Level ${e.levelNumber} (${subText})` : subText, count: e.count };
+                    });
+
+                return {
+                    ...g,
+                    effectiveMaxLevel,
+                    levelLabel: `Level ${g.LevelNumber}${isRanged ? '–' + g.LevelRangeMax : ''}`,
+                    members,
+                    composition,
+                    aboveLevel: !!g.CounselorID && (g.SwimMaxLevel ?? 3) < effectiveMaxLevel
+                };
+            });
 
             const groupedCamperIds = new Set(groups.flatMap(g => g.members.map(m => m.CamperID)));
             const ungrouped = enrolledCampers
@@ -3323,12 +3369,11 @@ function getSwimWarnings(periods) {
             }
             p.lessons.guards.forEach(g => bump(p.period, g.CounselorID, `${g.FirstName} ${g.LastName} guarding Swim Lessons`));
             p.lessons.groups.forEach(g => {
-                const label = `Level ${g.LevelNumber}${g.SubLevel ? ' (' + g.SubLevel + ')' : ''}`;
-                if (g.members.length === 0) warnings.push(`Period ${p.period}: ${label} group is empty`);
+                if (g.members.length === 0) warnings.push(`Period ${p.period}: ${g.levelLabel} group is empty`);
                 if (g.CounselorID) {
-                    bump(p.period, g.CounselorID, `${g.CounselorFirstName} ${g.CounselorLastName} teaching ${label}`);
+                    bump(p.period, g.CounselorID, `${g.CounselorFirstName} ${g.CounselorLastName} teaching ${g.levelLabel}`);
                     if (g.aboveLevel) {
-                        warnings.push(`Period ${p.period}: ${g.CounselorFirstName} ${g.CounselorLastName} is teaching ${label}, above their max level`);
+                        warnings.push(`Period ${p.period}: ${g.CounselorFirstName} ${g.CounselorLastName} is teaching ${g.levelLabel}, above their max level`);
                     }
                 }
             });
@@ -3389,6 +3434,45 @@ app.post('/swim-scheduling/delete-group', (req, res) => {
     res.redirect(`/swim-scheduling?week=${week}&message=Group+deleted`);
 });
 
+// Combines two groups in the same period into one — for small adjacent-level classes
+// (e.g. 2 kids at Level 5, 1 at Level 6) that don't need separate instructors. The
+// source group's campers move into the target group, the target's level widens to cover
+// both (LevelNumber = min, LevelRangeMax = max), its SubLevel is cleared (no longer
+// single-level), and it's locked so Generate Groups won't split it back apart. The
+// source group is deleted. The target keeps whichever instructor it already had, if any.
+app.post('/swim-scheduling/merge-group', (req, res) => {
+    const week = parseInt(req.body.weekNumber);
+    const sourceGroupId = parseInt(req.body.sourceGroupId);
+    const targetGroupId = parseInt(req.body.targetGroupId);
+    if (!sourceGroupId || !targetGroupId || sourceGroupId === targetGroupId) {
+        return res.redirect(`/swim-scheduling?week=${week}&message=Invalid+merge`);
+    }
+
+    const source = db.prepare('SELECT * FROM SwimLessonGroups WHERE GroupID = ?').get(sourceGroupId);
+    const target = db.prepare('SELECT * FROM SwimLessonGroups WHERE GroupID = ?').get(targetGroupId);
+    if (!source || !target || source.WeekNumber !== target.WeekNumber || source.PeriodNumber !== target.PeriodNumber) {
+        return res.redirect(`/swim-scheduling?week=${week}&message=Groups+must+be+in+the+same+period`);
+    }
+
+    db.transaction(() => {
+        const members = db.prepare('SELECT CamperID FROM SwimLessonGroupMembers WHERE GroupID = ?').all(sourceGroupId);
+        const insMember = db.prepare('INSERT OR IGNORE INTO SwimLessonGroupMembers (GroupID, CamperID) VALUES (?, ?)');
+        for (const m of members) insMember.run(targetGroupId, m.CamperID);
+
+        const newMin = Math.min(source.LevelNumber, target.LevelNumber);
+        const newMax = Math.max(source.LevelRangeMax || source.LevelNumber, target.LevelRangeMax || target.LevelNumber);
+        db.prepare(`
+            UPDATE SwimLessonGroups
+            SET LevelNumber = ?, LevelRangeMax = ?, SubLevel = NULL, Locked = 1
+            WHERE GroupID = ?
+        `).run(newMin, newMax > newMin ? newMax : null, targetGroupId);
+
+        db.prepare('DELETE FROM SwimLessonGroups WHERE GroupID = ?').run(sourceGroupId);
+    })();
+
+    res.redirect(`/swim-scheduling?week=${week}&message=Groups+merged`);
+});
+
 app.post('/swim-scheduling/toggle-group-lock', (req, res) => {
     const groupId = parseInt(req.body.groupId);
     const week = parseInt(req.body.weekNumber);
@@ -3436,6 +3520,27 @@ app.post('/swim-scheduling/save-guards', (req, res) => {
     })();
 
     res.redirect(`/swim-scheduling?week=${week}&message=Guards+updated`);
+});
+
+// Bulk-edit SwimMaxLevel for every swim counselor at once from the "Edit Swim
+// Certifications" panel — same field, same certification, as the counselor profile's
+// Edit Profile form, just editable for everyone in one place.
+app.post('/swim-scheduling/save-certifications', (req, res) => {
+    const week = parseInt(req.body.weekNumber);
+    const counselorIds = [].concat(req.body.counselorId || []).map(Number);
+    const levels = [].concat(req.body.swimMaxLevel || []);
+
+    const upd = db.prepare('UPDATE Counselors SET SwimMaxLevel = ? WHERE CounselorID = ?');
+    db.transaction(() => {
+        counselorIds.forEach((id, i) => {
+            if (!id) return;
+            const raw = parseInt(levels[i], 10);
+            const level = (raw >= 1 && raw <= 6) ? raw : null;
+            upd.run(level, id);
+        });
+    })();
+
+    res.redirect(`/swim-scheduling?week=${week}&message=Certifications+updated`);
 });
 
 app.get('/search', (req, res) => {
