@@ -2988,11 +2988,13 @@ app.post('/update-class-location', (req, res) => {
 // --- SWIM LEVELS ---
 const SWIM_ACTIVITY_NAMES = ['Rec Swim', 'Swim Lessons'];
 
-app.get('/swim-levels', (req, res) => {
-    const isAdmin = req.cookies.adminAuth === 'true';
-    const week = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
+// Campers enrolled in Rec Swim/Swim Lessons for a week, grouped by activity (Rec Swim
+// first, then Swim Lessons), then by period ascending, alphabetical by last/first name
+// within each group. A camper enrolled in swim during more than one period appears in
+// each relevant group, sharing one cached level lookup so it's computed only once.
+// Shared by the /swim-levels editing view and the /reports/swim-levels printable report.
+function getSwimLevelGroups(week) {
     const ph = SWIM_ACTIVITY_NAMES.map(() => '?').join(',');
-
     const enrollments = db.prepare(`
         SELECT DISTINCT c.CamperID, c.FirstName, c.LastName, s.PeriodNumber, s.ActivityName
         FROM Campers c
@@ -3000,8 +3002,6 @@ app.get('/swim-levels', (req, res) => {
         WHERE s.ActivityName IN (${ph})
     `).all(week, ...SWIM_ACTIVITY_NAMES);
 
-    // A camper can appear in more than one activity/period group (e.g. Rec Swim one
-    // period, Swim Lessons another) — cache their level lookup so it's computed once.
     const levelCache = new Map();
     const rowFor = c => {
         if (!levelCache.has(c.CamperID)) {
@@ -3017,8 +3017,6 @@ app.get('/swim-levels', (req, res) => {
         return levelCache.get(c.CamperID);
     };
 
-    // Group by activity (Rec Swim, then Swim Lessons), then by period ascending,
-    // alphabetical by last/first name within each group.
     const groups = [];
     for (const activityName of SWIM_ACTIVITY_NAMES) {
         const periods = [...new Set(
@@ -3032,7 +3030,13 @@ app.get('/swim-levels', (req, res) => {
             groups.push({ activityName, period, campers });
         }
     }
+    return groups;
+}
 
+app.get('/swim-levels', (req, res) => {
+    const isAdmin = req.cookies.adminAuth === 'true';
+    const week = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
+    const groups = getSwimLevelGroups(week);
     const weekLabel = db.prepare("SELECT label FROM Sessions WHERE weekNumber = ?").get(week)?.label || `Week ${week}`;
     res.render('swim-levels', { groups, week, weekLabel, message: req.query.message || null });
 });
@@ -3055,6 +3059,18 @@ app.post('/swim-levels/update', (req, res) => {
     `).run(camperId, week, levelNumber, subLevel);
 
     res.redirect('/swim-levels?message=Level+saved!');
+});
+
+// Printable roster: every camper enrolled in swim for a chosen session + their level.
+// `/reports` is already admin-gated as a prefix (ADMIN_ONLY_PREFIXES).
+app.get('/reports/swim-levels', (req, res) => {
+    const sessions = db.prepare('SELECT * FROM Sessions ORDER BY weekNumber').all();
+    const isAdmin = req.cookies.adminAuth === 'true';
+    const defaultWeek = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
+    const week = parseInt(req.query.week) || defaultWeek;
+    const groups = getSwimLevelGroups(week);
+    const weekLabel = db.prepare("SELECT label FROM Sessions WHERE weekNumber = ?").get(week)?.label || `Week ${week}`;
+    res.render('swim-levels-report', { groups, week, weekLabel, sessions });
 });
 
 app.get('/search', (req, res) => {

@@ -26,9 +26,13 @@ One row per camper per week — a snapshot of their tested swim level, not a run
 
 A camper's **effective level as of week N** is their own week-N row if one exists, otherwise the most recent earlier week's row (levels persist until retested — a week is only written when the level actually changes). Computed by `getEffectiveSwimLevel(camperId, weekNumber)` in `app.js`; `formatSwimLevel()` renders it as `"Low 2"` / `"2"` / `"High 2"`.
 
+### `getSwimLevelGroups(week)`
+
+Shared helper in `app.js` used by both `/swim-levels` and `/reports/swim-levels`. Queries campers enrolled in `'Rec Swim'` or `'Swim Lessons'` for the given week (same `Campers JOIN Schedules` enrollment pattern as `/class-roster`), then groups into `{activityName, period, campers}` sections — `Rec Swim` first, then `Swim Lessons`, periods ascending, campers alphabetical by last/first name within each section. A camper enrolled in swim during more than one period (e.g. Rec Swim one period, Swim Lessons another) appears in each relevant group; their level is looked up once and cached (`levelCache`), so editing from either instance updates the same `CamperSwimLevels` row.
+
 ### `GET /swim-levels` / `POST /swim-levels/update`
 
-Admin-only page listing every camper currently enrolled in `'Rec Swim'` or `'Swim Lessons'` for the target week (prep target if set, else active week), using the same `Campers JOIN Schedules` enrollment pattern as `/class-roster`. Grouped into a section per activity + period — `Rec Swim` sections first, then `Swim Lessons`, periods ascending, campers alphabetical by last/first name within each section. A camper enrolled in swim during more than one period (e.g. Rec Swim one period, Swim Lessons another) appears in each relevant group; their level is looked up once and cached (`levelCache` in the route), so editing from either instance updates the same `CamperSwimLevels` row. Each row shows the camper's current effective level (or a "Not yet tested" badge) with an inline form to set a new level + sub-level for that week — `POST /swim-levels/update` upserts one `CamperSwimLevels` row. `views/swim-levels.ejs`.
+Admin-only editing page: renders `getSwimLevelGroups()` for the target week (prep target if set, else active week) with an inline form on each camper row to set a new level + sub-level for that week. Each row shows the camper's current effective level or a "Not yet tested" badge. `POST /swim-levels/update` upserts one `CamperSwimLevels` row. `views/swim-levels.ejs`.
 
 ### `POST /upload-swim-levels`
 
@@ -40,6 +44,16 @@ CSV import for the **"Group Attendance Sheet with Swim Level"** camp-management 
 - `parseSwimLevelValue()` parses `"2"` / `"Low 2"` / `"High 3"` into `{levelNumber, subLevel}`.
 - Campers are matched by exact `FirstName`/`LastName` against `Campers`; zero or multiple matches are skipped and listed in the redirect summary (same convention as the CSR-300 staff-contact importer — see [Data Import Pipeline](./Data-Import.md)).
 - Writes go to whichever week is selected in the upload form (defaults to prep target / active week).
+
+---
+
+## Phase 2 — Printable Report (shipped)
+
+### `GET /reports/swim-levels`
+
+Admin-only printable roster (Settings → Print Reports → Swim Levels Report), following the same conventions as `views/attendance-rosters.ejs` — a `no-print` nav bar with a `window.print()` button, bordered roster tables, and an `@media print` block that hides chrome and resets container padding. Unlike `attendance-rosters.ejs`, groups don't force a page break per section (`page-break-inside: avoid` instead) since each group is small (name + level only).
+
+Takes an optional `?week=N` query param via a session `<select>` in the nav bar (auto-submits on change) so any past or future session's roster can be printed, not just the active/prep week. Defaults to prep target / active week when no `week` param is given. Reuses `getSwimLevelGroups()` — same grouping, same campers, same levels as the `/swim-levels` editing view; `views/swim-levels-report.ejs`.
 
 ---
 

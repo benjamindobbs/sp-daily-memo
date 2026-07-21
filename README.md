@@ -283,7 +283,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | Home Group Assignment | `/homegroup-assignment` | Assign counselors to color-group home groups by week. Can mirror assignments from one week to another. |
 | SPLIT Scheduling | `/split-scheduling` | Dedicated view for managing SPLIT camper period assignments (periods 1, 2, 4, 5, 6). |
 | Audit Roster | `/audit` | Flags scheduling issues: missing grades, duplicate assignments, unassigned campers, classes with no counselor. Each section has a Show/Hide toggle; collapsed sections are remembered per browser. |
-| Swim Levels | `/swim-levels` | Campers currently enrolled in Rec Swim or Swim Lessons for the target week, with their current swim level and an inline form to update it. First phase of the swim scheduling feature — see the Swim Levels CSV import above. |
+| Swim Levels | `/swim-levels` | Campers currently enrolled in Rec Swim or Swim Lessons for the target week, grouped by class and period, alphabetical within each group. Inline form to update each camper's level. Printable version at `/reports/swim-levels` (Settings → Print Reports), with a session picker so you can print any week's roster. First phases of the swim scheduling feature — see the Swim Levels CSV import above. |
 
 ---
 
@@ -335,7 +335,7 @@ All at `/settings`.
 | **Camp Map Buildings** | Manage building pin positions for the interactive camp map. Two maps are available (`enrichment` and `sports`). Enter a building name (must match the `Location` value used in the schedule), choose the map, and provide X/Y pixel coordinates from the map image. The settings page lists all distinct location names currently in the schedule as a reference. |
 | **CSV Data Imports** | Import all staff, instructor schedules, camper roster (ACR-005), and camper master schedule |
 | **Documents** | Upload up to 7 PDF documents in a 3×3 grid. Current documents: 📄 Camper Notes, 📄 ICP Notes, 🗺️ AM Enrichment Meeting Locations, 🗺️ Snack Break Meeting Locations, 🗺️ Lunch Enrichment Meeting Locations, 🗺️ Popsicle Break Meeting Locations, 🗺️ Enrichment Locations Map. Each card shows upload status and a form to replace the file. All uploaded documents are viewable by all staff from the **Document Hub** (`/docs`). |
-| **Print Reports** | Printable attendance rosters and camper name cards |
+| **Print Reports** | Printable attendance rosters, camper name cards, and a swim levels report |
 | **Add Staff Member** | Create an individual staff record with all profile fields (name, role, group color, schedule type, bus, extended hours, phone, email) |
 | **Add Camper** | Create an individual camper record and immediately assign classes through the class assignment tool |
 | **Create Blank Class** | Add a class offering to the active week's schedule without any enrolled campers — useful for adding ad-hoc classes (e.g. Free Swim) that weren't in the original import |

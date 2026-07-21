@@ -265,6 +265,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 |---|---|:---:|---|
 | GET | `/reports/attendance-rosters` | ✓ | Printable attendance roster sheets |
 | GET | `/reports/name-cards` | ✓ | Printable camper name cards |
+| GET | `/reports/swim-levels` | ✓ | Printable swim levels roster, grouped by class/period via `getSwimLevelGroups()`. Optional `?week=N` to print any session, not just active/prep |
 
 ---
 

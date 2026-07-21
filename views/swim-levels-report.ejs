@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swim Levels Report | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .swim-report-group {
+            page-break-inside: avoid;
+            margin-bottom: 24px;
+        }
+        .swim-report-header {
+            border-bottom: 2px solid #000;
+            padding-bottom: 6px;
+            margin-bottom: 8px;
+        }
+        .swim-report-header h2 { margin: 0; font-size: 1.05rem; font-weight: 700; }
+        .swim-report-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        .swim-report-table th {
+            background: #f8fafc;
+            border: 1px solid #888;
+            padding: 6px 10px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.8rem;
+        }
+        .swim-report-table td { border: 1px solid #bbb; padding: 6px 10px; }
+        .empty-state { color: var(--text-muted); font-style: italic; text-align: center; padding: 20px; }
+
+        @media print {
+            nav, .no-print { display: none !important; }
+            .container { padding: 0; max-width: none; }
+        }
+    </style>
+</head>
+<body>
+
+<nav class="nav-bar no-print">
+    <a href="/admin" class="nav-btn">&#127968; Hub</a>
+    <a href="/swim-levels" class="nav-btn">&#127946; Swim Levels</a>
+    <form method="GET" style="display:flex; align-items:center; gap:6px; margin-left:auto;">
+        <label style="font-size:0.82rem; font-weight:600;">Session:</label>
+        <select name="week" onchange="this.form.submit()" style="padding:4px 8px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem;">
+            <% sessions.forEach(function(s) { %>
+                <option value="<%= s.weekNumber %>" <%= s.weekNumber === week ? 'selected' : '' %>>
+                    W<%= s.weekNumber %><%= s.label ? ' — ' + s.label : '' %>
+                </option>
+            <% }) %>
+        </select>
+    </form>
+    <button onclick="window.print()" class="nav-btn primary">&#128424; Print</button>
+</nav>
+
+<div class="container">
+
+    <div class="swim-report-header" style="margin-bottom:20px;">
+        <h1 style="margin:0 0 4px; font-size:1.4rem;">Swim Levels Report</h1>
+        <p style="margin:0; color:#555; font-size:0.9rem;"><%= weekLabel %></p>
+    </div>
+
+    <% const totalCampers = groups.reduce((n, g) => n + g.campers.length, 0); %>
+    <% if (totalCampers === 0) { %>
+        <p class="empty-state">No campers were enrolled in Rec Swim or Swim Lessons this session.</p>
+    <% } %>
+
+    <% groups.forEach(function(g) { %>
+    <div class="swim-report-group">
+        <div class="swim-report-header">
+            <h2><%= g.activityName %> — Period <%= g.period %> <span style="font-weight:400; color:#555;">(<%= g.campers.length %>)</span></h2>
+        </div>
+        <table class="swim-report-table">
+            <thead>
+                <tr>
+                    <th style="width:70%;">Camper</th>
+                    <th>Swim Level</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% g.campers.forEach(function(c) { %>
+                <tr>
+                    <td><%= c.FirstName %> <%= c.LastName %></td>
+                    <td><%= c.level || '—' %></td>
+                </tr>
+                <% }) %>
+            </tbody>
+        </table>
+    </div>
+    <% }) %>
+
+</div>
+</body>
+</html>
