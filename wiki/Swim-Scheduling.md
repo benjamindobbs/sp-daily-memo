@@ -148,6 +148,10 @@ Rules:
 
 `getAmFairnessTally(week)` counts only guard assignments (`SwimGuardAssignments`, since guarding is the out-of-water duty being rotated fairly week to week), restricted to periods 1-3 and weeks strictly before the target week.
 
+### Clear All Assignments (`POST /swim-scheduling/clear-assignments`)
+
+Unassigns every counselor for the week in one action: deletes every `SwimGuardAssignments` row for the week and sets `CounselorID`/`CounselorID2` to `NULL` on every `SwimLessonGroups` row for the week — **including Locked groups**, since `Locked` only protects group membership from Generate Groups regeneration, not instructor assignment. Groups, their campers, and each period's guard requirements are untouched; this only clears who's assigned. Meant as a clean-slate reset before re-running Full Auto Assign or reassigning by hand — confirmed with a warning dialog since it touches the whole week at once.
+
 ### Send to Sports
 
 Each period card ends with a "Send to Sports" box: once that period is **fully staffed** — Rec Swim guards met, Swim Lessons pool guards met, and every non-empty lesson group has all its instructor slot(s) filled (both `CounselorID` and `CounselorID2` when `needsSecondInstructor`) — any swim counselor not used anywhere in that period genuinely has nothing to do in swim and can be sent to help Sports instead.
@@ -183,6 +187,7 @@ Computed at render time, never stored. Flags: a period's Rec Swim or Swim Lesson
 | POST | `/swim-scheduling/save-guards` | Full replace of a `(week, period, guardRole)` guard set from a checkbox list |
 | POST | `/swim-scheduling/save-certifications` | Bulk-updates every swim counselor's `Counselors.SwimMaxLevel` in one submit |
 | POST | `/swim-scheduling/auto-assign` | Runs `autoAssignWeek()` — fills open guard slots and un-instructored group slots, leaves everything already set untouched |
+| POST | `/swim-scheduling/clear-assignments` | Deletes all guard assignments and clears both instructor slots on every group for the week, including Locked groups |
 
 ### Edit Swim Certifications panel
 

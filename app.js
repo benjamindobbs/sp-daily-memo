@@ -3833,6 +3833,20 @@ app.post('/swim-scheduling/auto-assign', (req, res) => {
     res.redirect(`/swim-scheduling?week=${week}&message=${text.replace(/ /g, '+')}`);
 });
 
+// Unassigns every counselor for the week in one go — every SwimGuardAssignments row is
+// deleted and every SwimLessonGroups.CounselorID/CounselorID2 is cleared, regardless of
+// Locked (locking only protects group membership from Generate Groups, not instructor
+// assignments). Groups, their campers, and guard requirements are untouched — this only
+// clears who's assigned, giving a clean slate to re-run Full Auto Assign or reassign by hand.
+app.post('/swim-scheduling/clear-assignments', (req, res) => {
+    const week = parseInt(req.body.weekNumber) || getPrepTargetWeek() || getActiveWeek();
+    db.transaction(() => {
+        db.prepare('DELETE FROM SwimGuardAssignments WHERE WeekNumber = ?').run(week);
+        db.prepare('UPDATE SwimLessonGroups SET CounselorID = NULL, CounselorID2 = NULL WHERE WeekNumber = ?').run(week);
+    })();
+    res.redirect(`/swim-scheduling?week=${week}&message=All+assignments+cleared`);
+});
+
 app.get('/search', (req, res) => {
     try {
         const query = req.query.name || '';
