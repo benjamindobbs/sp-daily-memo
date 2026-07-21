@@ -145,6 +145,8 @@ The Schedule Builder is at `/counselor-scheduling`.
 
 **Locked offerings** — lock an offering to exclude it from rebuild/auto-build passes. Use this to protect manually set assignments.
 
+**Pinned schedule types** — click the 📌 next to a counselor's Schedule Type dropdown (or hand-edit the dropdown) to pin it against auto-build reshuffling. Under **Mirror from** (pick a source week), the **Migrate Pinned Types** button copies every pinned schedule type from that week onto counselors present in the current build who share a `CounselorID`, pinning them here too. Like the other Mirror buttons, this only updates the on-screen builder — click **Save Group Assignments** to persist it.
+
 #### Build Workflow
 
 1. Upload or Sync **Weekly Offerings** to populate the offerings list

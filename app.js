@@ -473,7 +473,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups', '/sync-homegroup-colors',
     '/hub-content', '/director-notes', '/director-notes/edit',
     '/set-active-week', '/set-released-week', '/set-prep-week', '/update-session-label',
-    '/clear-counselor-week', '/counselor-week-assignments', '/api/week-staff-assignments', '/mirror-sports-location', '/clear-counselor-schedule', '/clear-counselor-homegroups',
+    '/clear-counselor-week', '/counselor-week-assignments', '/api/week-staff-assignments', '/api/counselor-week-pinned-types', '/mirror-sports-location', '/clear-counselor-schedule', '/clear-counselor-homegroups',
     '/api/locked-offerings', '/api/toggle-lock',
     '/audit', '/merge-class', '/set-activity-side', '/delete-counselor',
     '/update-staff-info', '/update-staff-period', '/remove-staff-period',
@@ -7718,6 +7718,13 @@ app.get('/api/week-staff-assignments/:week', (req, res) => {
     const w = parseInt(req.params.week);
     if (w < 1 || w > 6) return res.status(400).json({ error: 'Invalid week' });
     const rows = db.prepare("SELECT PersonID, PeriodNumber, ActivityName FROM CounselorScheduleAssignments WHERE PersonType='Instructor' AND WeekNumber=?").all(w);
+    res.json(rows);
+});
+
+app.get('/api/counselor-week-pinned-types/:week', (req, res) => {
+    const w = parseInt(req.params.week);
+    if (w < 1 || w > 6) return res.status(400).json({ error: 'Invalid week' });
+    const rows = db.prepare("SELECT CounselorID, ScheduleType FROM CounselorWeekAttributes WHERE WeekNumber=? AND ScheduleTypeManual=1 AND ScheduleType IS NOT NULL").all(w);
     res.json(rows);
 });
 

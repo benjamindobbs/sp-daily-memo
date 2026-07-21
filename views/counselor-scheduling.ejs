@@ -398,6 +398,7 @@
                 <button class="btn btn-small" style="background:#f1f5f9; color:var(--text);" onclick="mirrorWeek('Sports')">&#9917; Mirror Sports</button>
                 <button class="btn btn-small" style="background:#f1f5f9; color:var(--text);" onclick="mirrorWeek('Enrichment')">&#127912; Mirror Enrichment</button>
                 <button class="btn btn-small" style="background:#f0fdf4; color:#166534; border-color:#bbf7d0;" onclick="mirrorStaffOnly()">&#128101; Mirror UL/SL</button>
+                <button class="btn btn-small" style="background:#eef2ff; color:#4338ca; border-color:#c7d2fe;" onclick="migratePinnedTypes()" title="Copy manually-pinned (📌) schedule types from the source week onto matching counselors here">&#128204; Migrate Pinned Types</button>
                 <form id="mirrorLocationForm" action="/mirror-sports-location" method="POST" style="display:contents;">
                     <input type="hidden" name="toWeek" value="<%= planWeek %>">
                     <input type="hidden" id="mirrorLocationFromWeek" name="fromWeek" value="">
@@ -1412,6 +1413,37 @@
             updateGroupCounters();
             const fromLabel = SESSIONS.find(s => s.weekNumber === fromWeek)?.label ?? `Week ${fromWeek}`;
             statusEl.textContent = `Mirrored UL/SL for ${mirrored} class${mirrored !== 1 ? 'es' : ''} from ${fromLabel}.`;
+        }
+
+        // ── Migrate manually-pinned (📌) schedule types from another week ────────
+        async function migratePinnedTypes() {
+            const fromWeek = parseInt(document.getElementById('mirrorSourceWeek').value);
+            const statusEl = document.getElementById('mirrorStatus');
+            statusEl.textContent = 'Loading…';
+
+            let rows;
+            try {
+                const resp = await fetch(`/api/counselor-week-pinned-types/${fromWeek}`);
+                rows = await resp.json();
+            } catch {
+                statusEl.textContent = 'Error fetching source week.';
+                return;
+            }
+
+            let migrated = 0;
+            rows.forEach(r => {
+                const sel = document.querySelector(`.cg-schedule[data-cid="${r.CounselorID}"]:not(.cg-specialty-schedule)`);
+                if (!sel) return; // counselor isn't in this week's main group
+                sel.value = r.ScheduleType;
+                manualTypeCids.add(String(r.CounselorID));
+                migrated++;
+            });
+
+            updateAllCounters();
+            updateGroupCounters();
+            updateScheduleTypeColors();
+            const fromLabel = SESSIONS.find(s => s.weekNumber === fromWeek)?.label ?? `Week ${fromWeek}`;
+            statusEl.textContent = `Migrated ${migrated} pinned schedule type${migrated !== 1 ? 's' : ''} from ${fromLabel}.`;
         }
 
         function submitMirrorLocation() {

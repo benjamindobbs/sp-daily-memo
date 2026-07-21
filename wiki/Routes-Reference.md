@@ -89,6 +89,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/split-field-trip/clear` | ✓ | Remove today's SPLIT field trip flag |
 | GET | `/audit` | ✓ | Audit page — flags scheduling issues. Uses the prep target week if one is set, otherwise the active week. Counselor class-count check credits periods covered under a dual-enrolled staff identity (same name, e.g. Sports Leader/Counselor), so dual staff aren't falsely flagged short. |
 | GET | `/counselor-week-assignments/:week` | ✓ | Ajax: get all assignments for a given week |
+| GET | `/api/counselor-week-pinned-types/:week` | ✓ | Ajax: `{CounselorID, ScheduleType}` rows for counselors with a manually-pinned (`ScheduleTypeManual=1`) schedule type in the given week; used by **Migrate Pinned Types** on the schedule builder |
 
 ---
 
