@@ -1440,6 +1440,39 @@ function getAmFairnessTally(week) {
     return tally;
 }
 
+// Last-resort fallback for autoAssignWeek(): finds the best pair of same-period, unlocked,
+// already-instructed lesson groups where merging would actually free up an instructor —
+// their combined member count has to stay under 5, since a group of exactly 5 needs 2
+// instructors just like two separate groups did, so that merge would save nobody. Scored by
+// smallest level gap first (least classroom disruption), then smallest combined size as a
+// tie-break. Returns {source, target}: source is merged into target and deleted exactly like
+// a manual /swim-scheduling/merge-group (target's level range widens to cover both, gets
+// locked so a later Generate Groups run won't split it back apart); target is whichever of
+// the pair has more members, so it's the *smaller* group's instructor who ends up freed for
+// guard duty. Returns null if no qualifying pair exists.
+function findMergeCandidate(groups) {
+    let best = null, bestGap = Infinity, bestSize = Infinity;
+    for (let i = 0; i < groups.length; i++) {
+        for (let j = i + 1; j < groups.length; j++) {
+            const a = groups[i], b = groups[j];
+            if (a.Locked || b.Locked) continue;
+            if (!a.CounselorID || !b.CounselorID) continue; // nobody to free if either has no instructor yet
+            if (a.members.length >= 5 || b.members.length >= 5) continue; // already needs 2 — no gain
+            const combined = a.members.length + b.members.length;
+            if (combined > 4) continue; // would need 2 instructors post-merge — no gain
+            const aMax = a.LevelRangeMax || a.LevelNumber;
+            const bMax = b.LevelRangeMax || b.LevelNumber;
+            const gap = Math.max(0, Math.max(a.LevelNumber, b.LevelNumber) - Math.min(aMax, bMax));
+            if (gap < bestGap || (gap === bestGap && combined < bestSize)) {
+                bestGap = gap;
+                bestSize = combined;
+                best = a.members.length >= b.members.length ? { source: b, target: a } : { source: a, target: b };
+            }
+        }
+    }
+    return best;
+}
+
 // Fills every open guard slot and un-instructored lesson group slot for the week. Never
 // removes or changes anything already set — Locked groups, instructor slots that already
 // have a CounselorID, and existing SwimGuardAssignments rows are left as-is; this only fills
@@ -1466,7 +1499,13 @@ function getAmFairnessTally(week) {
 //     they prefer whoever has guarded the least so far *this* week.
 //   - Teaching a lesson group is in-water (any level): instructor slots prefer whoever has
 //     taught the least so far this week, so teaching time balances out across the staff.
-// Returns {filled, unfilled} slot counts for the summary message.
+//   - Last resort: if a period still has an unfilled guard slot after all of the above,
+//     findMergeCandidate() looks for a same-period merge that would free up an instructor
+//     (see its docstring) and, if found, executes it and reassigns the freed instructor to
+//     guard duty immediately — repeated until the shortfall is covered or no more qualifying
+//     merges exist. This only runs when a guard slot would otherwise stay unfilled; it never
+//     merges groups just to consolidate classes.
+// Returns {filled, unfilled, merged} slot/merge counts for the summary message.
 const CERT_RESERVE_WEIGHT = 10;
 
 function autoAssignWeek(week) {
@@ -1505,8 +1544,11 @@ function autoAssignWeek(week) {
     const insGuard = db.prepare('INSERT INTO SwimGuardAssignments (WeekNumber, PeriodNumber, GuardRole, CounselorID) VALUES (?, ?, ?, ?)');
     const updGroup1 = db.prepare('UPDATE SwimLessonGroups SET CounselorID = ? WHERE GroupID = ?');
     const updGroup2 = db.prepare('UPDATE SwimLessonGroups SET CounselorID2 = ? WHERE GroupID = ?');
+    const insMergeMember = db.prepare('INSERT OR IGNORE INTO SwimLessonGroupMembers (GroupID, CamperID) VALUES (?, ?)');
+    const updMergedTarget = db.prepare('UPDATE SwimLessonGroups SET LevelNumber = ?, LevelRangeMax = ?, SubLevel = NULL, Locked = 1 WHERE GroupID = ?');
+    const delMergedSource = db.prepare('DELETE FROM SwimLessonGroups WHERE GroupID = ?');
 
-    let filled = 0, unfilled = 0;
+    let filled = 0, unfilled = 0, merged = 0;
 
     db.transaction(() => {
         for (const p of periods) {
@@ -1556,11 +1598,12 @@ function autoAssignWeek(week) {
                 }
             }
 
+            let recShortfall = 0;
             if (p.rec) {
                 const need = p.rec.requiredGuards - p.rec.guards.length;
                 for (let i = 0; i < need; i++) {
                     const id = pick(usedThisPeriod, allIds, cid => scoreGuard(cid, p.period));
-                    if (id == null) { unfilled++; continue; }
+                    if (id == null) { recShortfall++; continue; }
                     insGuard.run(week, p.period, 'Rec', id);
                     usedThisPeriod.add(id);
                     bumpRunning(id, false);
@@ -1568,21 +1611,60 @@ function autoAssignWeek(week) {
                 }
             }
 
+            let lessonsShortfall = 0;
             if (p.lessons) {
                 const guardNeed = p.lessons.requiredGuards - p.lessons.guards.length;
                 for (let i = 0; i < guardNeed; i++) {
                     const id = pick(usedThisPeriod, allIds, cid => scoreGuard(cid, p.period));
-                    if (id == null) { unfilled++; continue; }
+                    if (id == null) { lessonsShortfall++; continue; }
                     insGuard.run(week, p.period, 'Lessons', id);
                     usedThisPeriod.add(id);
                     bumpRunning(id, false);
                     filled++;
                 }
             }
+
+            // Last resort: still short a guard after the normal fill — look for a merge
+            // that frees up an instructor, one merge per freed slot, until the shortfall is
+            // covered or no more qualifying merges exist.
+            if (p.lessons) {
+                while (recShortfall + lessonsShortfall > 0) {
+                    const candidate = findMergeCandidate(p.lessons.groups);
+                    if (!candidate) break;
+                    const { source, target } = candidate;
+
+                    source.members.forEach(m => insMergeMember.run(target.GroupID, m.CamperID));
+                    const newMin = Math.min(source.LevelNumber, target.LevelNumber);
+                    const newMax = Math.max(source.LevelRangeMax || source.LevelNumber, target.LevelRangeMax || target.LevelNumber);
+                    updMergedTarget.run(newMin, newMax > newMin ? newMax : null, target.GroupID);
+                    delMergedSource.run(source.GroupID);
+                    merged++;
+
+                    target.LevelNumber = newMin;
+                    target.LevelRangeMax = newMax > newMin ? newMax : null;
+                    target.members = target.members.concat(source.members);
+                    p.lessons.groups = p.lessons.groups.filter(g => g.GroupID !== source.GroupID);
+
+                    const freedId = source.CounselorID;
+                    usedThisPeriod.delete(freedId);
+                    if (recShortfall > 0) {
+                        insGuard.run(week, p.period, 'Rec', freedId);
+                        recShortfall--;
+                    } else {
+                        insGuard.run(week, p.period, 'Lessons', freedId);
+                        lessonsShortfall--;
+                    }
+                    usedThisPeriod.add(freedId);
+                    bumpRunning(freedId, false);
+                    filled++;
+                }
+            }
+
+            unfilled += recShortfall + lessonsShortfall;
         }
     })();
 
-    return { filled, unfilled };
+    return { filled, unfilled, merged };
 }
 
 // Migration: track schedule types set by hand so auto-build never overwrites them
@@ -3826,10 +3908,10 @@ app.post('/swim-scheduling/save-certifications', (req, res) => {
 // groups, groups with an instructor already, and existing guard assignments are untouched.
 app.post('/swim-scheduling/auto-assign', (req, res) => {
     const week = parseInt(req.body.weekNumber) || getPrepTargetWeek() || getActiveWeek();
-    const { filled, unfilled } = autoAssignWeek(week);
-    const text = unfilled > 0
-        ? `Auto-assigned ${filled} slots, ${unfilled} could not be filled`
-        : `Auto-assigned ${filled} slots`;
+    const { filled, unfilled, merged } = autoAssignWeek(week);
+    let text = `Auto-assigned ${filled} slots`;
+    if (merged > 0) text += `, merged ${merged} group(s) to free up guards`;
+    if (unfilled > 0) text += `, ${unfilled} could not be filled`;
     res.redirect(`/swim-scheduling?week=${week}&message=${text.replace(/ /g, '+')}`);
 });
 
