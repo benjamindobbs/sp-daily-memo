@@ -3572,6 +3572,40 @@ app.get('/reports/swim-levels', (req, res) => {
     res.render('swim-levels-report', { groups, week, weekLabel, sessions });
 });
 
+// Printable staffing schedule: 2 pages (AM = periods 1-3, PM = periods 4-6), 3 columns per
+// page (one per period). Reuses getSwimSchedulingData()/attachSendToSports() — same guards,
+// groups, and Send to Sports data as the live /swim-scheduling page — plus each period's
+// full Rec Swim roster (added to getSwimSchedulingData's `rec.campers`, flagged if untested)
+// and a `level` string on every lesson-group member, both added specifically for this report.
+// Periods with no Rec/Lessons offering that week still get a column, shown as "Not offered",
+// so the 3-column layout stays consistent across the grid.
+app.get('/reports/swim-schedule', (req, res) => {
+    const sessions = db.prepare('SELECT * FROM Sessions ORDER BY weekNumber').all();
+    const isAdmin = req.cookies.adminAuth === 'true';
+    const defaultWeek = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
+    const week = parseInt(req.query.week) || defaultWeek;
+    const weekLabel = db.prepare("SELECT label FROM Sessions WHERE weekNumber = ?").get(week)?.label || `Week ${week}`;
+
+    const periods = getSwimSchedulingData(week);
+    const swimCounselors = db.prepare(
+        "SELECT CounselorID, FirstName, LastName FROM Counselors WHERE StaffRole = 'Swim Counselor' ORDER BY LastName, FirstName"
+    ).all();
+    attachSendToSports(periods, swimCounselors);
+
+    const byPeriod = {};
+    periods.forEach(p => { byPeriod[p.period] = p; });
+    const allPeriods = [];
+    for (let period = 1; period <= 6; period++) {
+        allPeriods.push(byPeriod[period] || { period, rec: null, lessons: null, sendToSports: [], sendToSportsReady: false });
+    }
+
+    res.render('swim-schedule-report', {
+        week, weekLabel, sessions,
+        amPeriods: allPeriods.filter(p => p.period <= 3),
+        pmPeriods: allPeriods.filter(p => p.period > 3)
+    });
+});
+
 // --- SWIM SCHEDULING ---
 // Independent of CounselorWeekSchedules/WeeklyOfferings for staffing — see the "Known
 // limitation" note in wiki/Swim-Scheduling.md. Phase 3: manual assignment + auto-grouping,
@@ -3590,17 +3624,24 @@ function getSwimSchedulingData(week) {
 
         let rec = null;
         if (recOffered) {
-            const enrolledCount = db.prepare(`
-                SELECT COUNT(DISTINCT s.PersonID) AS n FROM Schedules s
-                WHERE s.PersonType = 'Camper' AND s.WeekNumber = ? AND s.PeriodNumber = ? AND s.ActivityName = 'Rec Swim'
-            `).get(week, period).n;
+            const recCampers = db.prepare(`
+                SELECT DISTINCT c.CamperID, c.FirstName, c.LastName
+                FROM Campers c
+                JOIN Schedules s ON s.PersonID = c.CamperID AND s.PersonType = 'Camper' AND s.WeekNumber = ?
+                WHERE s.PeriodNumber = ? AND s.ActivityName = 'Rec Swim'
+                ORDER BY c.LastName, c.FirstName
+            `).all(week, period).map(c => {
+                const eff = getEffectiveSwimLevel(c.CamperID, week);
+                return { ...c, level: formatSwimLevel(eff), hasLevel: !!eff };
+            });
+            const enrolledCount = recCampers.length;
             const guards = db.prepare(`
                 SELECT ga.CounselorID, c.FirstName, c.LastName FROM SwimGuardAssignments ga
                 JOIN Counselors c ON c.CounselorID = ga.CounselorID
                 WHERE ga.WeekNumber = ? AND ga.PeriodNumber = ? AND ga.GuardRole = 'Rec'
                 ORDER BY c.LastName, c.FirstName
             `).all(week, period);
-            rec = { enrolledCount, requiredGuards: requiredRecGuards(enrolledCount), guards };
+            rec = { enrolledCount, requiredGuards: requiredRecGuards(enrolledCount), guards, campers: recCampers };
         }
 
         let lessons = null;
@@ -3639,9 +3680,12 @@ function getSwimSchedulingData(week) {
                 // Composition is derived from each member's actual current level, not the
                 // group's own LevelNumber/SubLevel — so it stays accurate after merges and
                 // any manual add/remove, and always denotes Low/Nominal/High per sub-group.
+                // Each member also gets its own `level` string attached (used by the print
+                // schedule report to show a per-camper level next to their name).
                 const compositionMap = new Map();
                 for (const m of members) {
                     const eff = getEffectiveSwimLevel(m.CamperID, week);
+                    m.level = formatSwimLevel(eff);
                     const key = eff ? `${eff.LevelNumber}|${eff.SubLevel || 'none'}` : 'untested';
                     if (!compositionMap.has(key)) {
                         compositionMap.set(key, { levelNumber: eff?.LevelNumber ?? null, subLevel: eff?.SubLevel ?? null, count: 0 });

@@ -40,6 +40,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/swim-levels/update` | ✓ | Upsert one camper's `CamperSwimLevels` row for a given week |
 | POST | `/upload-swim-levels` | ✓ | CSV import: "Group Attendance Sheet with Swim Level" export |
 | GET | `/swim-scheduling` | ✓ | Swim staffing schedule — Rec Swim guards, Swim Lessons pool guards, auto-generated skill-level lesson groups. Independent of the main counselor schedule. `?week=N` to view a different session. See [Swim Scheduling](./Swim-Scheduling.md) |
+| GET | `/reports/swim-schedule` | ✓ | Printable AM/PM swim staffing schedule — 2 pages, 3 columns (one per period). `?week=N` to print a different session. See [Swim Scheduling](./Swim-Scheduling.md) |
 | POST | `/swim-scheduling/generate-groups` | ✓ | Auto-forms lesson groups for the week from current swim levels; skips `Locked` groups |
 | POST | `/swim-scheduling/create-group` | ✓ | Manually add an empty lesson group |
 | POST | `/swim-scheduling/delete-group` | ✓ | Delete a group; members become ungrouped |

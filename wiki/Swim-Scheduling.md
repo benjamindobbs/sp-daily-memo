@@ -215,6 +215,7 @@ Computed at render time, never stored. Flags: a period's Rec Swim or Swim Lesson
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/swim-scheduling` | Main page. `?week=N` to view a different session |
+| GET | `/reports/swim-schedule` | Printable AM/PM staffing schedule (see below). `?week=N` to print a different session |
 | POST | `/swim-scheduling/generate-groups` | Runs `generateGroupsForWeek()` |
 | POST | `/swim-scheduling/create-group` | Manually add an empty group (period + level + sub-level) |
 | POST | `/swim-scheduling/delete-group` | Deletes a group; members become "Not yet in a group" (CASCADE) |
@@ -235,6 +236,22 @@ Computed at render time, never stored. Flags: a period's Rec Swim or Swim Lesson
 A collapsible (`<details>`/`<summary>`, closed by default) section on `/swim-scheduling` that bulk-edits `SwimMaxLevel` for every swim counselor at once, instead of going through each counselor's profile individually. One `<select>` per counselor, parallel hidden `counselorId` inputs matching by submission order (same repeated-name-array convention as the guard checkboxes — Express parses same-named fields into arrays in DOM order), one `POST /swim-scheduling/save-certifications` for the whole table.
 
 "Move a camper between groups" isn't a dedicated action — it's composed from `assign-camper`/`remove-camper`, matching this codebase's convention of small single-purpose routes over one dispatcher endpoint. Splitting an oversized group *is* dedicated (`split-group`), since re-chunking members evenly needed real logic (`chunkCampers()`), not just a couple of inserts/deletes.
+
+### Printable Staffing Schedule (`GET /reports/swim-schedule`)
+
+A **Print** button at the top right of `/swim-scheduling` (and a link on Settings → Print Reports → "Swim Schedule (AM/PM)") opens `views/swim-schedule-report.ejs`, following the same print conventions as the other `/reports/*` pages (`no-print` nav, `window.print()` button, `@media print` chrome-stripping).
+
+Renders as **2 physical pages** — AM (periods 1-3) and PM (periods 4-6), `.swim-print-page { page-break-after: always }` between them — each laid out as a **3-column CSS grid**, one column per period. Every period gets a column even if Rec/Lessons doesn't run that period that week (shown as "Not offered this period"), so the grid stays consistent. Per period column, top to bottom:
+
+1. **Rec Swim**: a numbered list of every enrolled camper, with **"(NOT TESTED)"** flagged in red next to anyone with no recorded swim level (`hasLevel: false`) — a cue to test them during that block. Then the assigned guards for that period (red if under the required count).
+2. **Swim Lessons**: the pool guards for the whole block (once per period, not per group; red if under 2), then each lesson group — its level label, assigned instructor(s) (both slots if `needsSecondInstructor`, "UNASSIGNED" in red if empty), and its campers each listed with their own current level. Any campers still "Not yet in a group" for that period are flagged as a warning line.
+3. **Send to Sports**: whichever swim counselors `attachSendToSports()` says are free that period (only shown once the period is actually fully staffed — see [Send to Sports](#send-to-sports)).
+
+Two additive changes to `getSwimSchedulingData()` support this (both harmless to its other consumers, which simply ignore the new fields):
+- `rec` now includes a `campers` array (name + `level`/`hasLevel` per camper), not just `enrolledCount` — computed the same way the Rec enrollment count always was, just keeping the per-camper rows instead of collapsing straight to a count.
+- Each lesson group's `members` now carry their own `level` string (reusing the per-member `getEffectiveSwimLevel()` lookup the composition tally already did, just also attaching it to the member object).
+
+The report route (`app.get('/reports/swim-schedule', ...)`) fills in a placeholder `{period, rec: null, lessons: null, sendToSports: [], sendToSportsReady: false}` for any of periods 1-6 missing from `getSwimSchedulingData()`'s (already-compact) result, then splits at period 3/4 into `amPeriods`/`pmPeriods` — this filling logic is local to the report, not part of `getSwimSchedulingData()` itself, since the live `/swim-scheduling` page has no need for empty columns.
 
 ---
 

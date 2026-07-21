@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swim Schedule | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .swim-print-page {
+            page-break-after: always;
+            margin-bottom: 24px;
+        }
+        .swim-print-page:last-child {
+            page-break-after: avoid;
+            margin-bottom: 0;
+        }
+        .swim-print-page-header {
+            border-bottom: 2px solid #000;
+            padding-bottom: 6px;
+            margin-bottom: 10px;
+        }
+        .swim-print-page-header h1 { margin: 0 0 2px; font-size: 1.2rem; }
+        .swim-print-page-header p { margin: 0; font-size: 0.8rem; color: #555; }
+
+        .swim-print-columns {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            align-items: start;
+        }
+        .swim-print-col {
+            border: 1px solid #888;
+            border-radius: 4px;
+            padding: 6px 8px;
+            font-size: 0.68rem;
+        }
+        .swim-print-col h2 {
+            margin: 0 0 6px;
+            font-size: 0.85rem;
+            text-align: center;
+            border-bottom: 1px solid #888;
+            padding-bottom: 4px;
+        }
+        .swim-print-section {
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px dashed #bbb;
+        }
+        .swim-print-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .swim-print-section h3 {
+            margin: 0 0 4px;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            background: #f1f5f9;
+            padding: 2px 4px;
+        }
+        .swim-print-col ol, .swim-print-col ul {
+            margin: 0 0 4px;
+            padding-left: 16px;
+        }
+        .swim-print-col li { margin-bottom: 1px; }
+        .swim-print-not-tested { color: #b91c1c; font-weight: 700; }
+        .swim-print-guards { margin: 0 0 6px; font-size: 0.68rem; }
+        .swim-print-guards-missing { color: #b91c1c; font-weight: 700; }
+        .swim-print-group { margin-bottom: 6px; }
+        .swim-print-group-header { font-weight: 700; }
+        .swim-print-instructor { font-style: italic; }
+        .swim-print-instructor.unassigned { color: #b91c1c; font-weight: 700; font-style: normal; }
+        .swim-print-sports { font-size: 0.66rem; }
+        .swim-print-empty { color: #777; font-style: italic; }
+
+        @media print {
+            nav, .no-print { display: none !important; }
+            .container { padding: 0; max-width: none; }
+            .swim-print-col { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+<nav class="nav-bar no-print">
+    <a href="/admin" class="nav-btn">&#127968; Hub</a>
+    <a href="/swim-scheduling" class="nav-btn">&#127946; Swim Scheduling</a>
+    <form method="GET" style="display:flex; align-items:center; gap:6px; margin-left:auto;">
+        <label style="font-size:0.82rem; font-weight:600;">Session:</label>
+        <select name="week" onchange="this.form.submit()" style="padding:4px 8px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem;">
+            <% sessions.forEach(function(s) { %>
+                <option value="<%= s.weekNumber %>" <%= s.weekNumber === week ? 'selected' : '' %>>
+                    W<%= s.weekNumber %><%= s.label ? ' — ' + s.label : '' %>
+                </option>
+            <% }) %>
+        </select>
+    </form>
+    <button onclick="window.print()" class="nav-btn primary">&#128424; Print</button>
+</nav>
+
+<div class="container">
+
+<% [{ label: 'AM', list: amPeriods }, { label: 'PM', list: pmPeriods }].forEach(function(block) { %>
+<div class="swim-print-page">
+    <div class="swim-print-page-header">
+        <h1>Swim Schedule — <%= block.label %></h1>
+        <p><%= weekLabel %></p>
+    </div>
+
+    <div class="swim-print-columns">
+        <% block.list.forEach(function(p) { %>
+        <div class="swim-print-col">
+            <h2>Period <%= p.period %></h2>
+
+            <% if (!p.rec && !p.lessons) { %>
+                <p class="swim-print-empty">Not offered this period.</p>
+            <% } %>
+
+            <% if (p.rec) { %>
+            <div class="swim-print-section">
+                <h3>Rec Swim (<%= p.rec.enrolledCount %>)</h3>
+                <% if (p.rec.campers.length === 0) { %>
+                    <p class="swim-print-empty">No campers enrolled.</p>
+                <% } else { %>
+                <ol>
+                    <% p.rec.campers.forEach(function(c) { %>
+                        <li><%= c.FirstName %> <%= c.LastName %><% if (!c.hasLevel) { %> <span class="swim-print-not-tested">(NOT TESTED)</span><% } %></li>
+                    <% }) %>
+                </ol>
+                <% } %>
+                <div class="swim-print-guards <%= p.rec.guards.length < p.rec.requiredGuards ? 'swim-print-guards-missing' : '' %>">
+                    Guards (needs <%= p.rec.requiredGuards %>):
+                    <%= p.rec.guards.length > 0 ? p.rec.guards.map(function(g) { return g.FirstName + ' ' + g.LastName; }).join(', ') : 'NONE ASSIGNED' %>
+                </div>
+            </div>
+            <% } %>
+
+            <% if (p.lessons) { %>
+            <div class="swim-print-section">
+                <h3>Swim Lessons</h3>
+                <div class="swim-print-guards <%= p.lessons.guards.length < p.lessons.requiredGuards ? 'swim-print-guards-missing' : '' %>">
+                    Pool Guards (needs <%= p.lessons.requiredGuards %>):
+                    <%= p.lessons.guards.length > 0 ? p.lessons.guards.map(function(g) { return g.FirstName + ' ' + g.LastName; }).join(', ') : 'NONE ASSIGNED' %>
+                </div>
+
+                <% if (p.lessons.groups.length === 0) { %>
+                    <p class="swim-print-empty">No lesson groups formed.</p>
+                <% } %>
+
+                <% p.lessons.groups.forEach(function(g) { %>
+                <div class="swim-print-group">
+                    <div class="swim-print-group-header"><%= g.levelLabel %> (<%= g.members.length %>)</div>
+                    <div class="swim-print-instructor <%= !g.CounselorID ? 'unassigned' : '' %>">
+                        <%= g.CounselorID ? (g.CounselorFirstName + ' ' + g.CounselorLastName) : 'UNASSIGNED' %><%
+                        if (g.needsSecondInstructor) { %> &amp;
+                            <%= g.CounselorID2 ? (g.Counselor2FirstName + ' ' + g.Counselor2LastName) : 'UNASSIGNED' %><%
+                        } %>
+                    </div>
+                    <ul>
+                        <% g.members.forEach(function(m) { %>
+                            <li><%= m.FirstName %> <%= m.LastName %> — <%= m.level || 'not tested' %></li>
+                        <% }) %>
+                        <% if (g.members.length === 0) { %><li class="swim-print-empty">Empty group</li><% } %>
+                    </ul>
+                </div>
+                <% }) %>
+
+                <% if (p.lessons.ungrouped.length > 0) { %>
+                    <p class="swim-print-not-tested">&#9888; <%= p.lessons.ungrouped.length %> camper(s) not yet in a group</p>
+                <% } %>
+            </div>
+            <% } %>
+
+            <% if (p.sendToSports && p.sendToSports.length > 0) { %>
+            <div class="swim-print-section swim-print-sports">
+                <h3>Send to Sports</h3>
+                <%= p.sendToSports.map(function(c) { return c.FirstName + ' ' + c.LastName; }).join(', ') %>
+            </div>
+            <% } %>
+        </div>
+        <% }) %>
+    </div>
+</div>
+<% }) %>
+
+</div>
+</body>
+</html>
