@@ -13,3 +13,14 @@ Everyone can teach levels 1-3
 Levels 4-6 it is not required to get into the water
 Levels 1-3 it is required to get into the water for the whole period 
 On Mondays the campers who do not have a level are tested and given a level. I then adjust based on their level. I try to place them in a class with only 2-4 kids. If they have to go into a class that already has 5, I try to give a second counselor or split the class into two. Often the counselors who did the testing or I go back to the schedule and move things around. 
+
+
+Additional context:
+Levels are importable via a csv report (attached in prompt as context)
+Swim staff will need an additional value in the schedule builder for the highest level they are able to teach
+Swimmers are campers enrolled in either Rec Swim or Swim Lessons. 
+Rec swim requires independant guards from Rec Swim.
+A new view will be needed specifically for swim scheduling, this will need to act as a fully independant schedule from the main camp schedules. This scheduling will only ever apply to Swim staff.
+An additional view will be needed for editing swim levels of campers enrolled in swim classes. This should be navigable while in the swim scheduling view.
+An additional printable report will be needed that reports back all campers who were enrolled in Swim classes for a given session and their new swim levels
+Each Level (1-6) has sub levels (Low 1, High 1, or 1)

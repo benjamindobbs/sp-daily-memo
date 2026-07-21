@@ -74,8 +74,8 @@ The full list (from `app.js` lines 255–281):
 /admin                    /settings               /swap-tool
 /process-swap             /get-options            /schedule-history
 /archive-schedule-changes /staff-lookup           /faculty-summer
-/upload-staff-week        /clear-staff-week       /counselor-directory
-/counselor-view           /promotions             /promote-waitlist
+/upload-staff-week        /clear-staff-week       /counselor-view
+/promotions               /promote-waitlist
 /promote-all              /remove-waitlist        /upload-campers
 /upload-campers-schedule  /upload-counselors      /upload-staff
 /upload-instructors       /upload-activity-rules  /add-activity
@@ -118,6 +118,7 @@ Routes not in `ADMIN_ONLY_PREFIXES` and not in `UNPROTECTED` are accessible to a
 | `/search` | Camper lookup |
 | `/camper/:id` | Camper profile (read-only in staff view) |
 | `/counselor-profile/:id` | Staff profile (read-only in staff view) |
+| `/counselor-directory` | Staff directory (read-only in staff view; write actions like edit/delete stay behind separate `ADMIN_ONLY_PREFIXES` routes) |
 | `/attendance` | Attendance overview |
 | `/attendance/homegroup/*` | Home group attendance |
 | `/attendance/specialty/*` | Specialty attendance |

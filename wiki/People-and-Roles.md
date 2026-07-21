@@ -114,7 +114,7 @@ The auto-scheduler uses `ActivityPreferences` as a tiebreaker when two eligible 
 
 ## Staff Directory vs Counselor Profiles
 
-`/counselor-directory` — lists all counselors grouped by role. In admin view, names link to individual profile pages.
+`/counselor-directory` — lists all counselors grouped by role; names always link to individual profile pages. Open to both admin and staff view (linked from the Staff Hub nav as **Staff Directory**); the page itself has no write actions, and edit/delete routes stay behind `ADMIN_ONLY_PREFIXES` regardless of who can browse the directory.
 
 `/counselor-profile/:id` — shows full detail for one counselor:
 - In **staff view**: read-only profile, schedule, and home group roster.

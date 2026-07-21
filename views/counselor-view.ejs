@@ -60,6 +60,12 @@
                 <%= counselor.FirstName %> <%= counselor.LastName %>
             </h1>
 
+            <% if (counselor.Phone) { %>
+            <a href="tel:<%= counselor.Phone %>" style="display:inline-flex; align-items:center; gap:6px; color:white; text-decoration:none; font-size:0.95rem; opacity:0.9; margin-bottom:4px;">
+                &#128222; <%= counselor.Phone %>
+            </a>
+            <% } %>
+
             <% if (isCounselor) { %>
             <div class="duty-strip">
                 <div class="duty-box">
@@ -368,23 +374,15 @@
             </section>
             <% } %>
 
-            <%# Contact section — Directors, Nurses, Equipment Managers %>
-            <% if (isContactRole && (counselor.Phone || counselor.Email)) { %>
+            <%# Contact section — Directors, Nurses, Equipment Managers. Phone is shown in the header card above. %>
+            <% if (isContactRole && counselor.Email) { %>
             <section>
                 <h3 style="margin-bottom: 20px;">Contact</h3>
                 <div class="duty-strip">
-                    <% if (counselor.Phone) { %>
-                    <div class="duty-box">
-                        <small>&#128222; Phone</small>
-                        <strong><a href="tel:<%= counselor.Phone %>" style="color:inherit;text-decoration:none;"><%= counselor.Phone %></a></strong>
-                    </div>
-                    <% } %>
-                    <% if (counselor.Email) { %>
                     <div class="duty-box">
                         <small>&#9993; Email</small>
                         <strong><a href="mailto:<%= counselor.Email %>" style="color:inherit;text-decoration:none;"><%= counselor.Email %></a></strong>
                     </div>
-                    <% } %>
                 </div>
             </section>
             <% } %>

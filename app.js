@@ -461,7 +461,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/admin', '/settings', '/swap-tool', '/process-swap', '/get-options',
     '/schedule-history', '/archive-schedule-changes', '/staff-lookup',
     '/faculty-summer', '/upload-staff-week', '/clear-staff-week',
-    '/counselor-directory', '/counselor-view', '/promotions',
+    '/counselor-view', '/promotions',
     '/promote-waitlist', '/force-promote-waitlist', '/promote-all', '/remove-waitlist', '/upload-campers', '/upload-campers-schedule', '/upload-counselors',
     '/upload-bus-am', '/upload-bus-pm', '/upload-kp-lp',
     '/upload-staff', '/upload-staff-contacts', '/upload-instructors', '/upload-activity-rules', '/add-activity',
