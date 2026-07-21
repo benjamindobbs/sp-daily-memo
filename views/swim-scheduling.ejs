@@ -58,7 +58,11 @@
                 <input type="hidden" name="weekNumber" value="<%= week %>">
                 <button type="submit" class="btn btn-primary">&#128260; Generate Groups</button>
             </form>
-            <span class="text-muted" style="font-size:0.82rem;">Auto-forms skill-level lesson groups from current swim levels. Locked groups are preserved.</span>
+            <form action="/swim-scheduling/auto-assign" method="POST" onsubmit="return confirm('Auto-assign counselors to every open guard slot and lesson group this week? Locked groups, groups that already have an instructor, and existing guard assignments are left untouched — this only fills the gaps.');">
+                <input type="hidden" name="weekNumber" value="<%= week %>">
+                <button type="submit" class="btn btn-primary">&#9889; Full Auto Assign</button>
+            </form>
+            <span class="text-muted" style="font-size:0.82rem;">Generate Groups auto-forms skill-level lesson groups from current swim levels. Full Auto Assign then fills open guard slots and group instructors, balancing water time. Locked groups and existing picks are preserved.</span>
         </div>
 
         <% if (warnings.length > 0) { %>

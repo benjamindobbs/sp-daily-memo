@@ -122,7 +122,20 @@ Rendered as small pill tags under the group header in `views/swim-scheduling.ejs
 
 ### `getCounselorWaterTally(week)`
 
-Returns `{CounselorID: {inWater, outWater}}` for the roster panel: all guard duty (`SwimGuardAssignments`, either role) counts as in-water; teaching a lesson group counts as in-water for levels 1-3 (required in the water) and out-of-water for levels 4-6 (not required). Used for display only in Phase 3 — Phase 4's solver will use the same in/out classification to actually balance assignments.
+Returns `{CounselorID: {inWater, outWater}}` for the roster panel: all guard duty (`SwimGuardAssignments`, either role) counts as in-water; teaching a lesson group counts as in-water for levels 1-3 (required in the water) and out-of-water for levels 4-6 (not required). Used for the roster panel display, and as the seed/live-updated state for `autoAssignWeek()`'s balancing (below).
+
+### Full Auto Assign (`POST /swim-scheduling/auto-assign`)
+
+Fills every open guard slot and un-instructored lesson group for the week in one pass, via `autoAssignWeek(week)`. It never removes or changes anything already set — Locked groups, groups that already have a `CounselorID`, and existing `SwimGuardAssignments` rows are left exactly as they are; the solver only fills gaps. Processed period by period, in this order within each period: Rec Swim guards, then Swim Lessons pool guards, then lesson groups low level to high (so in-water levels 1-3 are staffed before out-of-water levels 4-6 compete for the same people).
+
+Rules:
+- **Eligibility**: a lesson group needs `COALESCE(SwimMaxLevel, 3) >= effectiveMaxLevel`; anyone on the swim staff (`StaffRole = 'Swim Counselor'`) can guard.
+- **No double-booking**: a counselor already used anywhere in a period (guard or group, including pre-existing manual assignments) is excluded from every other slot in that same period.
+- **In-water slots** (guarding, or a level 1-3 group): in AM periods (1-3), the picker weights each candidate's historical AM in-water count from `getAmFairnessTally(week)` — every prior week's periods 1-3 — 100x over their running count *this* run, so whoever has done the least early-morning duty across the summer wins; only ties fall back to this-week balance. In PM periods (4-6), history is ignored entirely and the picker just takes whoever has the fewest in-water assignments so far this week, targeting roughly 2 per counselor.
+- **Out-of-water slots** (level 4-6 groups): picked by fewest out-of-water assignments so far this week, targeting roughly 1 per counselor.
+- This is a greedy heuristic, not an optimal solver — it targets the ~2-in-water/~1-out-of-water PM balance and AM fairness described above, but doesn't guarantee an exact optimum. If it can't fill a slot (no eligible, not-yet-used counselor), that slot is left open and counted in the `unfilled` total shown in the result message; `getSwimWarnings()` will then flag the resulting under-guarded period or empty group on the next render.
+
+`getAmFairnessTally(week)` is the same in/out classification as `getCounselorWaterTally()`, restricted to periods 1-3 and weeks strictly before the target week.
 
 ### `getSwimWarnings(periods)`
 
@@ -143,6 +156,7 @@ Computed at render time, never stored. Flags: a period's Rec Swim or Swim Lesson
 | POST | `/swim-scheduling/remove-camper` | Removes a camper from a group (they become ungrouped, reassignable) |
 | POST | `/swim-scheduling/save-guards` | Full replace of a `(week, period, guardRole)` guard set from a checkbox list |
 | POST | `/swim-scheduling/save-certifications` | Bulk-updates every swim counselor's `Counselors.SwimMaxLevel` in one submit |
+| POST | `/swim-scheduling/auto-assign` | Runs `autoAssignWeek()` — fills open guard slots and un-instructored groups, leaves everything already set untouched |
 
 ### Edit Swim Certifications panel
 

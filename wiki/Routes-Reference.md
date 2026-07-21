@@ -49,6 +49,8 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/swim-scheduling/assign-camper` | ✓ | Add a camper to a group |
 | POST | `/swim-scheduling/remove-camper` | ✓ | Remove a camper from a group |
 | POST | `/swim-scheduling/save-guards` | ✓ | Replace the guard set for a `(week, period, guardRole)` |
+| POST | `/swim-scheduling/save-certifications` | ✓ | Bulk-update every swim counselor's `SwimMaxLevel` from the Edit Swim Certifications panel |
+| POST | `/swim-scheduling/auto-assign` | ✓ | Full auto-solver — fills open guard slots and un-instructored lesson groups, balancing water time; leaves existing picks untouched |
 | GET | `/map` | | Interactive camp map. Two maps (enrichment/sports) with building pins; toggles for My Class / This Period / All / period selector. "My Class" periods by role: Counselors → `CounselorWeekSchedules`; Instructors → `Schedules`; UL/SL → union of `CounselorScheduleAssignments` + `CounselorWeekSchedules` + `StaffWeekSchedules`. Activity matching is case-insensitive. |
 | POST | `/update-class-location` | ✓ | Update location on a class roster |
 | GET | `/search` | | Camper search by name. Lists every camper enrolled in the active week (a `CamperWeekData` row **or** any `Schedules` row) — so schedule-less campers (KP/LP, some SPLIT) are included. Group/bus/extended filter values are week-scoped via `COALESCE(cwd.*, c.*)` |
