@@ -39,6 +39,15 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | GET | `/swim-levels` | ✓ | Roster of campers enrolled in Rec Swim/Swim Lessons for the target week, with inline swim-level editing. See [Swim Scheduling](./Swim-Scheduling.md) |
 | POST | `/swim-levels/update` | ✓ | Upsert one camper's `CamperSwimLevels` row for a given week |
 | POST | `/upload-swim-levels` | ✓ | CSV import: "Group Attendance Sheet with Swim Level" export |
+| GET | `/swim-scheduling` | ✓ | Swim staffing schedule — Rec Swim guards, Swim Lessons pool guards, auto-generated skill-level lesson groups. Independent of the main counselor schedule. `?week=N` to view a different session. See [Swim Scheduling](./Swim-Scheduling.md) |
+| POST | `/swim-scheduling/generate-groups` | ✓ | Auto-forms lesson groups for the week from current swim levels; skips `Locked` groups |
+| POST | `/swim-scheduling/create-group` | ✓ | Manually add an empty lesson group |
+| POST | `/swim-scheduling/delete-group` | ✓ | Delete a group; members become ungrouped |
+| POST | `/swim-scheduling/toggle-group-lock` | ✓ | Flip a group's `Locked` flag |
+| POST | `/swim-scheduling/assign-instructor` | ✓ | Set a group's instructor |
+| POST | `/swim-scheduling/assign-camper` | ✓ | Add a camper to a group |
+| POST | `/swim-scheduling/remove-camper` | ✓ | Remove a camper from a group |
+| POST | `/swim-scheduling/save-guards` | ✓ | Replace the guard set for a `(week, period, guardRole)` |
 | GET | `/map` | | Interactive camp map. Two maps (enrichment/sports) with building pins; toggles for My Class / This Period / All / period selector. "My Class" periods by role: Counselors → `CounselorWeekSchedules`; Instructors → `Schedules`; UL/SL → union of `CounselorScheduleAssignments` + `CounselorWeekSchedules` + `StaffWeekSchedules`. Activity matching is case-insensitive. |
 | POST | `/update-class-location` | ✓ | Update location on a class roster |
 | GET | `/search` | | Camper search by name. Lists every camper enrolled in the active week (a `CamperWeekData` row **or** any `Schedules` row) — so schedule-less campers (KP/LP, some SPLIT) are included. Group/bus/extended filter values are week-scoped via `COALESCE(cwd.*, c.*)` |

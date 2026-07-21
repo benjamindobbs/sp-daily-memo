@@ -465,7 +465,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/promote-waitlist', '/force-promote-waitlist', '/promote-all', '/remove-waitlist', '/upload-campers', '/upload-campers-schedule', '/upload-counselors',
     '/upload-bus-am', '/upload-bus-pm', '/upload-kp-lp',
     '/upload-staff', '/upload-staff-contacts', '/upload-instructors', '/upload-activity-rules', '/add-activity',
-    '/swim-levels', '/upload-swim-levels',
+    '/swim-levels', '/upload-swim-levels', '/swim-scheduling',
     '/delete-activity', '/update-activity', '/add-activity-period-group',
     '/delete-activity-period-group', '/sync-activity-groups',
     '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings', '/sync-offerings-from-schedule', '/api/sync-offerings',
@@ -1240,6 +1240,150 @@ function parseSwimLevelValue(raw) {
         levelNumber: parseInt(m[2], 10),
         subLevel: m[1] ? (m[1][0].toUpperCase() + m[1].slice(1).toLowerCase()) : null
     };
+}
+
+// Swim staffing tables — independent of CounselorWeekSchedules/WeeklyOfferings by design
+// (see wiki/Swim-Scheduling.md). One SwimLessonGroups row per skill-level lesson group per
+// period per week; SwimGuardAssignments covers Rec Swim lifeguards and the always-2
+// Swim Lessons pool guards, which are separate from the per-group instructors.
+db.exec(`
+    CREATE TABLE IF NOT EXISTS SwimLessonGroups (
+        GroupID      INTEGER PRIMARY KEY AUTOINCREMENT,
+        WeekNumber   INTEGER NOT NULL CHECK(WeekNumber BETWEEN 1 AND 6),
+        PeriodNumber INTEGER NOT NULL CHECK(PeriodNumber BETWEEN 1 AND 6),
+        LevelNumber  INTEGER NOT NULL CHECK(LevelNumber BETWEEN 1 AND 6),
+        SubLevel     TEXT CHECK(SubLevel IN ('Low','High') OR SubLevel IS NULL),
+        CounselorID  INTEGER,
+        Locked       INTEGER DEFAULT 0,
+        FOREIGN KEY (CounselorID) REFERENCES Counselors(CounselorID) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS SwimLessonGroupMembers (
+        GroupID  INTEGER NOT NULL,
+        CamperID INTEGER NOT NULL,
+        PRIMARY KEY (GroupID, CamperID),
+        FOREIGN KEY (GroupID) REFERENCES SwimLessonGroups(GroupID) ON DELETE CASCADE,
+        FOREIGN KEY (CamperID) REFERENCES Campers(CamperID) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS SwimGuardAssignments (
+        WeekNumber   INTEGER NOT NULL CHECK(WeekNumber BETWEEN 1 AND 6),
+        PeriodNumber INTEGER NOT NULL CHECK(PeriodNumber BETWEEN 1 AND 6),
+        GuardRole    TEXT NOT NULL CHECK(GuardRole IN ('Rec','Lessons')),
+        CounselorID  INTEGER NOT NULL,
+        PRIMARY KEY (WeekNumber, PeriodNumber, GuardRole, CounselorID),
+        FOREIGN KEY (CounselorID) REFERENCES Counselors(CounselorID) ON DELETE CASCADE
+    );
+`);
+
+// Required Rec Swim lifeguard count from enrollment (same in AM and PM).
+function requiredRecGuards(enrolledCount) {
+    if (enrolledCount > 15) return 3;
+    if (enrolledCount >= 10) return 2;
+    return 1;
+}
+
+// Splits a list into chunks no larger than maxSize, as evenly sized as possible
+// (e.g. 11 campers at maxSize 6 -> [6,5], not [6,6,-1] or a lopsided [6,4,1]).
+function chunkCampers(list, maxSize) {
+    if (list.length === 0) return [];
+    const numGroups = Math.ceil(list.length / maxSize);
+    const perGroup = Math.ceil(list.length / numGroups);
+    const chunks = [];
+    for (let i = 0; i < list.length; i += perGroup) chunks.push(list.slice(i, i + perGroup));
+    return chunks;
+}
+
+// Auto-forms skill-level lesson groups for every period offering Swim Lessons this week.
+// Per period: campers are bucketed by effective swim level, then by sub-level within
+// that level — a sub-level becomes its own pool only with >=3 campers, otherwise it's
+// merged into one mixed pool for the level. Newly-tested campers (a CamperSwimLevels row
+// written this week) are chunked separately at a smaller size (2-4) so they seed their
+// own small groups instead of topping off an existing class. Existing Locked groups (and
+// their campers) are left untouched; all other unlocked groups for the period are
+// replaced. Campers with no recorded level are left ungrouped (shown separately in the UI
+// as needing testing). Returns the number of groups created.
+function generateGroupsForWeek(week) {
+    const delUnlocked = db.prepare('DELETE FROM SwimLessonGroups WHERE WeekNumber = ? AND PeriodNumber = ? AND Locked = 0');
+    const insGroup = db.prepare('INSERT INTO SwimLessonGroups (WeekNumber, PeriodNumber, LevelNumber, SubLevel) VALUES (?, ?, ?, ?)');
+    const insMember = db.prepare('INSERT INTO SwimLessonGroupMembers (GroupID, CamperID) VALUES (?, ?)');
+
+    let groupsCreated = 0;
+    db.transaction(() => {
+        for (let period = 1; period <= 6; period++) {
+            const offered = db.prepare(
+                "SELECT 1 FROM WeeklyOfferings WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = 'Swim Lessons'"
+            ).get(week, period);
+            if (!offered) continue;
+
+            const lockedCamperIds = new Set(db.prepare(`
+                SELECT m.CamperID FROM SwimLessonGroups g
+                JOIN SwimLessonGroupMembers m ON m.GroupID = g.GroupID
+                WHERE g.WeekNumber = ? AND g.PeriodNumber = ? AND g.Locked = 1
+            `).all(week, period).map(r => r.CamperID));
+
+            delUnlocked.run(week, period);
+
+            const enrolled = db.prepare(`
+                SELECT DISTINCT c.CamperID, c.FirstName, c.LastName
+                FROM Campers c
+                JOIN Schedules s ON s.PersonID = c.CamperID AND s.PersonType = 'Camper' AND s.WeekNumber = ?
+                WHERE s.PeriodNumber = ? AND s.ActivityName = 'Swim Lessons'
+            `).all(week, period);
+
+            // levelNumber -> subKey ('Low'|'High'|'none') -> [{CamperID,isNew}]
+            const byLevel = {};
+            for (const c of enrolled) {
+                if (lockedCamperIds.has(c.CamperID)) continue;
+                const eff = getEffectiveSwimLevel(c.CamperID, week);
+                if (!eff) continue; // not yet tested — stays ungrouped
+                const subKey = eff.SubLevel || 'none';
+                (byLevel[eff.LevelNumber] ??= {})[subKey] ??= [];
+                byLevel[eff.LevelNumber][subKey].push({ CamperID: c.CamperID, isNew: eff.WeekNumber === week });
+            }
+
+            for (const lvlStr of Object.keys(byLevel)) {
+                const levelNumber = parseInt(lvlStr, 10);
+                const subGroups = byLevel[lvlStr];
+
+                const mixed = [];
+                const pools = []; // {subLevel, campers}
+                for (const subKey of Object.keys(subGroups)) {
+                    const campers = subGroups[subKey];
+                    if (campers.length >= 3) pools.push({ subLevel: subKey === 'none' ? null : subKey, campers });
+                    else mixed.push(...campers);
+                }
+                if (mixed.length > 0) pools.push({ subLevel: null, campers: mixed });
+
+                for (const pool of pools) {
+                    const newly = pool.campers.filter(c => c.isNew);
+                    const returning = pool.campers.filter(c => !c.isNew);
+                    const chunks = [...chunkCampers(newly, 4), ...chunkCampers(returning, 6)];
+                    for (const chunk of chunks) {
+                        if (chunk.length === 0) continue;
+                        const info = insGroup.run(week, period, levelNumber, pool.subLevel);
+                        for (const camper of chunk) insMember.run(info.lastInsertRowid, camper.CamperID);
+                        groupsCreated++;
+                    }
+                }
+            }
+        }
+    })();
+
+    return groupsCreated;
+}
+
+// CounselorID -> {inWater, outWater} for the given week: all guard duty counts as
+// in-water; teaching a level 1-3 group counts as in-water (required), 4-6 as out-of-water.
+function getCounselorWaterTally(week) {
+    const tally = {};
+    const bump = (id, inWater) => {
+        tally[id] ??= { inWater: 0, outWater: 0 };
+        tally[id][inWater ? 'inWater' : 'outWater']++;
+    };
+    db.prepare('SELECT CounselorID FROM SwimGuardAssignments WHERE WeekNumber = ?')
+        .all(week).forEach(r => bump(r.CounselorID, true));
+    db.prepare('SELECT CounselorID, LevelNumber FROM SwimLessonGroups WHERE WeekNumber = ? AND CounselorID IS NOT NULL')
+        .all(week).forEach(r => bump(r.CounselorID, r.LevelNumber <= 3));
+    return tally;
 }
 
 // Migration: track schedule types set by hand so auto-build never overwrites them
@@ -3071,6 +3215,227 @@ app.get('/reports/swim-levels', (req, res) => {
     const groups = getSwimLevelGroups(week);
     const weekLabel = db.prepare("SELECT label FROM Sessions WHERE weekNumber = ?").get(week)?.label || `Week ${week}`;
     res.render('swim-levels-report', { groups, week, weekLabel, sessions });
+});
+
+// --- SWIM SCHEDULING ---
+// Independent of CounselorWeekSchedules/WeeklyOfferings for staffing — see the "Known
+// limitation" note in wiki/Swim-Scheduling.md. Phase 3: manual assignment + auto-grouping,
+// no solver yet (that's Phase 4's /swim-scheduling/auto-assign).
+
+function getSwimSchedulingData(week) {
+    const periods = [];
+    for (let period = 1; period <= 6; period++) {
+        const recOffered = !!db.prepare(
+            "SELECT 1 FROM WeeklyOfferings WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = 'Rec Swim'"
+        ).get(week, period);
+        const lessonsOffered = !!db.prepare(
+            "SELECT 1 FROM WeeklyOfferings WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = 'Swim Lessons'"
+        ).get(week, period);
+        if (!recOffered && !lessonsOffered) continue;
+
+        let rec = null;
+        if (recOffered) {
+            const enrolledCount = db.prepare(`
+                SELECT COUNT(DISTINCT s.PersonID) AS n FROM Schedules s
+                WHERE s.PersonType = 'Camper' AND s.WeekNumber = ? AND s.PeriodNumber = ? AND s.ActivityName = 'Rec Swim'
+            `).get(week, period).n;
+            const guards = db.prepare(`
+                SELECT ga.CounselorID, c.FirstName, c.LastName FROM SwimGuardAssignments ga
+                JOIN Counselors c ON c.CounselorID = ga.CounselorID
+                WHERE ga.WeekNumber = ? AND ga.PeriodNumber = ? AND ga.GuardRole = 'Rec'
+                ORDER BY c.LastName, c.FirstName
+            `).all(week, period);
+            rec = { enrolledCount, requiredGuards: requiredRecGuards(enrolledCount), guards };
+        }
+
+        let lessons = null;
+        if (lessonsOffered) {
+            const enrolledCampers = db.prepare(`
+                SELECT DISTINCT c.CamperID, c.FirstName, c.LastName
+                FROM Campers c
+                JOIN Schedules s ON s.PersonID = c.CamperID AND s.PersonType = 'Camper' AND s.WeekNumber = ?
+                WHERE s.PeriodNumber = ? AND s.ActivityName = 'Swim Lessons'
+                ORDER BY c.LastName, c.FirstName
+            `).all(week, period);
+
+            const groupRows = db.prepare(`
+                SELECT g.GroupID, g.LevelNumber, g.SubLevel, g.CounselorID, g.Locked,
+                       co.FirstName AS CounselorFirstName, co.LastName AS CounselorLastName, co.SwimMaxLevel
+                FROM SwimLessonGroups g
+                LEFT JOIN Counselors co ON co.CounselorID = g.CounselorID
+                WHERE g.WeekNumber = ? AND g.PeriodNumber = ?
+                ORDER BY g.LevelNumber, g.SubLevel, g.GroupID
+            `).all(week, period);
+
+            const memberStmt = db.prepare(`
+                SELECT m.CamperID, c.FirstName, c.LastName
+                FROM SwimLessonGroupMembers m JOIN Campers c ON c.CamperID = m.CamperID
+                WHERE m.GroupID = ?
+                ORDER BY c.LastName, c.FirstName
+            `);
+            const groups = groupRows.map(g => ({
+                ...g,
+                members: memberStmt.all(g.GroupID),
+                aboveLevel: !!g.CounselorID && (g.SwimMaxLevel ?? 3) < g.LevelNumber
+            }));
+
+            const groupedCamperIds = new Set(groups.flatMap(g => g.members.map(m => m.CamperID)));
+            const ungrouped = enrolledCampers
+                .filter(c => !groupedCamperIds.has(c.CamperID))
+                .map(c => ({ ...c, level: formatSwimLevel(getEffectiveSwimLevel(c.CamperID, week)) }));
+
+            const guards = db.prepare(`
+                SELECT ga.CounselorID, c.FirstName, c.LastName FROM SwimGuardAssignments ga
+                JOIN Counselors c ON c.CounselorID = ga.CounselorID
+                WHERE ga.WeekNumber = ? AND ga.PeriodNumber = ? AND ga.GuardRole = 'Lessons'
+                ORDER BY c.LastName, c.FirstName
+            `).all(week, period);
+
+            lessons = { groups, ungrouped, guards, requiredGuards: 2 };
+        }
+
+        periods.push({ period, rec, lessons });
+    }
+    return periods;
+}
+
+// Plain-language issues the swim director should look at: under-guarded periods, empty
+// groups, a counselor teaching above their SwimMaxLevel, and any counselor double-booked
+// (guarding and/or teaching more than one thing in the same period).
+function getSwimWarnings(periods) {
+    const warnings = [];
+    const perPeriod = {}; // `${period}|${counselorId}` -> [labels]
+    const bump = (period, counselorId, label) => {
+        const key = `${period}|${counselorId}`;
+        (perPeriod[key] ??= []).push(label);
+    };
+
+    for (const p of periods) {
+        if (p.rec) {
+            if (p.rec.guards.length < p.rec.requiredGuards) {
+                warnings.push(`Period ${p.period}: Rec Swim needs ${p.rec.requiredGuards} guard(s), has ${p.rec.guards.length}`);
+            }
+            p.rec.guards.forEach(g => bump(p.period, g.CounselorID, `${g.FirstName} ${g.LastName} guarding Rec Swim`));
+        }
+        if (p.lessons) {
+            if (p.lessons.guards.length < p.lessons.requiredGuards) {
+                warnings.push(`Period ${p.period}: Swim Lessons needs ${p.lessons.requiredGuards} guard(s), has ${p.lessons.guards.length}`);
+            }
+            p.lessons.guards.forEach(g => bump(p.period, g.CounselorID, `${g.FirstName} ${g.LastName} guarding Swim Lessons`));
+            p.lessons.groups.forEach(g => {
+                const label = `Level ${g.LevelNumber}${g.SubLevel ? ' (' + g.SubLevel + ')' : ''}`;
+                if (g.members.length === 0) warnings.push(`Period ${p.period}: ${label} group is empty`);
+                if (g.CounselorID) {
+                    bump(p.period, g.CounselorID, `${g.CounselorFirstName} ${g.CounselorLastName} teaching ${label}`);
+                    if (g.aboveLevel) {
+                        warnings.push(`Period ${p.period}: ${g.CounselorFirstName} ${g.CounselorLastName} is teaching ${label}, above their max level`);
+                    }
+                }
+            });
+        }
+    }
+
+    for (const key in perPeriod) {
+        if (perPeriod[key].length > 1) {
+            const period = key.split('|')[0];
+            warnings.push(`Period ${period}: double-booked — ${perPeriod[key].join(' AND ')}`);
+        }
+    }
+    return warnings;
+}
+
+app.get('/swim-scheduling', (req, res) => {
+    const isAdmin = req.cookies.adminAuth === 'true';
+    const week = parseInt(req.query.week) || (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
+    const sessions = db.prepare('SELECT * FROM Sessions ORDER BY weekNumber').all();
+    const weekLabel = db.prepare("SELECT label FROM Sessions WHERE weekNumber = ?").get(week)?.label || `Week ${week}`;
+
+    const periods = getSwimSchedulingData(week);
+    const warnings = getSwimWarnings(periods);
+
+    const tally = getCounselorWaterTally(week);
+    const swimCounselors = db.prepare(
+        "SELECT CounselorID, FirstName, LastName, SwimMaxLevel FROM Counselors WHERE StaffRole = 'Swim Counselor' ORDER BY LastName, FirstName"
+    ).all().map(c => ({ ...c, inWater: tally[c.CounselorID]?.inWater || 0, outWater: tally[c.CounselorID]?.outWater || 0 }));
+
+    res.render('swim-scheduling', {
+        week, weekLabel, sessions, periods, warnings, swimCounselors,
+        message: req.query.message || null
+    });
+});
+
+app.post('/swim-scheduling/generate-groups', (req, res) => {
+    const week = parseInt(req.body.weekNumber) || getPrepTargetWeek() || getActiveWeek();
+    const count = generateGroupsForWeek(week);
+    res.redirect(`/swim-scheduling?week=${week}&message=Generated+${count}+lesson+groups`);
+});
+
+app.post('/swim-scheduling/create-group', (req, res) => {
+    const week = parseInt(req.body.weekNumber);
+    const period = parseInt(req.body.periodNumber);
+    const levelNumber = parseInt(req.body.levelNumber);
+    const subLevel = ['Low', 'High'].includes(req.body.subLevel) ? req.body.subLevel : null;
+    if (week && period && levelNumber) {
+        db.prepare('INSERT INTO SwimLessonGroups (WeekNumber, PeriodNumber, LevelNumber, SubLevel) VALUES (?, ?, ?, ?)')
+            .run(week, period, levelNumber, subLevel);
+    }
+    res.redirect(`/swim-scheduling?week=${week}&message=Group+created`);
+});
+
+app.post('/swim-scheduling/delete-group', (req, res) => {
+    const groupId = parseInt(req.body.groupId);
+    const week = parseInt(req.body.weekNumber);
+    db.prepare('DELETE FROM SwimLessonGroups WHERE GroupID = ?').run(groupId);
+    res.redirect(`/swim-scheduling?week=${week}&message=Group+deleted`);
+});
+
+app.post('/swim-scheduling/toggle-group-lock', (req, res) => {
+    const groupId = parseInt(req.body.groupId);
+    const week = parseInt(req.body.weekNumber);
+    db.prepare('UPDATE SwimLessonGroups SET Locked = 1 - Locked WHERE GroupID = ?').run(groupId);
+    res.redirect(`/swim-scheduling?week=${week}&message=Lock+updated`);
+});
+
+app.post('/swim-scheduling/assign-instructor', (req, res) => {
+    const groupId = parseInt(req.body.groupId);
+    const week = parseInt(req.body.weekNumber);
+    const counselorId = parseInt(req.body.counselorId) || null;
+    db.prepare('UPDATE SwimLessonGroups SET CounselorID = ? WHERE GroupID = ?').run(counselorId, groupId);
+    res.redirect(`/swim-scheduling?week=${week}&message=Instructor+updated`);
+});
+
+app.post('/swim-scheduling/assign-camper', (req, res) => {
+    const groupId = parseInt(req.body.groupId);
+    const camperId = parseInt(req.body.camperId);
+    const week = parseInt(req.body.weekNumber);
+    if (groupId && camperId) {
+        db.prepare('INSERT OR IGNORE INTO SwimLessonGroupMembers (GroupID, CamperID) VALUES (?, ?)').run(groupId, camperId);
+    }
+    res.redirect(`/swim-scheduling?week=${week}&message=Camper+added`);
+});
+
+app.post('/swim-scheduling/remove-camper', (req, res) => {
+    const groupId = parseInt(req.body.groupId);
+    const camperId = parseInt(req.body.camperId);
+    const week = parseInt(req.body.weekNumber);
+    db.prepare('DELETE FROM SwimLessonGroupMembers WHERE GroupID = ? AND CamperID = ?').run(groupId, camperId);
+    res.redirect(`/swim-scheduling?week=${week}&message=Camper+removed`);
+});
+
+app.post('/swim-scheduling/save-guards', (req, res) => {
+    const week = parseInt(req.body.weekNumber);
+    const period = parseInt(req.body.periodNumber);
+    const guardRole = ['Rec', 'Lessons'].includes(req.body.guardRole) ? req.body.guardRole : null;
+    if (!week || !period || !guardRole) return res.redirect(`/swim-scheduling?week=${week}&message=Invalid+guard+update`);
+
+    const counselorIds = [].concat(req.body.counselorIds || []).map(Number).filter(Boolean);
+    const ins = db.prepare('INSERT OR IGNORE INTO SwimGuardAssignments (WeekNumber, PeriodNumber, GuardRole, CounselorID) VALUES (?, ?, ?, ?)');
+    db.transaction(() => {
+        db.prepare('DELETE FROM SwimGuardAssignments WHERE WeekNumber = ? AND PeriodNumber = ? AND GuardRole = ?').run(week, period, guardRole);
+        for (const id of counselorIds) ins.run(week, period, guardRole, id);
+    })();
+
+    res.redirect(`/swim-scheduling?week=${week}&message=Guards+updated`);
 });
 
 app.get('/search', (req, res) => {

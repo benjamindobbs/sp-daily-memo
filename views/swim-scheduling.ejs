@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swim Scheduling | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .swim-period-card { margin-bottom: 20px; }
+        .swim-subsection { padding: 14px; background: #f8fafc; border-radius: 10px; border: 1px solid var(--border-color); margin-bottom: 14px; }
+        .swim-subsection h4 { margin: 0 0 10px; font-size: 0.9rem; }
+        .swim-group-card { padding: 12px; background: white; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 10px; }
+        .swim-group-card.locked { border-color: #d97706; background: #fffbeb; }
+        .swim-group-card.above-level { border-color: #dc2626; }
+        .guard-checklist { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+        .guard-checklist label { display: flex; align-items: center; gap:4px; font-size: 0.82rem; background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 4px 10px; }
+        .member-chip { display: inline-flex; align-items: center; gap: 6px; background: #eff6ff; color: #1e3a8a; border-radius: 14px; padding: 3px 6px 3px 10px; font-size: 0.8rem; margin: 2px 4px 2px 0; }
+        .member-chip button { border: none; background: none; cursor: pointer; color: #1e3a8a; font-weight: 700; font-size: 0.85rem; line-height: 1; padding: 2px 4px; }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/swim-levels" class="nav-btn">&#127946; Swim Levels</a>
+        <a href="/swim-scheduling" class="nav-btn primary">&#127946; Swim Scheduling</a>
+        <form method="GET" style="display:flex; align-items:center; gap:6px; margin-left:auto;">
+            <label style="font-size:0.82rem; font-weight:600;">Session:</label>
+            <select name="week" onchange="this.form.submit()" style="padding:4px 8px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem;">
+                <% sessions.forEach(function(s) { %>
+                    <option value="<%= s.weekNumber %>" <%= s.weekNumber === week ? 'selected' : '' %>>
+                        W<%= s.weekNumber %><%= s.label ? ' — ' + s.label : '' %>
+                    </option>
+                <% }) %>
+            </select>
+        </form>
+    </nav>
+
+    <div class="container-md" style="max-width: 1100px;">
+
+        <div class="page-header" style="margin-bottom: 16px;">
+            <div>
+                <h1 style="margin:0;">Swim Scheduling</h1>
+                <p class="text-muted" style="margin:4px 0 0;"><strong><%= weekLabel %></strong> — independent of the main counselor schedule. Only affects Swim Counselors.</p>
+            </div>
+        </div>
+
+        <% if (message) { %>
+            <div class="alert" style="<%= /error|invalid/i.test(message) ? 'background:#fee2e2; color:#991b1b; border-color:#fca5a5;' : '' %>">
+                <%= message.replace(/\+/g, ' ') %>
+            </div>
+        <% } %>
+
+        <div class="card" style="margin-bottom:16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <form action="/swim-scheduling/generate-groups" method="POST" onsubmit="return confirm('Regenerate lesson groups from current swim levels? Locked groups are left untouched; all other groups for this week are rebuilt.');">
+                <input type="hidden" name="weekNumber" value="<%= week %>">
+                <button type="submit" class="btn btn-primary">&#128260; Generate Groups</button>
+            </form>
+            <span class="text-muted" style="font-size:0.82rem;">Auto-forms skill-level lesson groups from current swim levels. Locked groups are preserved.</span>
+        </div>
+
+        <% if (warnings.length > 0) { %>
+        <div class="card" style="margin-bottom:16px; border-color:#fca5a5;">
+            <h3 style="margin:0 0 10px; font-size:0.95rem; color:#991b1b;">&#9888; <%= warnings.length %> Warning<%= warnings.length === 1 ? '' : 's' %></h3>
+            <ul style="margin:0; padding-left:20px; font-size:0.85rem; color:#7f1d1d;">
+                <% warnings.forEach(function(w) { %>
+                    <li><%= w %></li>
+                <% }) %>
+            </ul>
+        </div>
+        <% } %>
+
+        <div class="card" style="margin-bottom:20px; padding:0; overflow:hidden;">
+            <h3 style="margin:0; padding:12px 16px; background:#f8fafc; border-bottom:1px solid var(--border-color); font-size:0.9rem;">Swim Counselors — Water Time This Week</h3>
+            <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                <thead>
+                    <tr style="border-bottom:1px solid var(--border-color);">
+                        <th style="text-align:left; padding:8px 16px; font-size:0.72rem; text-transform:uppercase; color:var(--text-muted);">Name</th>
+                        <th style="text-align:left; padding:8px 16px; font-size:0.72rem; text-transform:uppercase; color:var(--text-muted);">Max Level</th>
+                        <th style="text-align:left; padding:8px 16px; font-size:0.72rem; text-transform:uppercase; color:var(--text-muted);">In-Water</th>
+                        <th style="text-align:left; padding:8px 16px; font-size:0.72rem; text-transform:uppercase; color:var(--text-muted);">Out-of-Water</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% swimCounselors.forEach(function(c) { %>
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:6px 16px; font-weight:600;"><%= c.FirstName %> <%= c.LastName %></td>
+                        <td style="padding:6px 16px;"><%= c.SwimMaxLevel || '1-3 only' %></td>
+                        <td style="padding:6px 16px;"><%= c.inWater %></td>
+                        <td style="padding:6px 16px;"><%= c.outWater %></td>
+                    </tr>
+                    <% }) %>
+                    <% if (swimCounselors.length === 0) { %>
+                    <tr><td colspan="4" style="padding:16px; text-align:center; color:var(--text-muted);">No staff with role "Swim Counselor" found.</td></tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+
+        <% if (periods.length === 0) { %>
+            <p class="card" style="text-align:center; color:var(--text-muted);">No Rec Swim or Swim Lessons offerings found for this week. Offerings come from the main weekly schedule — sync or upload them first.</p>
+        <% } %>
+
+        <% periods.forEach(function(p) { %>
+        <div class="card swim-period-card">
+            <h2 style="margin:0 0 12px; font-size:1.15rem;">Period <%= p.period %></h2>
+
+            <% if (p.rec) { %>
+            <div class="swim-subsection">
+                <h4>&#127946; Rec Swim
+                    <span style="font-weight:400; color:var(--text-muted); font-size:0.82rem;">
+                        — <%= p.rec.enrolledCount %> swimmer<%= p.rec.enrolledCount === 1 ? '' : 's' %>,
+                        needs <%= p.rec.requiredGuards %> guard<%= p.rec.requiredGuards === 1 ? '' : 's' %>
+                        (<%= p.rec.guards.length %> assigned<%= p.rec.guards.length < p.rec.requiredGuards ? ' — short' : '' %>)
+                    </span>
+                </h4>
+                <form action="/swim-scheduling/save-guards" method="POST">
+                    <input type="hidden" name="weekNumber" value="<%= week %>">
+                    <input type="hidden" name="periodNumber" value="<%= p.period %>">
+                    <input type="hidden" name="guardRole" value="Rec">
+                    <div class="guard-checklist">
+                        <% swimCounselors.forEach(function(c) { %>
+                            <label>
+                                <input type="checkbox" name="counselorIds" value="<%= c.CounselorID %>"
+                                    <%= p.rec.guards.some(function(g) { return g.CounselorID === c.CounselorID; }) ? 'checked' : '' %>>
+                                <%= c.FirstName %> <%= c.LastName %>
+                            </label>
+                        <% }) %>
+                    </div>
+                    <button type="submit" class="btn btn-small" style="background:#f1f5f9;">Save Rec Guards</button>
+                </form>
+            </div>
+            <% } %>
+
+            <% if (p.lessons) { %>
+            <div class="swim-subsection">
+                <h4>&#127947; Swim Lessons — Pool Guards
+                    <span style="font-weight:400; color:var(--text-muted); font-size:0.82rem;">
+                        — needs 2 (<%= p.lessons.guards.length %> assigned<%= p.lessons.guards.length < 2 ? ' — short' : '' %>)
+                    </span>
+                </h4>
+                <form action="/swim-scheduling/save-guards" method="POST">
+                    <input type="hidden" name="weekNumber" value="<%= week %>">
+                    <input type="hidden" name="periodNumber" value="<%= p.period %>">
+                    <input type="hidden" name="guardRole" value="Lessons">
+                    <div class="guard-checklist">
+                        <% swimCounselors.forEach(function(c) { %>
+                            <label>
+                                <input type="checkbox" name="counselorIds" value="<%= c.CounselorID %>"
+                                    <%= p.lessons.guards.some(function(g) { return g.CounselorID === c.CounselorID; }) ? 'checked' : '' %>>
+                                <%= c.FirstName %> <%= c.LastName %>
+                            </label>
+                        <% }) %>
+                    </div>
+                    <button type="submit" class="btn btn-small" style="background:#f1f5f9;">Save Lessons Guards</button>
+                </form>
+            </div>
+
+            <div class="swim-subsection">
+                <h4>Lesson Groups</h4>
+
+                <% if (p.lessons.ungrouped.length > 0) { %>
+                <div style="margin-bottom:12px; padding:10px; background:#fef3c7; border-radius:8px;">
+                    <div style="font-size:0.8rem; font-weight:700; color:#92400e; margin-bottom:6px;">Not yet in a group</div>
+                    <% p.lessons.ungrouped.forEach(function(c) { %>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:0.85rem;">
+                            <span style="flex:1;"><%= c.FirstName %> <%= c.LastName %> <span style="color:var(--text-muted);">(<%= c.level || 'not tested' %>)</span></span>
+                            <form action="/swim-scheduling/assign-camper" method="POST" style="display:flex; gap:4px;">
+                                <input type="hidden" name="weekNumber" value="<%= week %>">
+                                <input type="hidden" name="camperId" value="<%= c.CamperID %>">
+                                <select name="groupId" style="padding:3px 6px; border:1px solid var(--border-color); border-radius:6px; font-size:0.78rem;">
+                                    <option value="">— add to group —</option>
+                                    <% p.lessons.groups.forEach(function(g) { %>
+                                        <option value="<%= g.GroupID %>">Level <%= g.LevelNumber %><%= g.SubLevel ? ' (' + g.SubLevel + ')' : '' %> (<%= g.members.length %>)</option>
+                                    <% }) %>
+                                </select>
+                                <button type="submit" class="btn btn-small" style="background:white; font-size:0.75rem; padding:3px 8px;">Add</button>
+                            </form>
+                        </div>
+                    <% }) %>
+                </div>
+                <% } %>
+
+                <% p.lessons.groups.forEach(function(g) { %>
+                <div class="swim-group-card <%= g.Locked ? 'locked' : '' %> <%= g.aboveLevel ? 'above-level' : '' %>">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                        <div style="font-weight:700; font-size:0.9rem;">
+                            Level <%= g.LevelNumber %><%= g.SubLevel ? ' (' + g.SubLevel + ')' : '' %>
+                            <span style="font-weight:400; color:var(--text-muted); font-size:0.8rem;">(<%= g.members.length %>)</span>
+                            <% if (g.Locked) { %><span style="color:#92400e; font-size:0.75rem;">&#128274; locked</span><% } %>
+                        </div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <form action="/swim-scheduling/toggle-group-lock" method="POST">
+                                <input type="hidden" name="weekNumber" value="<%= week %>">
+                                <input type="hidden" name="groupId" value="<%= g.GroupID %>">
+                                <button type="submit" class="btn btn-small" style="background:white; font-size:0.75rem;"><%= g.Locked ? 'Unlock' : 'Lock' %></button>
+                            </form>
+                            <form action="/swim-scheduling/delete-group" method="POST" onsubmit="return confirm('Delete this group? Its campers go back to Not yet in a group.');">
+                                <input type="hidden" name="weekNumber" value="<%= week %>">
+                                <input type="hidden" name="groupId" value="<%= g.GroupID %>">
+                                <button type="submit" class="btn btn-small" style="background:#fee2e2; color:#991b1b; font-size:0.75rem;">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <form action="/swim-scheduling/assign-instructor" method="POST" style="display:flex; gap:6px; align-items:center; margin-bottom:10px;">
+                        <input type="hidden" name="weekNumber" value="<%= week %>">
+                        <input type="hidden" name="groupId" value="<%= g.GroupID %>">
+                        <label style="font-size:0.78rem; color:var(--text-muted);">Instructor:</label>
+                        <select name="counselorId" style="padding:4px 6px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem;">
+                            <option value="">— unassigned —</option>
+                            <% swimCounselors.forEach(function(c) { %>
+                                <% var eligible = (c.SwimMaxLevel || 3) >= g.LevelNumber; %>
+                                <option value="<%= c.CounselorID %>" <%= g.CounselorID === c.CounselorID ? 'selected' : '' %> <%= (!eligible && g.CounselorID !== c.CounselorID) ? 'disabled' : '' %>>
+                                    <%= c.FirstName %> <%= c.LastName %><%= eligible ? '' : ' (below level)' %>
+                                </option>
+                            <% }) %>
+                        </select>
+                        <button type="submit" class="btn btn-small" style="background:#f1f5f9; font-size:0.75rem;">Save</button>
+                        <% if (g.aboveLevel) { %><span style="color:#dc2626; font-size:0.78rem; font-weight:600;">&#9888; above their max level</span><% } %>
+                    </form>
+
+                    <div>
+                        <% g.members.forEach(function(m) { %>
+                        <span class="member-chip">
+                            <%= m.FirstName %> <%= m.LastName %>
+                            <form action="/swim-scheduling/remove-camper" method="POST" style="display:inline;">
+                                <input type="hidden" name="weekNumber" value="<%= week %>">
+                                <input type="hidden" name="groupId" value="<%= g.GroupID %>">
+                                <input type="hidden" name="camperId" value="<%= m.CamperID %>">
+                                <button type="submit" title="Remove">&times;</button>
+                            </form>
+                        </span>
+                        <% }) %>
+                        <% if (g.members.length === 0) { %>
+                            <span style="color:var(--text-muted); font-size:0.8rem; font-style:italic;">Empty group</span>
+                        <% } %>
+                    </div>
+                </div>
+                <% }) %>
+
+                <form action="/swim-scheduling/create-group" method="POST" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding:10px; border:1px dashed var(--border-color); border-radius:8px;">
+                    <input type="hidden" name="weekNumber" value="<%= week %>">
+                    <input type="hidden" name="periodNumber" value="<%= p.period %>">
+                    <span style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">+ New group:</span>
+                    <select name="levelNumber" style="padding:4px 6px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem;">
+                        <% [1,2,3,4,5,6].forEach(function(n) { %><option value="<%= n %>">Level <%= n %></option><% }) %>
+                    </select>
+                    <select name="subLevel" style="padding:4px 6px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem;">
+                        <option value="">—</option>
+                        <option value="Low">Low</option>
+                        <option value="High">High</option>
+                    </select>
+                    <button type="submit" class="btn btn-small" style="background:white; font-size:0.78rem;">Create</button>
+                </form>
+            </div>
+            <% } %>
+        </div>
+        <% }) %>
+
+    </div>
+</body>
+</html>

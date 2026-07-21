@@ -57,6 +57,76 @@ Takes an optional `?week=N` query param via a session `<select>` in the nav bar 
 
 ---
 
+## Phase 3 — Swim Staffing Schedule (shipped, manual + auto-grouping)
+
+Independent of `CounselorWeekSchedules`/`WeeklyOfferings` by design — see [Known limitation](#known-limitation). Admin-only tool at `/swim-scheduling`, `views/swim-scheduling.ejs`. Only applies to `StaffRole = 'Swim Counselor'`.
+
+### Schema
+
+```sql
+CREATE TABLE SwimLessonGroups (
+    GroupID      INTEGER PRIMARY KEY AUTOINCREMENT,
+    WeekNumber   INTEGER NOT NULL CHECK(WeekNumber BETWEEN 1 AND 6),
+    PeriodNumber INTEGER NOT NULL CHECK(PeriodNumber BETWEEN 1 AND 6),
+    LevelNumber  INTEGER NOT NULL CHECK(LevelNumber BETWEEN 1 AND 6),
+    SubLevel     TEXT CHECK(SubLevel IN ('Low','High') OR SubLevel IS NULL),
+    CounselorID  INTEGER,           -- nullable until assigned
+    Locked       INTEGER DEFAULT 0, -- protects from Generate Groups regeneration
+    FOREIGN KEY (CounselorID) REFERENCES Counselors(CounselorID) ON DELETE SET NULL
+);
+CREATE TABLE SwimLessonGroupMembers (
+    GroupID INTEGER, CamperID INTEGER,
+    PRIMARY KEY (GroupID, CamperID),
+    FOREIGN KEY (GroupID) REFERENCES SwimLessonGroups(GroupID) ON DELETE CASCADE,
+    FOREIGN KEY (CamperID) REFERENCES Campers(CamperID) ON DELETE CASCADE
+);
+CREATE TABLE SwimGuardAssignments (
+    WeekNumber INTEGER, PeriodNumber INTEGER,
+    GuardRole  TEXT CHECK(GuardRole IN ('Rec','Lessons')),
+    CounselorID INTEGER NOT NULL,
+    PRIMARY KEY (WeekNumber, PeriodNumber, GuardRole, CounselorID),
+    FOREIGN KEY (CounselorID) REFERENCES Counselors(CounselorID) ON DELETE CASCADE
+);
+```
+
+`SwimGuardAssignments.GuardRole` distinguishes Rec Swim lifeguards from the always-2 Swim Lessons pool guards — the latter are separate people from the per-group lesson instructors.
+
+### `generateGroupsForWeek(week)` — the auto-grouping algorithm
+
+Runs per period offering `'Swim Lessons'` that week (checked against `WeeklyOfferings`):
+1. Deletes all **unlocked** `SwimLessonGroups` for that week+period; campers already in a **Locked** group are excluded from re-bucketing entirely (their group and membership are untouched).
+2. Everyone else currently enrolled in Swim Lessons that period is bucketed by `getEffectiveSwimLevel()` — campers with no recorded level are left out (they surface in the UI as "Not yet in a group" instead of being silently dropped).
+3. Within a level, each sub-level (`Low`/`High`/plain) with **≥3** campers becomes its own pool; sub-levels with **<3** are merged into one mixed pool for that level.
+4. Each pool is split into `isNew` (a `CamperSwimLevels` row written *this* week — i.e. freshly tested) vs `returning`, chunked separately via `chunkCampers()`: newly-tested campers at max size 4 (so they seed their own small group, 2-4 kids, rather than topping off an existing class), returning campers at max size 6. `chunkCampers()` splits as evenly as possible (11 campers at max 6 → `[6,5]`, not a lopsided `[6,6,-1]`).
+
+A same-level pool can end up with more than one `SubLevel = NULL` group in one run (e.g. a ≥3 "plain" pool and a separate <3-sublevel mixed-leftover pool) — both are valid, correctly-sized groups; the UI doesn't currently disambiguate which is which beyond showing the actual camper names in each.
+
+### `getCounselorWaterTally(week)`
+
+Returns `{CounselorID: {inWater, outWater}}` for the roster panel: all guard duty (`SwimGuardAssignments`, either role) counts as in-water; teaching a lesson group counts as in-water for levels 1-3 (required in the water) and out-of-water for levels 4-6 (not required). Used for display only in Phase 3 — Phase 4's solver will use the same in/out classification to actually balance assignments.
+
+### `getSwimWarnings(periods)`
+
+Computed at render time, never stored. Flags: a period's Rec Swim or Swim Lessons guard count below the required threshold; an empty lesson group; a counselor assigned to teach a group above their `SwimMaxLevel`; and any counselor appearing in more than one guard/instructor slot in the same period (double-booked) — tracked via a `period|counselorId` map built while walking the same `periods` structure the page renders.
+
+### Routes
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/swim-scheduling` | Main page. `?week=N` to view a different session |
+| POST | `/swim-scheduling/generate-groups` | Runs `generateGroupsForWeek()` |
+| POST | `/swim-scheduling/create-group` | Manually add an empty group (period + level + sub-level) |
+| POST | `/swim-scheduling/delete-group` | Deletes a group; members become "Not yet in a group" (CASCADE) |
+| POST | `/swim-scheduling/toggle-group-lock` | Flips `Locked` |
+| POST | `/swim-scheduling/assign-instructor` | Sets a group's `CounselorID` |
+| POST | `/swim-scheduling/assign-camper` | Adds a camper to a group (`INSERT OR IGNORE`) |
+| POST | `/swim-scheduling/remove-camper` | Removes a camper from a group (they become ungrouped, reassignable) |
+| POST | `/swim-scheduling/save-guards` | Full replace of a `(week, period, guardRole)` guard set from a checkbox list |
+
+"Move a camper between groups" and "merge/split a group" aren't dedicated actions — they're composed from `assign-camper`/`remove-camper`/`create-group`/`delete-group`, matching this codebase's convention of small single-purpose routes over one dispatcher endpoint.
+
+---
+
 ## Known limitation
 
-Swim staffing (Phases 3–4, not yet built) will live in its own tables, independent of `CounselorWeekSchedules`/`WeeklyOfferings`. Once that ships, Master Schedule's Counselors column, the staff Daily Assignments card, and Attendance will **not** show swim duty assignments for Rec Swim / Swim Lessons periods — that data only exists in the swim-specific tables and views.
+Swim staffing lives in its own tables (`SwimLessonGroups`, `SwimGuardAssignments`), independent of `CounselorWeekSchedules`/`WeeklyOfferings`. Master Schedule's Counselors column, the staff Daily Assignments card, and Attendance do **not** show swim duty assignments for Rec Swim / Swim Lessons periods — that data only exists in `/swim-scheduling` and the tables above. Rec Swim/Swim Lessons should be treated as off-limits in the main `/counselor-scheduling` builder to avoid double-booking swim staff across the two systems (not enforced automatically — a manual convention for now).

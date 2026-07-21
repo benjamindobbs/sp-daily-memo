@@ -619,6 +619,51 @@ Managed via `POST /api/toggle-lock`; read on page load via `GET /api/locked-offe
 
 ---
 
+## Swim Scheduling Tables
+
+See [Swim Scheduling](./Swim-Scheduling.md) for the full feature. Independent of `CounselorWeekSchedules`/`WeeklyOfferings` by design.
+
+### CamperSwimLevels
+
+One row per camper per week — a snapshot of their tested swim level (`"Low 2"` / `"2"` / `"High 3"`), not a running log. A missing week means "unchanged since their last recorded level" (`getEffectiveSwimLevel()` walks backward to find it).
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `CamperID` | INTEGER | PK part | FK → `Campers`, `ON DELETE CASCADE` |
+| `WeekNumber` | INTEGER | PK part, CHECK 1–6 | |
+| `LevelNumber` | INTEGER | CHECK 1–6 | |
+| `SubLevel` | TEXT | CHECK `'Low'`/`'High'` or NULL | NULL = plain level |
+| `UpdatedAt` | DATETIME | DEFAULT `CURRENT_TIMESTAMP` | |
+
+### SwimLessonGroups / SwimLessonGroupMembers
+
+One `SwimLessonGroups` row per skill-level lesson group per period per week, auto-formed by `generateGroupsForWeek()` and hand-editable. Membership is a separate join table so campers can move between groups without recreating the group row.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `GroupID` | INTEGER | PK, AUTOINCREMENT | |
+| `WeekNumber` | INTEGER | NOT NULL, CHECK 1–6 | |
+| `PeriodNumber` | INTEGER | NOT NULL, CHECK 1–6 | |
+| `LevelNumber` | INTEGER | NOT NULL, CHECK 1–6 | |
+| `SubLevel` | TEXT | CHECK `'Low'`/`'High'` or NULL | Set only when this group is sub-level-specific (≥3 campers at that sub-level) |
+| `CounselorID` | INTEGER | | Nullable until assigned. FK → `Counselors`, `ON DELETE SET NULL` |
+| `Locked` | INTEGER | DEFAULT `0` | Protects the group from being rebuilt by Generate Groups |
+
+`SwimLessonGroupMembers`: `(GroupID, CamperID)` composite PK, both FKs `ON DELETE CASCADE`.
+
+### SwimGuardAssignments
+
+Rec Swim lifeguards and the always-2 Swim Lessons pool guards — one row per counselor per period per week per role.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `WeekNumber` | INTEGER | PK part, CHECK 1–6 | |
+| `PeriodNumber` | INTEGER | PK part, CHECK 1–6 | |
+| `GuardRole` | TEXT | PK part, CHECK `'Rec'`/`'Lessons'` | |
+| `CounselorID` | INTEGER | PK part, NOT NULL | FK → `Counselors`, `ON DELETE CASCADE` |
+
+---
+
 ## SpartanEvents
 
 Definitions of events in the annual Spartan Games counselor competition. 12 events are seeded on first startup (when the table is empty); editable by admin.
