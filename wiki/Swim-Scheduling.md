@@ -28,11 +28,13 @@ A camper's **effective level as of week N** is their own week-N row if one exist
 
 ### `getSwimLevelGroups(week)`
 
-Shared helper in `app.js` used by both `/swim-levels` and `/reports/swim-levels`. Queries campers enrolled in `'Rec Swim'` or `'Swim Lessons'` for the given week (same `Campers JOIN Schedules` enrollment pattern as `/class-roster`), then groups into `{activityName, period, campers}` sections — `Rec Swim` first, then `Swim Lessons`, periods ascending, campers alphabetical by last/first name within each section. A camper enrolled in swim during more than one period (e.g. Rec Swim one period, Swim Lessons another) appears in each relevant group; their level is looked up once and cached (`levelCache`), so editing from either instance updates the same `CamperSwimLevels` row.
+Shared helper in `app.js` used by both `/swim-levels` and `/reports/swim-levels`. Queries campers enrolled in `'Rec Swim'` or `'Swim Lessons'` for the given week (same `Campers JOIN Schedules` enrollment pattern as `/class-roster`), then groups into `{activityName, period, campers}` sections ordered **period ascending first, then activity within the period** (Rec Swim before Swim Lessons — e.g. Period 1 Rec, Period 1 Lessons, Period 2 Rec, ...), campers alphabetical by last/first name within each section. A period/activity combo with nobody enrolled is left out entirely. A camper enrolled in swim during more than one period (e.g. Rec Swim one period, Swim Lessons another) appears in each relevant group; their level is looked up once and cached (`levelCache`), so editing from either instance updates the same `CamperSwimLevels` row.
 
 ### `GET /swim-levels` / `POST /swim-levels/update`
 
 Admin-only editing page: renders `getSwimLevelGroups()` for the target week (prep target if set, else active week) with an inline form on each camper row to set a new level + sub-level for that week. Each row shows the camper's current effective level or a "Not yet tested" badge. `POST /swim-levels/update` upserts one `CamperSwimLevels` row. `views/swim-levels.ejs`.
+
+The `GET /swim-levels` route additionally nests the flat `groups` array into one `<details>`/`<summary>` show/hide section per period (each containing its Rec Swim / Swim Lessons sub-tables, in that order) — a `periodGroups` array of `{period, activities, total}` built by walking the already period-ordered `groups`, view-only, not part of `getSwimLevelGroups()` itself. Sections default open; the name-filter search (`filterSwimmers()`) cascades visibility up to the period level too, hiding a period entirely if none of its rows match the query and auto-expanding a collapsed period that does have a match.
 
 ### `POST /upload-swim-levels`
 
@@ -117,6 +119,43 @@ On merge: the source group's campers move into the target group (`SwimLessonGrou
 
 `SwimLessonGroups.effectiveMaxLevel` (`LevelRangeMax || LevelNumber`) is computed in `getSwimSchedulingData()` and used everywhere a group's level needs to be checked against a counselor's `SwimMaxLevel` — including the instructor-eligibility filter, which compares against `effectiveMaxLevel` rather than the raw `LevelNumber`.
 
+### Undoing a merge (`POST /swim-scheduling/undo-merge`)
+
+Every merge — manual or from Full Auto Assign's guard-shortfall fallback — writes a row to `SwimGroupMergeHistory` (plus `SwimGroupMergeHistoryMembers` for which campers moved) via a shared `recordGroupMerge()` helper, capturing enough to reverse it:
+
+```sql
+CREATE TABLE SwimGroupMergeHistory (
+    MergeID                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    WeekNumber              INTEGER NOT NULL,
+    PeriodNumber            INTEGER NOT NULL,
+    TargetGroupID           INTEGER NOT NULL,  -- the group that survived the merge
+    TargetPrevLevelNumber   INTEGER NOT NULL,  -- target's level/range/sub-level/lock *before* this merge
+    TargetPrevLevelRangeMax INTEGER,
+    TargetPrevSubLevel      TEXT,
+    TargetPrevLocked        INTEGER NOT NULL,
+    SourceLevelNumber       INTEGER NOT NULL,  -- the deleted group's own level/range/sub-level
+    SourceLevelRangeMax     INTEGER,
+    SourceSubLevel          TEXT,
+    CreatedAt               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    Undone                  INTEGER DEFAULT 0
+);
+CREATE TABLE SwimGroupMergeHistoryMembers (
+    MergeID INTEGER, CamperID INTEGER,
+    PRIMARY KEY (MergeID, CamperID),
+    FOREIGN KEY (MergeID) REFERENCES SwimGroupMergeHistory(MergeID) ON DELETE CASCADE
+);
+```
+
+`GET /swim-scheduling` lists every `Undone = 0` row for the week in a collapsible **Recent Merges** panel (below Edit Swim Certifications), each showing the period, the merged-away group's original level, and — via a `LEFT JOIN` against `SwimLessonGroups` — the target's *current* level (which may itself have changed since, e.g. from a later merge). If the target no longer exists (deleted, or absorbed into yet another merge), the row shows as "Not undoable" instead of an Undo button.
+
+On undo, `POST /swim-scheduling/undo-merge`:
+1. Recreates the source as a brand-new `SwimLessonGroups` row at its original `LevelNumber`/`LevelRangeMax`/`SubLevel` — unlocked, uninstructed.
+2. Moves back only the recorded members that are **still in the target group** — anyone moved out or removed since the merge (manually, or by a later split/merge) is left where they are rather than force-moved.
+3. Restores the target's level/range/sub-level/lock to their pre-merge values.
+4. Marks the history row `Undone = 1` so it can't be undone twice and drops out of the Recent Merges list.
+
+**Deliberately not restored: instructor assignments.** The source group's instructor (if any) was simply dropped when the group was deleted during the merge — `merge-group` never copies it to the target — and may since have been reassigned to guard duty or another class by the merge-fallback or a later Full Auto Assign run. Trying to claw that specific person back could double-book them, so the recreated group always starts unassigned; `getSwimWarnings()` and Send to Sports treat it like any other un-instructed group.
+
 ### Composition (Low / Nominal / High breakdown)
 
 `levelLabel` (`"Level 3"`, or `"Level 5–6"` when ranged) is just the header — it no longer carries sub-level detail. That's now a separate `composition` array on each group, computed in `getSwimSchedulingData()` from each **member's actual current effective level** (`getEffectiveSwimLevel()`) rather than from the group's own stored `SubLevel`, so it stays correct after merges and any manual add/remove:
@@ -180,6 +219,7 @@ Computed at render time, never stored. Flags: a period's Rec Swim or Swim Lesson
 | POST | `/swim-scheduling/create-group` | Manually add an empty group (period + level + sub-level) |
 | POST | `/swim-scheduling/delete-group` | Deletes a group; members become "Not yet in a group" (CASCADE) |
 | POST | `/swim-scheduling/merge-group` | Merges a source group into a target group in the same period; widens the target's level range, locks it, deletes the source |
+| POST | `/swim-scheduling/undo-merge` | Reverses a merge via its `SwimGroupMergeHistory` row — recreates the source group, moves back whichever members are still in the target, restores the target's pre-merge state |
 | POST | `/swim-scheduling/split-group` | Splits a group over 5 campers into groups of 5 or fewer via `chunkCampers()`; original `GroupID` keeps the first chunk, the rest are new unlocked/uninstructed groups |
 | POST | `/swim-scheduling/toggle-group-lock` | Flips `Locked` |
 | POST | `/swim-scheduling/assign-instructor` | Sets a group's `CounselorID` (or `CounselorID2` when `slot=2`, for the second instructor a 5-camper group gets) |

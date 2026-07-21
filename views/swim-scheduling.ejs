@@ -122,6 +122,34 @@
             </div>
         </details>
 
+        <% if (recentMerges.length > 0) { %>
+        <details class="card" style="margin-bottom:20px; padding:0; overflow:hidden;">
+            <summary style="cursor:pointer; padding:12px 16px; background:#f8fafc; font-weight:700; font-size:0.9rem;">
+                &#8617; Recent Merges (<%= recentMerges.length %> undoable)
+            </summary>
+            <div style="padding:14px; border-top:1px solid var(--border-color);">
+                <% recentMerges.forEach(function(m) { %>
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 0; border-bottom:1px solid #f1f5f9; font-size:0.85rem;">
+                    <span style="flex:1;">
+                        Period <%= m.PeriodNumber %>: <strong><%= m.sourceLabel %></strong> merged into
+                        <strong><%= m.undoable ? m.targetLabel : 'a group that no longer exists' %></strong>
+                        <span style="color:var(--text-muted); font-size:0.78rem;"> — <%= new Date(m.CreatedAt).toLocaleString() %></span>
+                    </span>
+                    <% if (m.undoable) { %>
+                    <form action="/swim-scheduling/undo-merge" method="POST" onsubmit="return confirm('Undo this merge? The original group is recreated (unassigned) and its campers move back if they are still in the merged group.');">
+                        <input type="hidden" name="weekNumber" value="<%= week %>">
+                        <input type="hidden" name="mergeId" value="<%= m.MergeID %>">
+                        <button type="submit" class="btn btn-small" style="background:white;">Undo</button>
+                    </form>
+                    <% } else { %>
+                        <span style="color:var(--text-muted); font-size:0.78rem; font-style:italic;">Not undoable</span>
+                    <% } %>
+                </div>
+                <% }) %>
+            </div>
+        </details>
+        <% } %>
+
         <div class="card" style="margin-bottom:20px; padding:0; overflow:hidden;">
             <h3 style="margin:0; padding:12px 16px; background:#f8fafc; border-bottom:1px solid var(--border-color); font-size:0.9rem;">Swim Counselors — Water Time This Week</h3>
             <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">

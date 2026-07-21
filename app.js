@@ -1293,6 +1293,57 @@ try {
     }
 } catch(e) { console.error('[migration] SwimLessonGroups.CounselorID2:', e.message); }
 
+// Records enough of a merge's before-state to reverse it later (POST
+// /swim-scheduling/undo-merge): the target's pre-merge level/range/sub-level/lock (so it can
+// be restored), the source's original level/range/sub-level (so it can be recreated as a
+// fresh group), and which campers moved over (so exactly those — and only the ones still in
+// the target — move back). Written by both the manual merge-group route and autoAssignWeek's
+// merge-fallback, so either kind of merge can be undone the same way.
+db.exec(`
+    CREATE TABLE IF NOT EXISTS SwimGroupMergeHistory (
+        MergeID                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        WeekNumber              INTEGER NOT NULL,
+        PeriodNumber            INTEGER NOT NULL,
+        TargetGroupID           INTEGER NOT NULL,
+        TargetPrevLevelNumber   INTEGER NOT NULL,
+        TargetPrevLevelRangeMax INTEGER,
+        TargetPrevSubLevel      TEXT,
+        TargetPrevLocked        INTEGER NOT NULL,
+        SourceLevelNumber       INTEGER NOT NULL,
+        SourceLevelRangeMax     INTEGER,
+        SourceSubLevel          TEXT,
+        CreatedAt               DATETIME DEFAULT CURRENT_TIMESTAMP,
+        Undone                  INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS SwimGroupMergeHistoryMembers (
+        MergeID  INTEGER NOT NULL,
+        CamperID INTEGER NOT NULL,
+        PRIMARY KEY (MergeID, CamperID),
+        FOREIGN KEY (MergeID) REFERENCES SwimGroupMergeHistory(MergeID) ON DELETE CASCADE
+    );
+`);
+
+function recordGroupMerge(week, period, targetGroupId, targetPrev, sourceOriginal, memberCamperIds) {
+    const info = db.prepare(`
+        INSERT INTO SwimGroupMergeHistory
+            (WeekNumber, PeriodNumber, TargetGroupID,
+             TargetPrevLevelNumber, TargetPrevLevelRangeMax, TargetPrevSubLevel, TargetPrevLocked,
+             SourceLevelNumber, SourceLevelRangeMax, SourceSubLevel)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+        week, period, targetGroupId,
+        targetPrev.LevelNumber, targetPrev.LevelRangeMax, targetPrev.SubLevel, targetPrev.Locked ? 1 : 0,
+        sourceOriginal.LevelNumber, sourceOriginal.LevelRangeMax, sourceOriginal.SubLevel
+    );
+    const insMember = db.prepare('INSERT INTO SwimGroupMergeHistoryMembers (MergeID, CamperID) VALUES (?, ?)');
+    for (const camperId of memberCamperIds) insMember.run(info.lastInsertRowid, camperId);
+}
+
+// "Level 3" for a single level, "Level 3–5" for a merged/ranged group.
+function formatLevelLabel(levelNumber, levelRangeMax) {
+    return `Level ${levelNumber}${levelRangeMax ? '–' + levelRangeMax : ''}`;
+}
+
 // Required Rec Swim lifeguard count from enrollment (same in AM and PM).
 function requiredRecGuards(enrolledCount) {
     if (enrolledCount > 15) return 3;
@@ -1632,6 +1683,12 @@ function autoAssignWeek(week) {
                     const candidate = findMergeCandidate(p.lessons.groups);
                     if (!candidate) break;
                     const { source, target } = candidate;
+
+                    recordGroupMerge(
+                        week, p.period, target.GroupID,
+                        { LevelNumber: target.LevelNumber, LevelRangeMax: target.LevelRangeMax, SubLevel: target.SubLevel, Locked: target.Locked },
+                        source, source.members.map(m => m.CamperID)
+                    );
 
                     source.members.forEach(m => insMergeMember.run(target.GroupID, m.CamperID));
                     const newMin = Math.min(source.LevelNumber, target.LevelNumber);
@@ -3413,11 +3470,14 @@ app.post('/update-class-location', (req, res) => {
 // --- SWIM LEVELS ---
 const SWIM_ACTIVITY_NAMES = ['Rec Swim', 'Swim Lessons'];
 
-// Campers enrolled in Rec Swim/Swim Lessons for a week, grouped by activity (Rec Swim
-// first, then Swim Lessons), then by period ascending, alphabetical by last/first name
-// within each group. A camper enrolled in swim during more than one period appears in
-// each relevant group, sharing one cached level lookup so it's computed only once.
-// Shared by the /swim-levels editing view and the /reports/swim-levels printable report.
+// Campers enrolled in Rec Swim/Swim Lessons for a week, grouped by period ascending, then by
+// activity within the period (Rec Swim before Swim Lessons — e.g. Period 1 Rec, Period 1
+// Lessons, Period 2 Rec, ...), alphabetical by last/first name within each group. A camper
+// enrolled in swim during more than one period appears in each relevant group, sharing one
+// cached level lookup so it's computed only once. A period/activity combo with nobody
+// enrolled is left out entirely rather than showing an empty section.
+// Shared by the /swim-levels editing view (which additionally nests this by period — see
+// its route) and the /reports/swim-levels printable report (rendered flat, in this order).
 function getSwimLevelGroups(week) {
     const ph = SWIM_ACTIVITY_NAMES.map(() => '?').join(',');
     const enrollments = db.prepare(`
@@ -3443,15 +3503,14 @@ function getSwimLevelGroups(week) {
     };
 
     const groups = [];
-    for (const activityName of SWIM_ACTIVITY_NAMES) {
-        const periods = [...new Set(
-            enrollments.filter(e => e.ActivityName === activityName).map(e => e.PeriodNumber)
-        )].sort((a, b) => a - b);
-        for (const period of periods) {
+    const periods = [...new Set(enrollments.map(e => e.PeriodNumber))].sort((a, b) => a - b);
+    for (const period of periods) {
+        for (const activityName of SWIM_ACTIVITY_NAMES) {
             const campers = enrollments
                 .filter(e => e.ActivityName === activityName && e.PeriodNumber === period)
                 .map(rowFor)
                 .sort((a, b) => a.LastName.localeCompare(b.LastName) || a.FirstName.localeCompare(b.FirstName));
+            if (campers.length === 0) continue;
             groups.push({ activityName, period, campers });
         }
     }
@@ -3462,8 +3521,23 @@ app.get('/swim-levels', (req, res) => {
     const isAdmin = req.cookies.adminAuth === 'true';
     const week = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
     const groups = getSwimLevelGroups(week);
+
+    // Nest the flat, already period-then-activity-ordered groups into one show/hide section
+    // per period (each containing its Rec Swim / Swim Lessons sub-tables), for this view only
+    // — the printable report renders the same groups() flat, no nesting needed there.
+    const periodGroups = [];
+    for (const g of groups) {
+        let pg = periodGroups[periodGroups.length - 1];
+        if (!pg || pg.period !== g.period) {
+            pg = { period: g.period, activities: [], total: 0 };
+            periodGroups.push(pg);
+        }
+        pg.activities.push(g);
+        pg.total += g.campers.length;
+    }
+
     const weekLabel = db.prepare("SELECT label FROM Sessions WHERE weekNumber = ?").get(week)?.label || `Week ${week}`;
-    res.render('swim-levels', { groups, week, weekLabel, message: req.query.message || null });
+    res.render('swim-levels', { periodGroups, week, weekLabel, message: req.query.message || null });
 });
 
 app.post('/swim-levels/update', (req, res) => {
@@ -3599,7 +3673,7 @@ function getSwimSchedulingData(week) {
                 return {
                     ...g,
                     effectiveMaxLevel,
-                    levelLabel: `Level ${g.LevelNumber}${isRanged ? '–' + g.LevelRangeMax : ''}`,
+                    levelLabel: formatLevelLabel(g.LevelNumber, g.LevelRangeMax),
                     members,
                     composition,
                     needsSecondInstructor,
@@ -3729,8 +3803,22 @@ app.get('/swim-scheduling', (req, res) => {
     ).all().map(c => ({ ...c, ...(breakdown[c.CounselorID] || { amIn: 0, amOut: 0, pmIn: 0, pmOut: 0 }) }));
     attachSendToSports(periods, swimCounselors);
 
+    const recentMerges = db.prepare(`
+        SELECT h.MergeID, h.PeriodNumber, h.SourceLevelNumber, h.SourceLevelRangeMax, h.CreatedAt,
+               g.LevelNumber AS TargetLevelNumber, g.LevelRangeMax AS TargetLevelRangeMax
+        FROM SwimGroupMergeHistory h
+        LEFT JOIN SwimLessonGroups g ON g.GroupID = h.TargetGroupID
+        WHERE h.WeekNumber = ? AND h.Undone = 0
+        ORDER BY h.CreatedAt DESC
+    `).all(week).map(m => ({
+        ...m,
+        sourceLabel: formatLevelLabel(m.SourceLevelNumber, m.SourceLevelRangeMax),
+        targetLabel: m.TargetLevelNumber != null ? formatLevelLabel(m.TargetLevelNumber, m.TargetLevelRangeMax) : null,
+        undoable: m.TargetLevelNumber != null
+    }));
+
     res.render('swim-scheduling', {
-        week, weekLabel, sessions, periods, warnings, swimCounselors,
+        week, weekLabel, sessions, periods, warnings, swimCounselors, recentMerges,
         message: req.query.message || null
     });
 });
@@ -3813,6 +3901,8 @@ app.post('/swim-scheduling/merge-group', (req, res) => {
 
     db.transaction(() => {
         const members = db.prepare('SELECT CamperID FROM SwimLessonGroupMembers WHERE GroupID = ?').all(sourceGroupId);
+        recordGroupMerge(source.WeekNumber, source.PeriodNumber, targetGroupId, target, source, members.map(m => m.CamperID));
+
         const insMember = db.prepare('INSERT OR IGNORE INTO SwimLessonGroupMembers (GroupID, CamperID) VALUES (?, ?)');
         for (const m of members) insMember.run(targetGroupId, m.CamperID);
 
@@ -3828,6 +3918,54 @@ app.post('/swim-scheduling/merge-group', (req, res) => {
     })();
 
     res.redirect(`/swim-scheduling?week=${week}&message=Groups+merged`);
+});
+
+// Reverses a merge (manual or from Full Auto Assign's guard-shortfall fallback) using the
+// SwimGroupMergeHistory row written when it happened: recreates the source group at its
+// original level/sub-level, moves back whichever recorded members are still in the target
+// (any moved/removed since the merge just stay put), and restores the target's pre-merge
+// level/range/sub-level/lock. Does not try to restore either group's instructor — the
+// source's freed instructor may since have been reassigned elsewhere, so the recreated
+// group starts unassigned; getSwimWarnings()/Send to Sports will flag it like any other
+// un-instructed group. Fails gracefully (no changes) if already undone or if the target
+// group no longer exists (deleted, or merged/split again since).
+app.post('/swim-scheduling/undo-merge', (req, res) => {
+    const week = parseInt(req.body.weekNumber);
+    const mergeId = parseInt(req.body.mergeId);
+
+    const merge = db.prepare('SELECT * FROM SwimGroupMergeHistory WHERE MergeID = ? AND Undone = 0').get(mergeId);
+    if (!merge) return res.redirect(`/swim-scheduling?week=${week}&message=Merge+not+found+or+already+undone`);
+
+    const target = db.prepare('SELECT * FROM SwimLessonGroups WHERE GroupID = ?').get(merge.TargetGroupID);
+    if (!target) return res.redirect(`/swim-scheduling?week=${week}&message=Cannot+undo+-+merged+group+no+longer+exists`);
+
+    const memberIds = db.prepare('SELECT CamperID FROM SwimGroupMergeHistoryMembers WHERE MergeID = ?').all(mergeId).map(r => r.CamperID);
+    const isStillInTarget = db.prepare('SELECT 1 FROM SwimLessonGroupMembers WHERE GroupID = ? AND CamperID = ?');
+    const delMember = db.prepare('DELETE FROM SwimLessonGroupMembers WHERE GroupID = ? AND CamperID = ?');
+    const insMember = db.prepare('INSERT INTO SwimLessonGroupMembers (GroupID, CamperID) VALUES (?, ?)');
+
+    db.transaction(() => {
+        const info = db.prepare(
+            'INSERT INTO SwimLessonGroups (WeekNumber, PeriodNumber, LevelNumber, LevelRangeMax, SubLevel) VALUES (?, ?, ?, ?, ?)'
+        ).run(merge.WeekNumber, merge.PeriodNumber, merge.SourceLevelNumber, merge.SourceLevelRangeMax, merge.SourceSubLevel);
+        const restoredGroupId = info.lastInsertRowid;
+
+        for (const camperId of memberIds) {
+            if (!isStillInTarget.get(merge.TargetGroupID, camperId)) continue;
+            delMember.run(merge.TargetGroupID, camperId);
+            insMember.run(restoredGroupId, camperId);
+        }
+
+        db.prepare(`
+            UPDATE SwimLessonGroups
+            SET LevelNumber = ?, LevelRangeMax = ?, SubLevel = ?, Locked = ?
+            WHERE GroupID = ?
+        `).run(merge.TargetPrevLevelNumber, merge.TargetPrevLevelRangeMax, merge.TargetPrevSubLevel, merge.TargetPrevLocked, merge.TargetGroupID);
+
+        db.prepare('UPDATE SwimGroupMergeHistory SET Undone = 1 WHERE MergeID = ?').run(mergeId);
+    })();
+
+    res.redirect(`/swim-scheduling?week=${week}&message=Merge+undone`);
 });
 
 app.post('/swim-scheduling/toggle-group-lock', (req, res) => {
