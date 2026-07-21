@@ -464,7 +464,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/counselor-directory', '/counselor-view', '/promotions',
     '/promote-waitlist', '/force-promote-waitlist', '/promote-all', '/remove-waitlist', '/upload-campers', '/upload-campers-schedule', '/upload-counselors',
     '/upload-bus-am', '/upload-bus-pm', '/upload-kp-lp',
-    '/upload-staff', '/upload-instructors', '/upload-activity-rules', '/add-activity',
+    '/upload-staff', '/upload-staff-contacts', '/upload-instructors', '/upload-activity-rules', '/add-activity',
     '/delete-activity', '/update-activity', '/add-activity-period-group',
     '/delete-activity-period-group', '/sync-activity-groups',
     '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings', '/sync-offerings-from-schedule', '/api/sync-offerings',
@@ -4368,6 +4368,96 @@ app.post('/upload-counselors', upload.single('file'), (req, res) => {
             if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         }
     });
+});
+
+// 1b. IMPORT STAFF CONTACT INFO — CSR-300: Staff Profile export from camp management.
+// Format is one vertical block per staff member (Name line, then Gender:/Birthday:/
+// phone/email label rows), not a normal tabular CSV, so it's parsed line-by-line
+// rather than via csv-parser. Only updates the Phone column on existing Counselors
+// rows matched by full name — never creates new staff.
+function parseStaffContactBlocks(rawText) {
+    const RESERVED_LABELS = new Set([
+        'Gender:', 'Birthday:', 'SIN:', 'Home Address:', 'E-mail:',
+        'School:', 'School Address:', 'Stage:', 'Status:', 'Period'
+    ]);
+    const isBlockStart = (label, nextLine) => {
+        if (!label || RESERVED_LABELS.has(label) || /^(Week |LIT Week )/.test(label)) return false;
+        const nextLabel = nextLine ? (nextLine[0] || '').trim() : '';
+        return !nextLine || nextLabel === 'Gender:';
+    };
+    // Lower priority number wins when a block has multiple phone-like rows.
+    const phoneLabelPriority = (label) => {
+        const l = label.toLowerCase();
+        if (/cell|mobile|cellular|iphone|apple|moblie|mobil|personal/.test(l)) return 1;
+        if (/phone|tel/.test(l)) return 2;
+        if (l === 'home') return 3;
+        if (/work/.test(l)) return 4;
+        if (l === 'parent') return 9;
+        return 5;
+    };
+    const PHONE_VALUE_RE = /^\+?[\d\s\-().]{7,20}(?:\s*ext\.?\s*\d*)?$/i;
+
+    const lines = rawText.split(/\r?\n/).map(parseCsvLine);
+    const entries = [];
+    let i = 0;
+    while (i < lines.length) {
+        const label = (lines[i][0] || '').trim();
+        if (!isBlockStart(label, lines[i + 1])) { i++; continue; }
+
+        let j = i + 1;
+        let bestPhone = null, bestPriority = Infinity;
+        while (j < lines.length) {
+            const bLabel = (lines[j][0] || '').trim();
+            if (isBlockStart(bLabel, lines[j + 1])) break;
+            const val = (lines[j][2] || '').trim();
+            if (bLabel && val && PHONE_VALUE_RE.test(val) && (val.match(/\d/g) || []).length >= 7) {
+                const pr = phoneLabelPriority(bLabel);
+                if (pr < bestPriority) { bestPriority = pr; bestPhone = val; }
+            }
+            j++;
+        }
+
+        entries.push({ fullName: label.replace(/\s*\([^)]*\)\s*$/, '').trim(), phone: bestPhone });
+        i = j;
+    }
+    return entries;
+}
+
+app.post('/upload-staff-contacts', upload.single('file'), (req, res) => {
+    if (!req.file) return res.redirect('/settings?message=No+file+uploaded');
+    let rawText;
+    try { rawText = fs.readFileSync(req.file.path, 'utf8'); }
+    catch (e) { return res.redirect('/settings?message=File+Read+Error'); }
+    finally { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); }
+
+    const entries = parseStaffContactBlocks(rawText);
+
+    // The export lists each staff member once per program enrollment; last block
+    // with a phone number wins so repeated entries don't need special-casing.
+    const byName = new Map();
+    for (const e of entries) {
+        if (!e.fullName || !e.phone) continue;
+        byName.set(e.fullName.toUpperCase(), e);
+    }
+
+    const findCounselors = db.prepare("SELECT CounselorID FROM Counselors WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?)");
+    const updPhone = db.prepare('UPDATE Counselors SET Phone = ? WHERE CounselorID = ?');
+
+    let updated = 0;
+    const unmatched = [], ambiguous = [];
+    db.transaction(() => {
+        for (const [, e] of byName) {
+            const matches = findCounselors.all(e.fullName);
+            if (matches.length === 1) { updPhone.run(e.phone, matches[0].CounselorID); updated++; }
+            else if (matches.length === 0) unmatched.push(e.fullName);
+            else ambiguous.push(e.fullName);
+        }
+    })();
+
+    let msg = `Updated+phone+for+${updated}+staff`;
+    if (unmatched.length) msg += `.+No+match:+${encodeURIComponent(unmatched.join(', '))}`;
+    if (ambiguous.length) msg += `.+Multiple+matches+skipped:+${encodeURIComponent(ambiguous.join(', '))}`;
+    res.redirect(`/settings?message=${msg}`);
 });
 
 // 2. IMPORT INSTRUCTORS — uploads to target week (prep target if set, else active week)

@@ -51,6 +51,26 @@ Imports have dependencies. Always follow this sequence for a fresh setup:
 
 ---
 
+## Staff Contact Info (CSR-300)
+
+**Route:** `POST /upload-staff-contacts`
+**File:** `views/settings.ejs`
+**Multer field:** `file`
+**Parser:** `parseStaffContactBlocks()` in `app.js`
+
+The CSR-300: Staff Profile export is **not** a normal tabular CSV — it's one vertical block per staff member (`Name (pronouns)` line, then `Gender:`/`Birthday:`/`SIN:`/`Home Address:`/`E-mail:`/phone label rows, then `Stage:`/`Status:`/`Period`/`Week N` rows), so it's read as raw text and parsed line-by-line with the shared `parseCsvLine()` helper instead of `csv-parser`.
+
+**What it does:**
+- Detects a block's start by finding a non-reserved label line whose next line is `Gender:`.
+- Within each block, scans every row for a phone-shaped value (`\d{7,}`-ish, with an optional `ext.` suffix, in the 3rd CSV column) and picks the best one by label priority: Cell/Mobile/Cellular/iPhone/Apple/Personal > any other `*Phone*`/`Tel` label > Home > Work > Parent (lowest) > anything else.
+- Strips trailing pronouns (`(She/Her)` etc.) from the name, then matches the full name against `Counselors` via `UPPER(FirstName || ' ' || LastName) = UPPER(?)`.
+- Updates `Counselors.Phone` for exactly-one matches. Names with zero or multiple matches are skipped and listed in the redirect message instead of being written.
+- The export lists each person once per program enrollment, so duplicate blocks for the same name are expected — the last block with a phone number wins.
+
+**Does not:** create new `Counselors` rows, touch any field besides `Phone`, or require a specific import order relative to campers — but staff must already exist (run after **All Staff Roster**).
+
+---
+
 ## Camper Roster (ACR-005)
 
 **Route:** `POST /upload-campers`
