@@ -28,7 +28,7 @@ A camper's **effective level as of week N** is their own week-N row if one exist
 
 ### `GET /swim-levels` / `POST /swim-levels/update`
 
-Admin-only page listing every camper currently enrolled in `'Rec Swim'` or `'Swim Lessons'` for the target week (prep target if set, else active week), using the same `Campers JOIN Schedules` enrollment pattern as `/class-roster`. Each row shows the camper's current effective level (or a "Not yet tested" badge) with an inline form to set a new level + sub-level for that week — `POST /swim-levels/update` upserts one `CamperSwimLevels` row. `views/swim-levels.ejs`.
+Admin-only page listing every camper currently enrolled in `'Rec Swim'` or `'Swim Lessons'` for the target week (prep target if set, else active week), using the same `Campers JOIN Schedules` enrollment pattern as `/class-roster`. Grouped into a section per activity + period — `Rec Swim` sections first, then `Swim Lessons`, periods ascending, campers alphabetical by last/first name within each section. A camper enrolled in swim during more than one period (e.g. Rec Swim one period, Swim Lessons another) appears in each relevant group; their level is looked up once and cached (`levelCache` in the route), so editing from either instance updates the same `CamperSwimLevels` row. Each row shows the camper's current effective level (or a "Not yet tested" badge) with an inline form to set a new level + sub-level for that week — `POST /swim-levels/update` upserts one `CamperSwimLevels` row. `views/swim-levels.ejs`.
 
 ### `POST /upload-swim-levels`
 

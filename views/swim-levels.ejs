@@ -35,17 +35,27 @@
                 style="width:100%; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit; font-size:0.9rem; box-sizing:border-box;">
         </div>
 
-        <div class="card" style="padding:0; overflow:hidden;">
-            <table style="width:100%; border-collapse:collapse; font-size:0.88rem;" id="swimmerTable">
+        <% const totalCampers = groups.reduce((n, g) => n + g.campers.length, 0); %>
+        <% if (totalCampers === 0) { %>
+            <p class="card" style="text-align:center; color:var(--text-muted);">No campers enrolled in Rec Swim or Swim Lessons this week.</p>
+        <% } %>
+
+        <% groups.forEach(function(g) { %>
+        <div class="card swim-group" style="padding:0; overflow:hidden; margin-bottom:16px;">
+            <div style="padding:10px 14px; background:#f8fafc; border-bottom:2px solid var(--border-color); font-weight:700; font-size:0.85rem;">
+                <%= g.activityName %> <span style="color:var(--text-muted); font-weight:600;">— Period <%= g.period %></span>
+                <span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">(<%= g.campers.length %>)</span>
+            </div>
+            <table style="width:100%; border-collapse:collapse; font-size:0.88rem;">
                 <thead>
-                    <tr style="border-bottom:2px solid var(--border-color); background:#f8fafc;">
-                        <th style="text-align:left; padding:10px 14px; font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Camper</th>
-                        <th style="text-align:left; padding:10px 14px; font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Current Level</th>
-                        <th style="text-align:left; padding:10px 14px; font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Set Level</th>
+                    <tr style="border-bottom:1px solid var(--border-color);">
+                        <th style="text-align:left; padding:8px 14px; font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Camper</th>
+                        <th style="text-align:left; padding:8px 14px; font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Current Level</th>
+                        <th style="text-align:left; padding:8px 14px; font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Set Level</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <% rows.forEach(function(r) { %>
+                    <% g.campers.forEach(function(r) { %>
                     <tr class="swimmer-row" data-name="<%= (r.FirstName + ' ' + r.LastName).toLowerCase() %>" style="border-bottom:1px solid #f1f5f9;">
                         <td style="padding:8px 14px; font-weight:600;"><%= r.FirstName %> <%= r.LastName %></td>
                         <td style="padding:8px 14px;">
@@ -78,20 +88,24 @@
                         </td>
                     </tr>
                     <% }); %>
-                    <% if (rows.length === 0) { %>
-                    <tr><td colspan="3" style="padding:20px; text-align:center; color:var(--text-muted);">No campers enrolled in Rec Swim or Swim Lessons this week.</td></tr>
-                    <% } %>
                 </tbody>
             </table>
         </div>
+        <% }); %>
 
     </div>
 
     <script>
         function filterSwimmers() {
             const query = document.getElementById('swimmerSearch').value.toLowerCase();
-            document.querySelectorAll('.swimmer-row').forEach(function(row) {
-                row.style.display = row.dataset.name.includes(query) ? '' : 'none';
+            document.querySelectorAll('.swim-group').forEach(function(group) {
+                let anyVisible = false;
+                group.querySelectorAll('.swimmer-row').forEach(function(row) {
+                    const match = row.dataset.name.includes(query);
+                    row.style.display = match ? '' : 'none';
+                    if (match) anyVisible = true;
+                });
+                group.style.display = anyVisible ? '' : 'none';
             });
         }
     </script>

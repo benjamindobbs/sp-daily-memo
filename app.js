@@ -2993,27 +2993,48 @@ app.get('/swim-levels', (req, res) => {
     const week = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
     const ph = SWIM_ACTIVITY_NAMES.map(() => '?').join(',');
 
-    const swimmers = db.prepare(`
-        SELECT DISTINCT c.CamperID, c.FirstName, c.LastName
+    const enrollments = db.prepare(`
+        SELECT DISTINCT c.CamperID, c.FirstName, c.LastName, s.PeriodNumber, s.ActivityName
         FROM Campers c
         JOIN Schedules s ON c.CamperID = s.PersonID AND s.PersonType = 'Camper' AND s.WeekNumber = ?
         WHERE s.ActivityName IN (${ph})
-        ORDER BY c.LastName, c.FirstName
     `).all(week, ...SWIM_ACTIVITY_NAMES);
 
-    const rows = swimmers.map(c => {
-        const effective = getEffectiveSwimLevel(c.CamperID, week);
-        return {
-            ...c,
-            level: formatSwimLevel(effective),
-            levelNumber: effective ? effective.LevelNumber : null,
-            subLevel: effective ? effective.SubLevel : null,
-            testedThisWeek: !!effective && effective.WeekNumber === week
-        };
-    });
+    // A camper can appear in more than one activity/period group (e.g. Rec Swim one
+    // period, Swim Lessons another) — cache their level lookup so it's computed once.
+    const levelCache = new Map();
+    const rowFor = c => {
+        if (!levelCache.has(c.CamperID)) {
+            const effective = getEffectiveSwimLevel(c.CamperID, week);
+            levelCache.set(c.CamperID, {
+                CamperID: c.CamperID, FirstName: c.FirstName, LastName: c.LastName,
+                level: formatSwimLevel(effective),
+                levelNumber: effective ? effective.LevelNumber : null,
+                subLevel: effective ? effective.SubLevel : null,
+                testedThisWeek: !!effective && effective.WeekNumber === week
+            });
+        }
+        return levelCache.get(c.CamperID);
+    };
+
+    // Group by activity (Rec Swim, then Swim Lessons), then by period ascending,
+    // alphabetical by last/first name within each group.
+    const groups = [];
+    for (const activityName of SWIM_ACTIVITY_NAMES) {
+        const periods = [...new Set(
+            enrollments.filter(e => e.ActivityName === activityName).map(e => e.PeriodNumber)
+        )].sort((a, b) => a - b);
+        for (const period of periods) {
+            const campers = enrollments
+                .filter(e => e.ActivityName === activityName && e.PeriodNumber === period)
+                .map(rowFor)
+                .sort((a, b) => a.LastName.localeCompare(b.LastName) || a.FirstName.localeCompare(b.FirstName));
+            groups.push({ activityName, period, campers });
+        }
+    }
 
     const weekLabel = db.prepare("SELECT label FROM Sessions WHERE weekNumber = ?").get(week)?.label || `Week ${week}`;
-    res.render('swim-levels', { rows, week, weekLabel, message: req.query.message || null });
+    res.render('swim-levels', { groups, week, weekLabel, message: req.query.message || null });
 });
 
 app.post('/swim-levels/update', (req, res) => {
