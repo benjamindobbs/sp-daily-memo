@@ -117,7 +117,7 @@ Routes not in `ADMIN_ONLY_PREFIXES` and not in `UNPROTECTED` are accessible to a
 | `/class-roster/:period/:activity` | Class roster (read-only) |
 | `/search` | Camper lookup |
 | `/camper/:id` | Camper profile (read-only in staff view) |
-| `/counselor-profile/:id` | Staff profile (read-only in staff view) |
+| `/counselor-profile/:id` | Staff profile (read-only in staff view; phone number is also hidden in staff view — the header's `tel:` link only renders when `viewMode === 'admin'`, `views/counselor-view.ejs`) |
 | `/counselor-directory` | Staff directory (read-only in staff view; write actions like edit/delete stay behind separate `ADMIN_ONLY_PREFIXES` routes) |
 | `/attendance` | Attendance overview |
 | `/attendance/homegroup/*` | Home group attendance |
