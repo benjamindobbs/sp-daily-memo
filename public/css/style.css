@@ -353,6 +353,12 @@ body {
 .camper-name   { font-weight: 600; font-size: 0.92rem; flex: 1; min-width: 120px; }
 .camper-badges { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
+.badge-note {
+    background: #ede9fe; color: #5b21b6; font-size: 0.68rem; font-weight: 700;
+    padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+    border: none; cursor: pointer; font-family: inherit;
+}
+.badge-note-icp { background: #fee2e2; color: #991b1b; }
 .badge-absent-am    { background: #fef9c3; color: #854d0e; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
 .badge-absent-bus   { background: #dbeafe; color: #1e40af; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
 .badge-dismissed    { background: #fee2e2; color: #991b1b; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }

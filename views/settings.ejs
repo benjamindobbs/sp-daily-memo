@@ -420,6 +420,28 @@
                                 </form>
                             </div>
 
+                            <div class="upload-section" style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+                                <h4 style="margin-bottom: 5px;">ICP Notes</h4>
+                                <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">
+                                    Export the <strong>ICP Notes</strong> (Health Care Need / Plan for Care) report from camp management. Matches campers by name and shows a flag on their attendance rows and profile. Not week-scoped — each import fully replaces the previous set, so a resolved note is actually removed, not left stale.
+                                </p>
+                                <form action="/upload-icp-notes" method="POST" enctype="multipart/form-data" style="display: flex; flex-direction: column; gap: 10px;">
+                                    <input type="file" name="file" accept=".csv" required style="font-size: 0.85rem;">
+                                    <button type="submit" class="btn primary btn-small" style="width: fit-content;">Import ICP Notes</button>
+                                </form>
+                            </div>
+
+                            <div class="upload-section" style="margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+                                <h4 style="margin-bottom: 5px;">Camper Notes</h4>
+                                <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">
+                                    Export the <strong>Camper Notes</strong> (behavioral/social) report from camp management. Same matching and full-replace behavior as ICP Notes above, shown as a separate flag.
+                                </p>
+                                <form action="/upload-camper-notes" method="POST" enctype="multipart/form-data" style="display: flex; flex-direction: column; gap: 10px;">
+                                    <input type="file" name="file" accept=".csv" required style="font-size: 0.85rem;">
+                                    <button type="submit" class="btn primary btn-small" style="width: fit-content;">Import Camper Notes</button>
+                                </form>
+                            </div>
+
                             <div class="upload-section">
                                 <h4>Master Camper Schedule (ACR-255)</h4>
                                 <p class="text-muted" style="font-size: 0.75rem; margin-bottom: 10px;">

@@ -275,6 +275,19 @@ Week-specific assignment of a camper to a counselor's home group.
 
 ---
 
+## CamperNotes
+
+Imported health/behavioral notes — see [Attendance & Health](./Attendance-and-Health.md#icp--camper-notes) for the import pipeline and display. Not week-scoped; each import fully replaces the previous set for its `NoteType`.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `CamperID` | INTEGER | PK part, NOT NULL | FK → `Campers`, `ON DELETE CASCADE` |
+| `NoteType` | TEXT | PK part, NOT NULL, CHECK `'ICP'`/`'General'` | `'ICP'` = Health Care Need/Plan for Care export; `'General'` = Camper Notes (behavioral/social) export |
+| `NoteText` | TEXT | NOT NULL | Kept verbatim, including its own `Health Care Need:`/`Plan for Care:`/`Camper Notes:` labels |
+| `UpdatedAt` | DATETIME | DEFAULT `CURRENT_TIMESTAMP` | |
+
+---
+
 ## Attendance
 
 Attendance marks across all roster types.

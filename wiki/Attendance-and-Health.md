@@ -55,6 +55,24 @@ Attendance rosters pull from multiple tables in one query to compute status badg
 | Row in `ScheduledPickups` for today | 🚗 Pickup [time] |
 | Row in `Attendance` with `present` from another roster | ✓ Seen Earlier |
 | Date in `SplitFieldTrip` | 🏕️ Field Trip |
+| Row in `CamperNotes` (`NoteType='ICP'`) | ⚕ ICP (red) |
+| Row in `CamperNotes` (`NoteType='General'`) | 📝 Note (purple) |
+
+### ICP / Camper Notes
+
+**Table**: `CamperNotes (CamperID, NoteType, NoteText, UpdatedAt)`, `PRIMARY KEY (CamperID, NoteType)`, `NoteType IN ('ICP','General')`. Not week-scoped — one row per camper per type, holding whatever the most recent import produced.
+
+**Import routes**: `POST /upload-icp-notes` and `POST /upload-camper-notes` (Settings → CSV Data Imports), both parsed by a shared `parseCamperNotesCsv()` in `app.js`. Both source exports are paginated CampMinder-style reports where a `"Last, First"` name record is immediately followed by its note record, interleaved with repeating page chrome (title/timestamp/`# of records` rows, the filter-criteria block, and `N/,Total` page footers).
+
+Two things make this parser different from every other CSV import in the app:
+- **Multi-line quoted fields**: note text is real multi-paragraph content with literal newlines inside the CSV quotes (e.g. a multi-step seizure action plan). `splitCsvRecords()` joins physical lines back into logical records by tracking quote parity per line before handing off to the existing single-line `parseCsvLine()`.
+- **Notes that get cut off by a page break**: a long note can be closed and re-quoted as a "fresh" field when the export crosses a page boundary mid-note — with no camper-name row of its own. The parser doesn't just pair "the next record" with a name; every record that is neither chrome nor a new name row (`isCamperNoteNameRecord()`, which requires a `Color Group:` field to disambiguate a genuine name row from note text that merely contains a comma) is appended to the *current* camper's note (`isCamperNoteChromeRecord()` for the explicit chrome patterns). This reassembles a page-split note correctly instead of either truncating it or misreading the continuation as a new fake camper.
+
+Both importers match by exact `UPPER(FirstName)/UPPER(LastName)` (same convention as Swim Levels/CSR-300 — zero or multiple matches are skipped and reported, no disambiguation logic beyond that). Each import is a **full replace** for its `NoteType`: `DELETE FROM CamperNotes WHERE NoteType = ?` runs before the fresh insert, so a resolved ICP or removed note actually disappears on re-upload rather than lingering stale.
+
+**Display**: `getCamperNotesMap()` (one query, `CamperID -> {ICP, General}`) and `attachCamperNotes(roster)` (merges `icpNote`/`generalNote` onto each roster row) in `app.js`, called from every roster-building attendance route and the class-roster route, plus directly in `GET /camper/:id`. On `views/attendance-form.ejs` and `views/class-roster.ejs`, a present note renders as a clickable badge (`.badge-note-icp` red / `.badge-note` purple) that opens a popup (reusing the existing `.dismiss-modal`/`.dismiss-box` CSS) via `openNote(name, label, text, camperId)`. The popup truncates at 400 characters client-side and shows a **Read More →** link to `/camper/:id` only when actually truncated — the camper profile's own **Notes** card (added between the Daily Schedule and Swap Schedule cards) always shows the full untruncated text.
+
+**Visibility**: both note types show in admin *and* staff view — deliberately not restricted like the counselor phone number change (see [Auth](./Auth.md)), since the reason to flag these on attendance sheets at all is so whoever's taking attendance sees them in the moment.
 
 ### Shirt Order Pills
 

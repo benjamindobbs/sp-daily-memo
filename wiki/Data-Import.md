@@ -89,6 +89,25 @@ Same paginated-report chrome as ACR-005 (repeating title/timestamp/header rows, 
 
 ---
 
+## ICP Notes / Camper Notes
+
+**Routes:** `POST /upload-icp-notes`, `POST /upload-camper-notes`
+**File:** `views/settings.ejs` (ICP Notes and Camper Notes cards, under Swim Levels)
+**Reports:** ICP Notes (Health Care Need/Plan for Care) and Camper Notes (behavioral/social) exports
+**Parser:** `parseCamperNotesCsv()` in `app.js`, shared by both routes, built on two new helpers — `splitCsvRecords()` and `parseCsvLine()`
+
+Same paginated chrome as the other reports, but with a shape none of the others have: a `"Last, First"` name record is immediately followed by its note record, and the note itself is real multi-paragraph text with **literal newlines inside the CSV quotes** — the existing single-line `parseCsvLine()` can't reassemble that on its own. `splitCsvRecords()` joins physical lines back into logical records first, tracking quote parity per line, then hands each joined record to the unmodified `parseCsvLine()`.
+
+A second wrinkle: a long note can get cut off and **re-quoted as a fresh field when the export crosses a page boundary** mid-note, with no name row of its own for the continuation. Rather than pairing strictly "name row + the next record", the parser treats every record that is neither chrome (`isCamperNoteChromeRecord()` — title/timestamp/`# of records`/page-footer rows, matched by exact shape) nor a genuine new name row (`isCamperNoteNameRecord()` — requires a `Color Group:` field, which is what actually distinguishes a real name row from note text that merely happens to contain a comma) as a continuation of the *current* camper's note, appending it. This reassembles a page-split note correctly.
+
+**What it does:**
+- Matches campers by exact `FirstName`/`LastName` against `Campers`, same convention as Swim Levels/CSR-300 above (zero or multiple matches skipped and reported).
+- **Full replace per `NoteType`**: `DELETE FROM CamperNotes WHERE NoteType = ?` runs before the fresh insert (inside one transaction), so a note that no longer appears in a re-uploaded export is actually removed, not left stale. Not week-scoped — there's no week selector on either upload form.
+
+**Does not:** create new `Campers` rows, or try to auto-detect which file was uploaded to which route — the admin picks the matching form. See [Attendance & Health](./Attendance-and-Health.md#icp--camper-notes).
+
+---
+
 ## Camper Roster (ACR-005)
 
 **Route:** `POST /upload-campers`

@@ -466,6 +466,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/upload-bus-am', '/upload-bus-pm', '/upload-kp-lp',
     '/upload-staff', '/upload-staff-contacts', '/upload-instructors', '/upload-activity-rules', '/add-activity',
     '/swim-levels', '/upload-swim-levels', '/swim-scheduling',
+    '/upload-icp-notes', '/upload-camper-notes',
     '/delete-activity', '/update-activity', '/add-activity-period-group',
     '/delete-activity-period-group', '/sync-activity-groups',
     '/counselor-scheduling', '/upload-weekly-offerings', '/clear-weekly-offerings', '/sync-offerings-from-schedule', '/api/sync-offerings',
@@ -1230,6 +1231,43 @@ function getEffectiveSwimLevel(camperId, weekNumber) {
 function formatSwimLevel(row) {
     if (!row) return null;
     return row.SubLevel ? `${row.SubLevel} ${row.LevelNumber}` : String(row.LevelNumber);
+}
+
+// Camper health/behavioral notes, imported from CampMinder's ICP Notes and Camper Notes
+// exports (see /upload-icp-notes, /upload-camper-notes). Not week-scoped — each import is a
+// full snapshot replace for its NoteType, so a resolved ICP or removed note actually
+// disappears on re-upload rather than lingering stale.
+db.exec(`CREATE TABLE IF NOT EXISTS CamperNotes (
+    CamperID  INTEGER NOT NULL,
+    NoteType  TEXT NOT NULL CHECK(NoteType IN ('ICP','General')),
+    NoteText  TEXT NOT NULL,
+    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (CamperID, NoteType),
+    FOREIGN KEY (CamperID) REFERENCES Campers(CamperID) ON DELETE CASCADE
+)`);
+
+// CamperID -> {ICP, General} note text (either may be absent) for every camper with at
+// least one note. One query, reused across every roster-building route so attendance
+// screens can attach flags without a per-camper lookup.
+function getCamperNotesMap() {
+    const map = new Map();
+    db.prepare('SELECT CamperID, NoteType, NoteText FROM CamperNotes').all().forEach(r => {
+        if (!map.has(r.CamperID)) map.set(r.CamperID, {});
+        map.get(r.CamperID)[r.NoteType] = r.NoteText;
+    });
+    return map;
+}
+
+// Attaches icpNote/generalNote onto every row of an attendance/class roster in one pass —
+// called right before res.render() in each roster-building route so badges can show up
+// without every route re-querying CamperNotes individually.
+function attachCamperNotes(roster) {
+    const notes = getCamperNotesMap();
+    return roster.map(c => ({
+        ...c,
+        icpNote: notes.get(c.CamperID)?.ICP || null,
+        generalNote: notes.get(c.CamperID)?.General || null
+    }));
 }
 
 // Parses a swim level export value ("2", "Low 2", "High 3") into {levelNumber, subLevel}. Null if blank/unrecognized.
@@ -3461,7 +3499,7 @@ app.get('/class-roster/:period/:activity', (req, res) => {
             sideOfCamp:           activity ? activity.SideOfCamp  : null,
             maxCapacity:          activity ? activity.MaxCapacity : null,
             location:             locRow   ? locRow.Location      : null,
-            campers,
+            campers:              attachCamperNotes(campers),
             colorGroups,
             staff,
             counselors
@@ -4409,7 +4447,11 @@ app.get('/camper/:id', (req, res) => {
             ORDER BY COALESCE(cwa.HomeGroupColor, c.HomeGroupColor), c.LastName
         `).all(getActiveWeek());
 
-        res.render('camper-profile', { camper, schedule, counselors, alertMessage: req.query.message || null });
+        const camperNotes = db.prepare('SELECT NoteType, NoteText FROM CamperNotes WHERE CamperID = ?').all(camper.CamperID);
+        const icpNote = camperNotes.find(n => n.NoteType === 'ICP')?.NoteText || null;
+        const generalNote = camperNotes.find(n => n.NoteType === 'General')?.NoteText || null;
+
+        res.render('camper-profile', { camper, schedule, counselors, icpNote, generalNote, alertMessage: req.query.message || null });
     } catch (err) {
         console.error(err);
         res.status(500).send('Error loading camper profile: ' + err.message);
@@ -4978,6 +5020,78 @@ function parseCsvLine(line) {
     }
     fields.push(field);
     return fields;
+}
+
+// Joins physical lines back into logical CSV records when a quoted field spans multiple
+// lines (unlike parseCsvLine, which only ever sees one physical line) — tracks quote parity
+// per line to know whether a quoted field is still open across the line break. Needed for
+// the ICP/Camper Notes exports, whose note fields are real multi-paragraph text with literal
+// newlines inside the quotes (e.g. a multi-step seizure action plan). parseCsvLine() itself
+// needs no change — it already treats embedded \n as ordinary field content once it
+// receives the joined-back logical record as one string.
+function splitCsvRecords(rawText) {
+    const records = [];
+    let buffer = '';
+    let inQuotes = false;
+    for (const line of rawText.split(/\r?\n/)) {
+        buffer += (buffer ? '\n' : '') + line;
+        if (((line.match(/"/g) || []).length) % 2 === 1) inQuotes = !inQuotes;
+        if (!inQuotes) { records.push(buffer); buffer = ''; }
+    }
+    if (buffer) records.push(buffer);
+    return records;
+}
+
+// True for a record that starts a new camper entry: "Last, First" in field 0 (both parts
+// containing a letter) AND a "Color Group:" field 2 — that second condition is what actually
+// distinguishes a real name row from note text that merely happens to contain a comma (see
+// isChromeRecord below for why that distinction matters).
+function isCamperNoteNameRecord(fields) {
+    const nameField = (fields[0] || '').trim();
+    if (!nameField.includes(',')) return false;
+    const { firstName, lastName } = parseLastFirst(nameField);
+    if (!/[A-Za-z]/.test(firstName) || !/[A-Za-z]/.test(lastName)) return false;
+    return /Color Group:/i.test(fields[2] || '');
+}
+
+// Repeating page chrome in the ICP/Camper Notes exports: the "Camper Notes" title row, the
+// timestamp row, the "# of records" row, and "N/,Total" page-footer rows. Matched by exact
+// shape (not substring) so real note text is never mistaken for chrome.
+function isCamperNoteChromeRecord(fields) {
+    const f0 = (fields[0] || '').trim();
+    if (f0 === 'Camper Notes') return true;
+    if (/^Filter criteria used/i.test(f0)) return true;
+    if (/^#\s*of records/i.test((fields[3] || '').trim())) return true;
+    if (/^\d{1,2}\/$/.test((fields[4] || '').trim())) return true;
+    if (f0 === '' && /^[A-Za-z]{3}\s+\d{1,2},\s*\d{4}/.test((fields[3] || '').trim())) return true;
+    return false;
+}
+
+// Shared by /upload-icp-notes and /upload-camper-notes: both exports pair a "Last, First"
+// name record with the note record(s) that follow it. A long note can get cut off and
+// re-quoted as a fresh field when the export crosses a page boundary mid-note (observed in
+// the real sample data) — rather than only ever pairing "the next record", every record that
+// is neither chrome nor a new name row is treated as a continuation of the current camper's
+// note and appended, so a page-split note comes back whole. Returns
+// [{firstName, lastName, noteText}], note text kept verbatim (including its own
+// "Health Care Need:"/"Plan for Care:"/"Camper Notes:" labels — informative as displayed).
+function parseCamperNotesCsv(rawText) {
+    const records = splitCsvRecords(rawText).map(parseCsvLine);
+    const entries = [];
+    let current = null;
+    for (const fields of records) {
+        if (isCamperNoteChromeRecord(fields)) continue;
+        if (isCamperNoteNameRecord(fields)) {
+            const { firstName, lastName } = parseLastFirst(fields[0].trim());
+            current = { firstName, lastName, noteText: '' };
+            entries.push(current);
+            continue;
+        }
+        if (!current) continue;
+        const text = (fields[0] || '').trim();
+        if (text) current.noteText = current.noteText ? current.noteText + '\n\n' + text : text;
+    }
+    return entries.filter(e => e.noteText);
 }
 
 // Color mapping from ACR-005 display values to DB values.
@@ -5725,6 +5839,65 @@ app.post('/upload-swim-levels', upload.single('file'), (req, res) => {
     if (unmatched.length) msg += `.+No+match:+${encodeURIComponent(unmatched.join(', '))}`;
     if (ambiguous.length) msg += `.+Multiple+matches+skipped:+${encodeURIComponent(ambiguous.join(', '))}`;
     res.redirect(`/settings?message=${msg}`);
+});
+
+// Shared by /upload-icp-notes and /upload-camper-notes: reads the uploaded file, parses it
+// with parseCamperNotesCsv(), matches each entry to exactly one Campers row (same
+// UPPER(FirstName)/UPPER(LastName) exact-match convention as the swim-levels importer —
+// zero or multiple matches are skipped and reported, not guessed at), then does a full
+// replace of that NoteType: every existing CamperNotes row of this type is deleted before
+// the fresh set is inserted, so a note that no longer appears in a re-uploaded export is
+// actually removed rather than left stale.
+function importCamperNotes(rawText, noteType) {
+    if (!/# of records:/i.test(rawText)) return { error: 'Invalid+file+format' };
+
+    const entries = parseCamperNotesCsv(rawText);
+    const findCamper = db.prepare("SELECT CamperID FROM Campers WHERE UPPER(FirstName) = UPPER(?) AND UPPER(LastName) = UPPER(?)");
+    const delAll = db.prepare('DELETE FROM CamperNotes WHERE NoteType = ?');
+    const insert = db.prepare(`
+        INSERT INTO CamperNotes (CamperID, NoteType, NoteText, UpdatedAt)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT (CamperID, NoteType) DO UPDATE SET NoteText = excluded.NoteText, UpdatedAt = CURRENT_TIMESTAMP
+    `);
+
+    let imported = 0;
+    const unmatched = [], ambiguous = [];
+    db.transaction(() => {
+        delAll.run(noteType);
+        for (const e of entries) {
+            const matches = findCamper.all(e.firstName, e.lastName);
+            if (matches.length === 1) { insert.run(matches[0].CamperID, noteType, e.noteText); imported++; }
+            else if (matches.length === 0) unmatched.push(`${e.firstName} ${e.lastName}`);
+            else ambiguous.push(`${e.firstName} ${e.lastName}`);
+        }
+    })();
+
+    let msg = `Imported+${imported}+${noteType === 'ICP' ? 'ICP' : 'camper'}+notes`;
+    if (unmatched.length) msg += `.+No+match:+${encodeURIComponent(unmatched.join(', '))}`;
+    if (ambiguous.length) msg += `.+Multiple+matches+skipped:+${encodeURIComponent(ambiguous.join(', '))}`;
+    return { message: msg };
+}
+
+app.post('/upload-icp-notes', upload.single('file'), (req, res) => {
+    if (!req.file) return res.redirect('/settings?message=No+file+uploaded');
+    let rawText;
+    try { rawText = fs.readFileSync(req.file.path, 'utf8'); }
+    catch (e) { return res.redirect('/settings?message=File+Read+Error'); }
+    finally { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); }
+
+    const result = importCamperNotes(rawText, 'ICP');
+    res.redirect(`/settings?message=${result.error || result.message}`);
+});
+
+app.post('/upload-camper-notes', upload.single('file'), (req, res) => {
+    if (!req.file) return res.redirect('/settings?message=No+file+uploaded');
+    let rawText;
+    try { rawText = fs.readFileSync(req.file.path, 'utf8'); }
+    catch (e) { return res.redirect('/settings?message=File+Read+Error'); }
+    finally { if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); }
+
+    const result = importCamperNotes(rawText, 'General');
+    res.redirect(`/settings?message=${result.error || result.message}`);
 });
 
 // 2. IMPORT INSTRUCTORS — uploads to target week (prep target if set, else active week)
@@ -6693,7 +6866,7 @@ app.get('/attendance/homegroup/counselor/:counselorId/:session', (req, res) => {
         periodNumber: 0, activityName: '',
         selfLink: `/attendance/homegroup/counselor/${counselorId}/${session}`,
         backLink: `/attendance?date=${date}`,
-        roster
+        roster: attachCamperNotes(roster)
     });
 });
 
@@ -6765,7 +6938,7 @@ app.get('/attendance/homegroup/:color/:session', (req, res) => {
         periodNumber: 0, activityName: '',
         selfLink: `/attendance/homegroup/${color}/${session}`,
         backLink: `/attendance?date=${date}`,
-        roster
+        roster: attachCamperNotes(roster)
     });
 });
 
@@ -6834,7 +7007,7 @@ app.get('/attendance/specialty/:color/:session', (req, res) => {
         periodNumber: 0, activityName: '',
         selfLink: `/attendance/specialty/${color}/${session}`,
         backLink: `/attendance?date=${date}`,
-        roster,
+        roster: attachCamperNotes(roster),
         isSplitAM, fieldTripActive,
         splitColor: color
     });
@@ -6897,7 +7070,7 @@ app.get('/attendance/specialty-halfday/:color', (req, res) => {
         periodNumber: 0, activityName: '',
         selfLink: `/attendance/specialty-halfday/${color}`,
         backLink: `/attendance?date=${date}`,
-        roster,
+        roster: attachCamperNotes(roster),
         isSplitAM: false, fieldTripActive: false,
         splitColor: color
     });
@@ -6999,7 +7172,7 @@ app.get('/attendance/class/:period/:activity', (req, res) => {
         location: locationRow ? locationRow.Location : null,
         staffRows, counselorRows,
         backLink: `/attendance?date=${date}`,
-        roster,
+        roster: attachCamperNotes(roster),
         hasSplits, fieldTripActive: classFieldTrip4
     });
 });
@@ -7062,7 +7235,7 @@ app.get('/attendance/bus/:route/:session', (req, res) => {
         periodNumber: 0, activityName: '',
         selfLink: `/attendance/bus/${encodeURIComponent(route)}/${session}`,
         backLink: `/attendance?date=${date}`,
-        roster
+        roster: attachCamperNotes(roster)
     });
 });
 
@@ -7124,7 +7297,7 @@ app.get('/attendance/extended/:session', (req, res) => {
         periodNumber: 0, activityName: '',
         selfLink: `/attendance/extended/${session}`,
         backLink: `/attendance?date=${date}`,
-        roster
+        roster: attachCamperNotes(roster)
     });
 });
 
