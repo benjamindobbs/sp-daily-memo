@@ -136,7 +136,7 @@ The Schedule Builder is at `/counselor-scheduling`.
 - Red / Carolina groups: Periods 1–2 = Enrichment, Periods 3–6 = Sports
 - Green / Navy groups: Periods 1–3 = Sports, Periods 4–6 = Enrichment
 
-**Schedule Types** — controls which periods a counselor is eligible for:
+**Schedule Types** — controls which periods and side of camp a counselor is eligible for:
 
 | Type | Assigned to |
 |---|---|
@@ -144,25 +144,35 @@ The Schedule Builder is at `/counselor-scheduling`.
 | All Enrichment | All enrichment periods for their group |
 | AM Sports / PM Enrichment | AM block = sports, PM block = enrichment |
 | AM Enrichment / PM Sports | Reverse of above |
-| *(blank)* | Auto-detected from group color |
+| AM Sports Only | Sports periods in the AM block only; unavailable in the PM |
+| PM Sports Only | Sports periods in the PM block only; unavailable in the AM |
+| AM Enrichment Only | Enrichment periods in the AM block only; unavailable in the PM |
+| PM Enrichment Only | Enrichment periods in the PM block only; unavailable in the AM |
+| *(blank)* | Auto-detected from group color (Red/Carolina → AM Enrichment/PM Sports, Green/Navy → AM Sports/PM Enrichment) |
 
-**Slots** — each offering has a slot count that auto-calculates from enrollment. The scheduler fills these slots with eligible counselors.
+**Build mode** — a **Preference Only / Full Auto** toggle above the build buttons controls how every build/rebuild/fill pass resolves an open slot: **Preference Only** fills it only with a counselor who listed that activity as a preference, leaving the slot empty if no one did; **Full Auto** falls back to any eligible counselor (preferred first) so every slot gets filled.
 
-**Locked offerings** — lock an offering to exclude it from rebuild/auto-build passes. Use this to protect manually set assignments.
+**Slots** — each offering has a slot count that auto-calculates from enrollment, using the **Slot Calculation Rules** panel above the build buttons: Sports slots start at a Min, add one more past an enrollment Threshold, then one more per additional block of campers (all three numbers are editable); Enrichment slots use a separate configurable minimum per home group color (Red, Carolina, RC, GN).
 
-**Pinned schedule types** — click the 📌 next to a counselor's Schedule Type dropdown (or hand-edit the dropdown) to pin it against auto-build reshuffling. Under **Mirror from** (pick a source week), the **Migrate Pinned Types** button copies every pinned schedule type from that week onto counselors present in the current build who share a `CounselorID`, pinning them here too. Like the other Mirror buttons, this only updates the on-screen builder — click **Save Group Assignments** to persist it.
+**Locked offerings** — lock (🔒) an offering to exclude it from every rebuild/auto-build/fill pass. Locks are saved to the server as you click them, so they survive a page refresh and are shared across anyone viewing the same week — not just a local, per-browser setting.
+
+**Pinned schedule types** — click the 📌 next to a counselor's Schedule Type dropdown (or hand-edit the dropdown) to pin it against auto-build reshuffling; a pinned type is left alone by **Assign Schedule Types** and by Full Auto Build's automatic type pass. Under **Mirror from** (pick a source week), the **Migrate Pinned Types** button copies every pinned schedule type from that week onto counselors present in the current build who share a `CounselorID`, pinning them here too. Like the other Mirror buttons, this only updates the on-screen builder — click **Save Group Assignments** to persist it.
 
 #### Build Workflow
 
-1. Upload or Sync **Weekly Offerings** to populate the offerings list
-2. Set **Schedule Types** for counselors using the dropdowns in the counselor grid
-3. Use the **Working** checkbox on each counselor row to mark who is present this week. Counselors unchecked are excluded from all dropdowns and auto-assignment passes.
-4. Click **Full Auto Build** to run the greedy assignment algorithm across all offerings
-5. Optionally use **Rebuild Side** (Sports or Enrichment) to re-roll only one side
-6. **Lock** individual offerings before a partial rebuild to preserve their assignments
-7. Click **Fill Extras** to run a second pass and place any remaining unassigned counselors
-8. **Save** to commit all assignments to the database
-9. **Backup** to create a named snapshot before making major changes
+1. Upload or Sync **Weekly Offerings** to populate the offerings list.
+2. Adjust the **Slot Calculation Rules** panel if this week's defaults (Sports Min/Threshold/Per, per-color Enrichment minimums) don't fit.
+3. Uncheck **Working** on any counselor row for staff who are out this week — they're excluded from every dropdown and auto-assignment pass.
+4. Set **Schedule Types** — by hand in the counselor grid, with **Assign Schedule Types** (rescrambles every unpinned, non-"Only" type to match demand), or with **Infer Types from Schedule** (a repair tool that only fills *blank* dropdowns, read from each counselor's current class assignments). Pin (📌) or hand-edit any dropdown you want protected from being rescrambled.
+5. Choose **Preference Only** or **Full Auto** in the Build mode toggle.
+6. Click **Build Schedule** to run one assignment pass, or **⚡ Full Auto Build** to run the whole pipeline in one click: sync offerings, sync home group colors from the roster, fill any blank schedule types, build, run Fill Extras, and auto-save Group Assignments. Either way, **you still need to click Save Assignments afterward** — Full Auto Build only auto-saves the Group Assignments panel (home group/schedule type/bus/extended hours), not the per-class rosters.
+7. Optionally use **Re-Build Sports** / **Re-Build Enrichment** to re-roll only one side.
+8. **Lock** (🔒) individual offerings before a partial rebuild to preserve their assignments.
+9. If other weeks exist, use the **Mirror from** tools to copy that week's data into this one: **Mirror Sports** / **Mirror Enrichment** (offering assignments), **Mirror UL/SL** (Unit Leader/Sports Leader assignments), **Migrate Pinned Types** (pinned schedule types), or **Mirror Locations (Sports)** (Sports class locations — saves to the database immediately, unlike the other Mirror buttons).
+10. In the Counselor Group Assignments panel, **Auto Assign Homegroups** reshuffles home group color for counselors already marked Red/Carolina/Green/Navy, and **Sync Colors from Roster** updates each counselor's home group color to match who's actually on their camper roster.
+11. Click **Save Assignments** to commit offering-level counselor/staff assignments, and **Save Group Assignments** to commit home group, schedule type, bus route, and extended hours — these are two separate saves covering different data.
+12. Use **Clear All** or **Clear Counselors Only** (keeps Unit Leader/Sports Leader slots) to reset the week and start over.
+13. **Backup** to create a named snapshot before making major changes.
 
 #### Backups
 
@@ -170,11 +180,13 @@ Backups are managed at `/counselor-schedule-backups`. Each backup stores the ful
 
 #### Exports
 
-| Export | What's included |
-|---|---|
-| Counselor Schedule CSV | Per-counselor period assignments |
-| Staff Schedule CSV | Instructor and unit leader assignments |
-| Master Schedule CSV | Full class-by-period view |
+**Counselor CSV** and **Staff CSV** buttons are on `/counselor-scheduling` itself; **Master Schedule CSV** is not linked from this page — it's under [Other Admin Tools](#other-admin-tools).
+
+| Export | What's included | Notes |
+|---|---|---|
+| Counselor Schedule CSV | Per-counselor period assignments | Always exports the **Active** week, not whichever week you're currently editing on this page |
+| Staff Schedule CSV | Instructor and unit leader assignments | Not week-scoped — pulls every saved instructor/UL assignment across all weeks |
+| Master Schedule CSV | Full class-by-period view | Exports the Prep Target week if one is set, else Active |
 
 ---
 
