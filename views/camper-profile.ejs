@@ -66,7 +66,7 @@
             <div>
                 <div class="card">
                     <h3 style="margin:0 0 20px;">Camper Details</h3>
-                    <form action="/camper/<%= camper.CamperID %>/update" method="POST">
+                    <form id="camperDetailsForm" action="/camper/<%= camper.CamperID %>/update" method="POST">
 
                         <div class="info-row">
                             <span class="info-label">Preferred Name</span>
@@ -339,6 +339,16 @@
             const timeLabel = timeVal ? fmt(timeVal) : `${now} (now)`;
             const name = <%- JSON.stringify((camper.PreferredName || camper.FirstName) + ' ' + camper.LastName) %>;
             if (!confirm(`Dismiss ${name} at ${timeLabel}?`)) e.preventDefault();
+        });
+
+        document.getElementById('camperDetailsForm')?.addEventListener('submit', function(e) {
+            const originalPreferredName = <%- JSON.stringify(camper.PreferredName || '') %>;
+            const newPreferredName = this.querySelector('[name="preferredName"]').value.trim();
+            if (newPreferredName === originalPreferredName.trim()) return;
+            const msg = newPreferredName
+                ? `Set preferred name to "${newPreferredName}"? It will be shown instead of the legal first name throughout the app.`
+                : `Clear the preferred name? The legal first name will be shown instead.`;
+            if (!confirm(msg)) e.preventDefault();
         });
     </script>
 </body>

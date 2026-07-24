@@ -186,7 +186,7 @@ All profile editing requires **admin view**. Staff view shows the same pages rea
 1. Go to **Camper Lookup** (`/search`) and search by name
 2. Click the camper's name to open their profile (`/camper/:id`)
 3. The left column in admin view shows an editable **Camper Details** form with:
-   - Preferred Name (optional nickname — shown in place of first name throughout the app when set)
+   - Preferred Name (optional nickname — shown in place of first name throughout the app when set). Changing, setting, or clearing it shows a confirmation popup before **Save Changes** submits; the rest of the form saves normally without one
    - Home Counselor (dropdown, grouped by color)
    - Bus Route (text field) + **Rides AM Bus** / **Rides PM Bus** checkboxes — controls which direction bus sheets the camper appears on; clearing the route field automatically zeros both flags
    - Extended Hours (No / AM Only / PM Only / AM + PM)
