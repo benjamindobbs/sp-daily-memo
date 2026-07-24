@@ -1503,6 +1503,29 @@ function generateGroupsForWeek(week) {
     return groupsCreated;
 }
 
+// Mirrors isCounselorAvailableFor() in counselor-scheduling.ejs: whether a given ScheduleType
+// (periods 1-3 = AM, 4-6 = PM) commits a counselor to Sports/Enrichment duty on the main
+// counselor schedule for the AM or PM block. Used to keep swim scheduling from double-booking
+// a Swim Counselor who's also been given e.g. "AM Sports Only" there — that counselor is off
+// the swim staff pool for periods 1-3 (still available for swim duty periods 4-6).
+function scheduleTypeBusy(scheduleType, isAM) {
+    switch (scheduleType) {
+        case 'All Sports':
+        case 'All Enrichment':
+        case 'AM Sports / PM Enrichment':
+        case 'AM Enrichment / PM Sports':
+            return true;
+        case 'AM Sports Only':
+        case 'AM Enrichment Only':
+            return isAM;
+        case 'PM Sports Only':
+        case 'PM Enrichment Only':
+            return !isAM;
+        default:
+            return false;
+    }
+}
+
 // CounselorID -> {inWater, outWater} for the given week. Per the swim director: guarding
 // (watching from the deck/chair) is out-of-water duty; teaching a lesson group — any level,
 // either instructor slot — is in-water, since you're in the pool with the campers.
@@ -1621,12 +1644,23 @@ const CERT_RESERVE_WEIGHT = 10;
 
 function autoAssignWeek(week) {
     const periods = getSwimSchedulingData(week);
-    const swimCounselors = db.prepare(
-        "SELECT CounselorID, SwimMaxLevel FROM Counselors WHERE StaffRole = 'Swim Counselor'"
-    ).all();
+    const swimCounselors = db.prepare(`
+        SELECT c.CounselorID, c.SwimMaxLevel, COALESCE(cwa.ScheduleType, c.ScheduleType) AS ScheduleType
+        FROM Counselors c
+        LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
+        WHERE c.StaffRole = 'Swim Counselor'
+    `).all(week);
     const allIds = swimCounselors.map(c => c.CounselorID);
     const certById = {};
-    swimCounselors.forEach(c => { certById[c.CounselorID] = c.SwimMaxLevel ?? 3; });
+    const scheduleTypeById = {};
+    swimCounselors.forEach(c => {
+        certById[c.CounselorID] = c.SwimMaxLevel ?? 3;
+        scheduleTypeById[c.CounselorID] = c.ScheduleType;
+    });
+    // Ids not committed to Sports/Enrichment (via ScheduleType) for the given period's AM/PM
+    // block — see scheduleTypeBusy(). Recomputed per period below since AM/PM availability
+    // can differ for the same counselor.
+    const periodEligibleIds = period => allIds.filter(id => !scheduleTypeBusy(scheduleTypeById[id], period <= 3));
 
     const amHistTally = getAmFairnessTally(week);
     const runningTally = getCounselorWaterTally(week); // id -> {inWater, outWater}, updated live as we assign
@@ -1673,6 +1707,8 @@ function autoAssignWeek(week) {
                 });
             }
 
+            const eligibleIdsThisPeriod = new Set(periodEligibleIds(p.period));
+
             if (p.lessons) {
                 const openGroups = p.lessons.groups
                     .filter(g => !g.Locked && (!g.CounselorID || (g.needsSecondInstructor && !g.CounselorID2)))
@@ -1682,7 +1718,7 @@ function autoAssignWeek(week) {
                 for (const g of openGroups) {
                     const requiredLevel = Math.max(3, g.effectiveMaxLevel);
                     const eligible = swimCounselors
-                        .filter(c => (c.SwimMaxLevel ?? 3) >= g.effectiveMaxLevel)
+                        .filter(c => (c.SwimMaxLevel ?? 3) >= g.effectiveMaxLevel && eligibleIdsThisPeriod.has(c.CounselorID))
                         .map(c => c.CounselorID);
 
                     if (!g.CounselorID) {
@@ -1713,7 +1749,7 @@ function autoAssignWeek(week) {
             if (p.rec) {
                 const need = p.rec.requiredGuards - p.rec.guards.length;
                 for (let i = 0; i < need; i++) {
-                    const id = pick(usedThisPeriod, allIds, cid => scoreGuard(cid, p.period));
+                    const id = pick(usedThisPeriod, eligibleIdsThisPeriod, cid => scoreGuard(cid, p.period));
                     if (id == null) { recShortfall++; continue; }
                     insGuard.run(week, p.period, 'Rec', id);
                     usedThisPeriod.add(id);
@@ -1726,7 +1762,7 @@ function autoAssignWeek(week) {
             if (p.lessons) {
                 const guardNeed = p.lessons.requiredGuards - p.lessons.guards.length;
                 for (let i = 0; i < guardNeed; i++) {
-                    const id = pick(usedThisPeriod, allIds, cid => scoreGuard(cid, p.period));
+                    const id = pick(usedThisPeriod, eligibleIdsThisPeriod, cid => scoreGuard(cid, p.period));
                     if (id == null) { lessonsShortfall++; continue; }
                     insGuard.run(week, p.period, 'Lessons', id);
                     usedThisPeriod.add(id);
@@ -3647,9 +3683,13 @@ app.get('/reports/swim-schedule', (req, res) => {
     const weekLabel = db.prepare("SELECT label FROM Sessions WHERE weekNumber = ?").get(week)?.label || `Week ${week}`;
 
     const periods = getSwimSchedulingData(week);
-    const swimCounselors = db.prepare(
-        "SELECT CounselorID, FirstName, LastName FROM Counselors WHERE StaffRole = 'Swim Counselor' ORDER BY LastName, FirstName"
-    ).all();
+    const swimCounselors = db.prepare(`
+        SELECT c.CounselorID, c.FirstName, c.LastName, COALESCE(cwa.ScheduleType, c.ScheduleType) AS ScheduleType
+        FROM Counselors c
+        LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
+        WHERE c.StaffRole = 'Swim Counselor'
+        ORDER BY c.LastName, c.FirstName
+    `).all(week);
     attachSendToSports(periods, swimCounselors);
 
     const byPeriod = {};
@@ -3821,7 +3861,9 @@ function getSwimSchedulingData(week) {
 // slot(s) are fully staffed, any swim counselor not used anywhere that period is genuinely
 // spare and can be sent to help Sports instead. Before that (still short-staffed), nobody is
 // "spare" — an unassigned counselor might still be needed for swim, so the list stays empty
-// rather than wrongly suggesting they're free.
+// rather than wrongly suggesting they're free. Counselors already committed to Sports/
+// Enrichment this AM/PM block via their ScheduleType (see scheduleTypeBusy()) are excluded —
+// they're not "spare" swim staff being sent over, they were never in the swim pool this block.
 function attachSendToSports(periods, swimCounselors) {
     for (const p of periods) {
         const usedIds = new Set();
@@ -3840,16 +3882,23 @@ function attachSendToSports(periods, swimCounselors) {
             p.lessons.groups.every(g => g.members.length === 0 || (g.CounselorID && (!g.needsSecondInstructor || g.CounselorID2)))
         );
 
+        const isAM = p.period <= 3;
         p.sendToSportsReady = recReady && lessonsReady;
-        p.sendToSports = p.sendToSportsReady ? swimCounselors.filter(c => !usedIds.has(c.CounselorID)) : [];
+        p.sendToSports = p.sendToSportsReady
+            ? swimCounselors.filter(c => !usedIds.has(c.CounselorID) && !scheduleTypeBusy(c.ScheduleType, isAM))
+            : [];
     }
 }
 
 // Plain-language issues the swim director should look at: under-guarded periods, empty
-// groups, a counselor teaching above their SwimMaxLevel, and any counselor double-booked
-// (guarding and/or teaching more than one thing in the same period).
-function getSwimWarnings(periods) {
+// groups, a counselor teaching above their SwimMaxLevel, any counselor double-booked
+// (guarding and/or teaching more than one thing in the same period), and any counselor
+// scheduled here despite a ScheduleType (set on the main counselor schedule) that commits
+// them to Sports/Enrichment for this AM/PM block instead — see scheduleTypeBusy().
+function getSwimWarnings(periods, swimCounselors = []) {
     const warnings = [];
+    const scheduleTypeById = {};
+    swimCounselors.forEach(c => { scheduleTypeById[c.CounselorID] = c.ScheduleType; });
     const perPeriod = {}; // `${period}|${counselorId}` -> [labels]
     const bump = (period, counselorId, label) => {
         const key = `${period}|${counselorId}`;
@@ -3857,17 +3906,30 @@ function getSwimWarnings(periods) {
     };
 
     for (const p of periods) {
+        const isAM = p.period <= 3;
+        const checkScheduleConflict = (counselorId, firstName, lastName, activityLabel) => {
+            const st = scheduleTypeById[counselorId];
+            if (st && scheduleTypeBusy(st, isAM)) {
+                warnings.push(`Period ${p.period}: ${firstName} ${lastName} is ${activityLabel} but is "${st}" on the counselor schedule (${isAM ? 'AM' : 'PM'})`);
+            }
+        };
         if (p.rec) {
             if (p.rec.guards.length < p.rec.requiredGuards) {
                 warnings.push(`Period ${p.period}: Rec Swim needs ${p.rec.requiredGuards} guard(s), has ${p.rec.guards.length}`);
             }
-            p.rec.guards.forEach(g => bump(p.period, g.CounselorID, `${g.FirstName} ${g.LastName} guarding Rec Swim`));
+            p.rec.guards.forEach(g => {
+                bump(p.period, g.CounselorID, `${g.FirstName} ${g.LastName} guarding Rec Swim`);
+                checkScheduleConflict(g.CounselorID, g.FirstName, g.LastName, 'guarding Rec Swim');
+            });
         }
         if (p.lessons) {
             if (p.lessons.guards.length < p.lessons.requiredGuards) {
                 warnings.push(`Period ${p.period}: Swim Lessons needs ${p.lessons.requiredGuards} guard(s), has ${p.lessons.guards.length}`);
             }
-            p.lessons.guards.forEach(g => bump(p.period, g.CounselorID, `${g.FirstName} ${g.LastName} guarding Swim Lessons`));
+            p.lessons.guards.forEach(g => {
+                bump(p.period, g.CounselorID, `${g.FirstName} ${g.LastName} guarding Swim Lessons`);
+                checkScheduleConflict(g.CounselorID, g.FirstName, g.LastName, 'guarding Swim Lessons');
+            });
             p.lessons.groups.forEach(g => {
                 if (g.members.length === 0) warnings.push(`Period ${p.period}: ${g.levelLabel} group is empty`);
                 if (g.overSized) {
@@ -3877,12 +3939,14 @@ function getSwimWarnings(periods) {
                 }
                 if (g.CounselorID) {
                     bump(p.period, g.CounselorID, `${g.CounselorFirstName} ${g.CounselorLastName} teaching ${g.levelLabel}`);
+                    checkScheduleConflict(g.CounselorID, g.CounselorFirstName, g.CounselorLastName, `teaching ${g.levelLabel}`);
                     if (g.aboveLevel1) {
                         warnings.push(`Period ${p.period}: ${g.CounselorFirstName} ${g.CounselorLastName} is teaching ${g.levelLabel}, above their max level`);
                     }
                 }
                 if (g.CounselorID2) {
                     bump(p.period, g.CounselorID2, `${g.Counselor2FirstName} ${g.Counselor2LastName} teaching ${g.levelLabel}`);
+                    checkScheduleConflict(g.CounselorID2, g.Counselor2FirstName, g.Counselor2LastName, `teaching ${g.levelLabel}`);
                     if (g.aboveLevel2) {
                         warnings.push(`Period ${p.period}: ${g.Counselor2FirstName} ${g.Counselor2LastName} is teaching ${g.levelLabel}, above their max level`);
                     }
@@ -3907,12 +3971,23 @@ app.get('/swim-scheduling', (req, res) => {
     const weekLabel = db.prepare("SELECT label FROM Sessions WHERE weekNumber = ?").get(week)?.label || `Week ${week}`;
 
     const periods = getSwimSchedulingData(week);
-    const warnings = getSwimWarnings(periods);
 
     const breakdown = getCounselorWaterBreakdown(week);
-    const swimCounselors = db.prepare(
-        "SELECT CounselorID, FirstName, LastName, SwimMaxLevel FROM Counselors WHERE StaffRole = 'Swim Counselor' ORDER BY LastName, FirstName"
-    ).all().map(c => ({ ...c, ...(breakdown[c.CounselorID] || { amIn: 0, amOut: 0, pmIn: 0, pmOut: 0 }) }));
+    const swimCounselors = db.prepare(`
+        SELECT c.CounselorID, c.FirstName, c.LastName, c.SwimMaxLevel,
+               COALESCE(cwa.ScheduleType, c.ScheduleType) AS ScheduleType
+        FROM Counselors c
+        LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
+        WHERE c.StaffRole = 'Swim Counselor'
+        ORDER BY c.LastName, c.FirstName
+    `).all(week).map(c => ({
+        ...c,
+        busyAM: scheduleTypeBusy(c.ScheduleType, true),
+        busyPM: scheduleTypeBusy(c.ScheduleType, false),
+        ...(breakdown[c.CounselorID] || { amIn: 0, amOut: 0, pmIn: 0, pmOut: 0 })
+    }));
+
+    const warnings = getSwimWarnings(periods, swimCounselors);
     attachSendToSports(periods, swimCounselors);
 
     const recentMerges = db.prepare(`

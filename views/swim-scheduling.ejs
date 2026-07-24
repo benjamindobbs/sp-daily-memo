@@ -160,6 +160,7 @@
                         <th rowspan="2" style="text-align:left; padding:8px 16px; font-size:0.72rem; text-transform:uppercase; color:var(--text-muted); vertical-align:bottom;">Max Level</th>
                         <th colspan="2" style="text-align:center; padding:4px 16px; font-size:0.72rem; text-transform:uppercase; color:var(--text-muted); border-bottom:1px solid #f1f5f9;">In-Water (teaching)</th>
                         <th colspan="2" style="text-align:center; padding:4px 16px; font-size:0.72rem; text-transform:uppercase; color:var(--text-muted); border-bottom:1px solid #f1f5f9;">Out-of-Water (guarding)</th>
+                        <th rowspan="2" style="text-align:left; padding:8px 16px; font-size:0.72rem; text-transform:uppercase; color:var(--text-muted); vertical-align:bottom;">Also Scheduled (Sports/Enrichment)</th>
                     </tr>
                     <tr style="border-bottom:1px solid var(--border-color);">
                         <th style="text-align:left; padding:4px 16px; font-size:0.68rem; text-transform:uppercase; color:var(--text-muted);">AM</th>
@@ -177,10 +178,17 @@
                         <td style="padding:6px 16px;"><%= c.pmIn %></td>
                         <td style="padding:6px 16px;"><%= c.amOut %></td>
                         <td style="padding:6px 16px;"><%= c.pmOut %></td>
+                        <td style="padding:6px 16px;">
+                            <% if (c.ScheduleType) { %>
+                                <span style="font-size:0.78rem; background:#eef2ff; color:#4338ca; border-radius:8px; padding:2px 8px;"><%= c.ScheduleType %></span>
+                            <% } else { %>
+                                <span style="color:var(--text-muted); font-size:0.78rem;">—</span>
+                            <% } %>
+                        </td>
                     </tr>
                     <% }) %>
                     <% if (swimCounselors.length === 0) { %>
-                    <tr><td colspan="6" style="padding:16px; text-align:center; color:var(--text-muted);">No staff with role "Swim Counselor" found.</td></tr>
+                    <tr><td colspan="7" style="padding:16px; text-align:center; color:var(--text-muted);">No staff with role "Swim Counselor" found.</td></tr>
                     <% } %>
                 </tbody>
             </table>
@@ -235,10 +243,11 @@
                     <div class="guard-checklist">
                         <% swimCounselors.forEach(function(c) { %>
                             <% var elsewhere = elsewhereLabel(c.CounselorID, 'rec-guard'); %>
-                            <label style="<%= elsewhere ? 'color:#94a3b8;' : '' %>">
+                            <% var scheduleBusy = p.period <= 3 ? c.busyAM : c.busyPM; %>
+                            <label style="<%= (elsewhere || scheduleBusy) ? 'color:#94a3b8;' : '' %>">
                                 <input type="checkbox" name="counselorIds" value="<%= c.CounselorID %>"
                                     <%= p.rec.guards.some(function(g) { return g.CounselorID === c.CounselorID; }) ? 'checked' : '' %>>
-                                <%= c.FirstName %> <%= c.LastName %><% if (elsewhere) { %><span style="font-size:0.72rem;"> (<%= elsewhere %>)</span><% } %>
+                                <%= c.FirstName %> <%= c.LastName %><% if (elsewhere) { %><span style="font-size:0.72rem;"> (<%= elsewhere %>)</span><% } %><% if (scheduleBusy) { %><span style="font-size:0.72rem;"> (<%= c.ScheduleType %>)</span><% } %>
                             </label>
                         <% }) %>
                     </div>
@@ -261,10 +270,11 @@
                     <div class="guard-checklist">
                         <% swimCounselors.forEach(function(c) { %>
                             <% var elsewhere = elsewhereLabel(c.CounselorID, 'lessons-guard'); %>
-                            <label style="<%= elsewhere ? 'color:#94a3b8;' : '' %>">
+                            <% var scheduleBusy = p.period <= 3 ? c.busyAM : c.busyPM; %>
+                            <label style="<%= (elsewhere || scheduleBusy) ? 'color:#94a3b8;' : '' %>">
                                 <input type="checkbox" name="counselorIds" value="<%= c.CounselorID %>"
                                     <%= p.lessons.guards.some(function(g) { return g.CounselorID === c.CounselorID; }) ? 'checked' : '' %>>
-                                <%= c.FirstName %> <%= c.LastName %><% if (elsewhere) { %><span style="font-size:0.72rem;"> (<%= elsewhere %>)</span><% } %>
+                                <%= c.FirstName %> <%= c.LastName %><% if (elsewhere) { %><span style="font-size:0.72rem;"> (<%= elsewhere %>)</span><% } %><% if (scheduleBusy) { %><span style="font-size:0.72rem;"> (<%= c.ScheduleType %>)</span><% } %>
                             </label>
                         <% }) %>
                     </div>
@@ -357,10 +367,11 @@
                         <select name="counselorId" style="padding:4px 6px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem;">
                             <option value="">— unassigned —</option>
                             <% swimCounselors.forEach(function(c) { %>
-                                <% var eligible = (c.SwimMaxLevel || 3) >= g.effectiveMaxLevel; %>
+                                <% var scheduleBusy = p.period <= 3 ? c.busyAM : c.busyPM; %>
+                                <% var eligible = (c.SwimMaxLevel || 3) >= g.effectiveMaxLevel && !scheduleBusy; %>
                                 <% var elsewhere = elsewhereLabel(c.CounselorID, 'group-' + g.GroupID + '-1'); %>
                                 <option value="<%= c.CounselorID %>" <%= g.CounselorID === c.CounselorID ? 'selected' : '' %> <%= (!eligible && g.CounselorID !== c.CounselorID) ? 'disabled' : '' %> style="<%= elsewhere ? 'color:#94a3b8;' : '' %>">
-                                    <%= c.FirstName %> <%= c.LastName %><%= eligible ? '' : ' (below level)' %><%= elsewhere ? ' (' + elsewhere + ')' : '' %>
+                                    <%= c.FirstName %> <%= c.LastName %><%= eligible ? '' : (scheduleBusy ? ' (' + c.ScheduleType + ')' : ' (below level)') %><%= elsewhere ? ' (' + elsewhere + ')' : '' %>
                                 </option>
                             <% }) %>
                         </select>
@@ -377,10 +388,11 @@
                         <select name="counselorId" style="padding:4px 6px; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem;">
                             <option value="">— unassigned —</option>
                             <% swimCounselors.forEach(function(c) { %>
-                                <% var eligible = (c.SwimMaxLevel || 3) >= g.effectiveMaxLevel; %>
+                                <% var scheduleBusy = p.period <= 3 ? c.busyAM : c.busyPM; %>
+                                <% var eligible = (c.SwimMaxLevel || 3) >= g.effectiveMaxLevel && !scheduleBusy; %>
                                 <% var elsewhere = elsewhereLabel(c.CounselorID, 'group-' + g.GroupID + '-2'); %>
                                 <option value="<%= c.CounselorID %>" <%= g.CounselorID2 === c.CounselorID ? 'selected' : '' %> <%= (!eligible && g.CounselorID2 !== c.CounselorID) ? 'disabled' : '' %> style="<%= elsewhere ? 'color:#94a3b8;' : '' %>">
-                                    <%= c.FirstName %> <%= c.LastName %><%= eligible ? '' : ' (below level)' %><%= elsewhere ? ' (' + elsewhere + ')' : '' %>
+                                    <%= c.FirstName %> <%= c.LastName %><%= eligible ? '' : (scheduleBusy ? ' (' + c.ScheduleType + ')' : ' (below level)') %><%= elsewhere ? ' (' + elsewhere + ')' : '' %>
                                 </option>
                             <% }) %>
                         </select>

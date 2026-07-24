@@ -173,6 +173,26 @@ On undo, `POST /swim-scheduling/undo-merge`:
 
 Rendered as small pill tags under the group header in `views/swim-scheduling.ejs`, and reused as a compact `"N label, N label"` string in the "add to group" and "merge into" dropdown option text so two same-range groups with different makeups aren't indistinguishable in a `<select>`.
 
+### ScheduleType cross-check (avoiding double-booking with Sports/Enrichment)
+
+A Swim Counselor can be given a `ScheduleType` (the same field the `/counselor-scheduling` "Assign Schedule Types" tool sets on main counselors — see [Scheduling System](./Scheduling-System.md)) to mark them as splitting their day with Sports/Enrichment instead of doing swim duty all day. `scheduleTypeBusy(scheduleType, isAM)` in `app.js` — a direct server-side mirror of `isCounselorAvailableFor()` in `views/counselor-scheduling.ejs` — says whether a given `ScheduleType` commits the counselor to Sports/Enrichment for the AM (periods 1-3) or PM (periods 4-6) block:
+
+| ScheduleType | Busy AM | Busy PM |
+|---|---|---|
+| *(none)* | No | No |
+| `All Sports` / `All Enrichment` | Yes | Yes |
+| `AM Sports / PM Enrichment` / `AM Enrichment / PM Sports` | Yes | Yes |
+| `AM Sports Only` / `AM Enrichment Only` | Yes | No |
+| `PM Sports Only` / `PM Enrichment Only` | No | Yes |
+
+E.g. a Swim Counselor set to `AM Sports Only` is off the swim staff pool for periods 1-3 (still available periods 4-6). Effective `ScheduleType` follows the usual per-week override pattern (`COALESCE(CounselorWeekAttributes.ScheduleType, Counselors.ScheduleType)`).
+
+This feeds three places:
+- **Full Auto Assign** (`autoAssignWeek()`) excludes busy counselors from that period's eligible pool entirely — never suggests a conflicting assignment.
+- **Manual pickers** (`views/swim-scheduling.ejs`) — see [Greyed-out names](#greyed-out-names-in-the-manual-pickers) below.
+- **`getSwimWarnings()`** flags any *existing* guard/instructor assignment that conflicts with the counselor's current `ScheduleType`, so a conflict created before a `ScheduleType` was set (or changed afterward) still surfaces.
+- **Send to Sports** (`attachSendToSports()`) excludes schedule-busy counselors from a period's spare list — they were never in that period's swim pool to begin with, so they're not "sent," they're just not counted.
+
 ### `getCounselorWaterTally(week)` / `getCounselorWaterBreakdown(week)`
 
 Per the swim director: **guarding is out-of-water** duty (watching from the deck/chair) and **teaching a lesson group is in-water** (any level — you're in the pool with the campers), counting either instructor slot (`CounselorID` or `CounselorID2`).
@@ -185,7 +205,7 @@ Per the swim director: **guarding is out-of-water** duty (watching from the deck
 Fills every open guard slot and un-instructored lesson-group instructor slot for the week in one pass, via `autoAssignWeek(week)`. It never removes or changes anything already set — Locked groups, instructor slots that already have a `CounselorID`, and existing `SwimGuardAssignments` rows are left exactly as they are; the solver only fills gaps. Processed period by period, in this order within each period: **lesson groups, highest effective level to lowest, first**; then Rec Swim guards; then Swim Lessons pool guards. High-level groups have the smallest eligible pool (only counselors certified that high), so they get first pick before that pool is drawn down by guard duty or low-level groups that any swim counselor could just as easily fill — otherwise a Level 6-certified counselor could get soaked up guarding Period 5 while that period's Level 6 group goes unfilled. A group with `needsSecondInstructor` gets two picks (its `CounselorID` and `CounselorID2` slots filled independently, in that order — a counselor already picked for slot 1 can't also fill slot 2, same as any other double-booking).
 
 Rules:
-- **Eligibility**: a lesson group instructor slot needs `COALESCE(SwimMaxLevel, 3) >= effectiveMaxLevel`; anyone on the swim staff (`StaffRole = 'Swim Counselor'`) can guard.
+- **Eligibility**: a lesson group instructor slot needs `COALESCE(SwimMaxLevel, 3) >= effectiveMaxLevel`; anyone on the swim staff (`StaffRole = 'Swim Counselor'`) can guard — except a counselor whose `ScheduleType` marks them busy with Sports/Enrichment for that period's AM/PM block (see [ScheduleType cross-check](#scheduletype-cross-check-avoiding-double-booking-with-sportsenrichment)), who's excluded from every slot that period.
 - **No double-booking**: a counselor already used anywhere in a period (guard or group, including pre-existing manual assignments) is excluded from every other slot in that same period.
 - **Cert reservation**: within a slot's eligible pool, each candidate is scored with a `CERT_RESERVE_WEIGHT` (10) penalty per level of unneeded certification headroom — `SwimMaxLevel` above what the slot actually requires (3 for guarding/level 1-3 groups, since that's the everyone-qualifies floor; the group's own effective level for level 4-6 groups). A Level 3-only counselor has zero penalty guarding or teaching Level 1-3; a Level 6-certified counselor picks up 30 points of penalty for the same slot, pushing them to the back of the line so they're saved for a level that actually needs their certification. Combined with the level-descending processing order above, this is the mechanism that keeps the solver from running out of highly-certified counselors for the classes that require them.
 - **Guard slots** (out-of-water): after the cert-reservation penalty, in AM periods (1-3) the picker weights each candidate's historical AM guard-duty count from `getAmFairnessTally(week)` — every prior week's periods 1-3 — 100x over their running out-of-water count *this* run, so whoever has done the least early-morning guarding across the summer wins; only ties fall back to this-week balance. In PM periods (4-6), history is ignored entirely and the picker just takes whoever has guarded the least so far this week.
@@ -205,7 +225,7 @@ Each period card ends with a "Send to Sports" box: once that period is **fully s
 
 Computed by `attachSendToSports(periods, swimCounselors)` in `app.js`, called from the `GET /swim-scheduling` handler right after `swimCounselors` is built (it needs the full roster to know who's unused). It mutates each period in place with:
 - `sendToSportsReady` — `true` once the period's guard/instructor requirements are all met (an **empty** lesson group doesn't block readiness — no campers, nothing to staff).
-- `sendToSports` — the list of unused swim counselors, only populated when `sendToSportsReady` is `true`. While a period is still short-staffed, this stays empty on purpose: an unassigned counselor might still be needed for swim, so nobody is claimed as "spare" until the period's real needs are actually covered.
+- `sendToSports` — the list of unused swim counselors, only populated when `sendToSportsReady` is `true`, and excluding anyone `scheduleTypeBusy()` marks as already committed to Sports/Enrichment that AM/PM block (see [ScheduleType cross-check](#scheduletype-cross-check-avoiding-double-booking-with-sportsenrichment)). While a period is still short-staffed, this stays empty on purpose: an unassigned counselor might still be needed for swim, so nobody is claimed as "spare" until the period's real needs are actually covered.
 
 This is purely a computed, render-time display (same convention as `getSwimWarnings()`) — no new table, no persisted state, no action button. Running **Full Auto Assign** is the normal way to get a period to `sendToSportsReady`, but the box updates from whatever staffing state exists (manual or automatic) on every render.
 
@@ -217,11 +237,13 @@ Since every save/assign action here is a normal form POST + redirect (full page 
 
 ### Greyed-out names in the manual pickers
 
-The Rec Swim guard checklist, Swim Lessons pool guard checklist, and each group's instructor `<select>`(s) grey out (and label with what they're already doing) any counselor who's assigned to something else in that same period — computed inline per period card in `views/swim-scheduling.ejs` from `p.rec.guards`, `p.lessons.guards`, and `p.lessons.groups`. A group's two instructor slots use distinct role tags (`group-<id>-1` / `group-<id>-2`) so picking someone for slot 1 correctly greys them out of slot 2 of the *same* group too. This is display-only: greyed names stay clickable/selectable, since the director may deliberately want to double-book someone (e.g. a brief overlap) — `getSwimWarnings()` still catches and flags any resulting double-booking on the next render.
+The Rec Swim guard checklist and Swim Lessons pool guard checklist grey out (and label with what they're already doing) any counselor who's assigned to something else in that same period — computed inline per period card in `views/swim-scheduling.ejs` from `p.rec.guards`, `p.lessons.guards`, and `p.lessons.groups`. They're also greyed (and labeled with their `ScheduleType`) when `scheduleTypeBusy()` marks them committed to Sports/Enrichment that AM/PM block. This is display-only for guards: greyed names stay clickable/selectable, since the director may deliberately want to double-book someone (e.g. a brief overlap) — `getSwimWarnings()` still catches and flags any resulting conflict on the next render.
 
-### `getSwimWarnings(periods)`
+Each lesson group's instructor `<select>`(s) go further: eligibility is a hard gate (option `disabled` unless already selected), combining the existing `SwimMaxLevel` certification check with the same `scheduleTypeBusy()` check — a group's two instructor slots use distinct role tags (`group-<id>-1` / `group-<id>-2`) so picking someone for slot 1 correctly greys/disables them out of slot 2 of the *same* group too. An already-selected counselor is never force-removed by either check (e.g. if their `ScheduleType` changed after they were assigned) — only new selections are blocked; `getSwimWarnings()` flags the resulting conflict instead.
 
-Computed at render time, never stored. Flags: a period's Rec Swim or Swim Lessons guard count below the required threshold; an empty lesson group; a group over 5 campers that needs splitting; a group of exactly 5 campers missing one or both instructors; a counselor assigned to teach a group above their `SwimMaxLevel` (checked per slot); and any counselor appearing in more than one guard/instructor slot in the same period (double-booked) — tracked via a `period|counselorId` map built while walking the same `periods` structure the page renders.
+### `getSwimWarnings(periods, swimCounselors)`
+
+Computed at render time, never stored. Flags: a period's Rec Swim or Swim Lessons guard count below the required threshold; an empty lesson group; a group over 5 campers that needs splitting; a group of exactly 5 campers missing one or both instructors; a counselor assigned to teach a group above their `SwimMaxLevel` (checked per slot); a counselor assigned here despite a `ScheduleType` that commits them to Sports/Enrichment for this AM/PM block (see [ScheduleType cross-check](#scheduletype-cross-check-avoiding-double-booking-with-sportsenrichment)); and any counselor appearing in more than one guard/instructor slot in the same period (double-booked) — tracked via a `period|counselorId` map built while walking the same `periods` structure the page renders. The `swimCounselors` argument (with `ScheduleType` attached) is what makes the `ScheduleType` check possible; the other checks only need `periods`.
 
 ### Routes
 
@@ -270,4 +292,6 @@ The report route (`app.get('/reports/swim-schedule', ...)`) fills in a placehold
 
 ## Known limitation
 
-Swim staffing lives in its own tables (`SwimLessonGroups`, `SwimGuardAssignments`), independent of `CounselorWeekSchedules`/`WeeklyOfferings`. Master Schedule's Counselors column, the staff Daily Assignments card, and Attendance do **not** show swim duty assignments for Rec Swim / Swim Lessons periods — that data only exists in `/swim-scheduling` and the tables above. Rec Swim/Swim Lessons should be treated as off-limits in the main `/counselor-scheduling` builder to avoid double-booking swim staff across the two systems (not enforced automatically — a manual convention for now).
+Swim staffing lives in its own tables (`SwimLessonGroups`, `SwimGuardAssignments`), independent of `CounselorWeekSchedules`/`WeeklyOfferings`. Master Schedule's Counselors column, the staff Daily Assignments card, and Attendance do **not** show swim duty assignments for Rec Swim / Swim Lessons periods — that data only exists in `/swim-scheduling` and the tables above. Rec Swim/Swim Lessons should still be treated as off-limits in the main `/counselor-scheduling` builder to avoid double-booking swim staff across the two systems.
+
+The one-way risk — a swim counselor given a Sports/Enrichment `ScheduleType` on `/counselor-scheduling` then also getting scheduled for swim duty — **is** now cross-checked automatically; see [ScheduleType cross-check](#scheduletype-cross-check-avoiding-double-booking-with-sportsenrichment). What's still manual: the cross-check only knows the counselor's `ScheduleType` classification (which AM/PM block they're committed to), not their actual assigned periods within that block — so a Swim Counselor with no `ScheduleType` set who nonetheless picks up an ad-hoc Sports/Enrichment period through `/counselor-scheduling` (rather than a proper "AM/PM Sports/Enrichment Only" designation) won't be caught.
