@@ -119,8 +119,8 @@
                             <tr class="roster-row" data-name="<%= (c.FirstName + ' ' + c.LastName).toLowerCase() %>">
                                 <td>
                                     <a class="camper-name-link" href="/camper/<%= c.CamperID %>" target="_blank"><%= c.FirstName %> <%= c.LastName %></a>
-                                    <% if (c.icpNote) { %><button type="button" class="badge-note badge-note-icp" onclick="openNote('<%= c.FirstName %> <%= c.LastName %>', 'ICP / Health Note', <%- JSON.stringify(c.icpNote) %>, <%= c.CamperID %>)">&#9877; ICP</button><% } %>
-                                    <% if (c.generalNote) { %><button type="button" class="badge-note" onclick="openNote('<%= c.FirstName %> <%= c.LastName %>', 'Camper Note', <%- JSON.stringify(c.generalNote) %>, <%= c.CamperID %>)">&#128221; Note</button><% } %>
+                                    <% if (c.icpNote) { %><button type="button" class="badge-note badge-note-icp" onclick="openNote(<%= JSON.stringify(c.FirstName + ' ' + c.LastName) %>, <%= JSON.stringify('ICP / Health Note') %>, <%= JSON.stringify(c.icpNote) %>, <%= c.CamperID %>)">&#9877; ICP</button><% } %>
+                                    <% if (c.generalNote) { %><button type="button" class="badge-note" onclick="openNote(<%= JSON.stringify(c.FirstName + ' ' + c.LastName) %>, <%= JSON.stringify('Camper Note') %>, <%= JSON.stringify(c.generalNote) %>, <%= c.CamperID %>)">&#128221; Note</button><% } %>
                                 </td>
                                 <td style="color: var(--text-muted);"><%= c.Grade || '—' %></td>
                                 <% if (mergedNames) { %>

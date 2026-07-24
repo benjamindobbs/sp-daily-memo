@@ -126,8 +126,8 @@
                             <% if (c.fieldTripActive) { %>&#128652; <% } %><a href="/camper/<%= c.CamperID %>" target="_blank" style="color:inherit; text-decoration:none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'"><%= c.PreferredName || c.FirstName %> <%= c.LastName %></a>
                         </span>
                         <div class="camper-badges">
-                            <% if (c.icpNote) { %><button type="button" class="badge-note badge-note-icp" onclick="openNote('<%= c.PreferredName || c.FirstName %> <%= c.LastName %>', 'ICP / Health Note', <%- JSON.stringify(c.icpNote) %>, <%= c.CamperID %>)">&#9877; ICP</button><% } %>
-                            <% if (c.generalNote) { %><button type="button" class="badge-note" onclick="openNote('<%= c.PreferredName || c.FirstName %> <%= c.LastName %>', 'Camper Note', <%- JSON.stringify(c.generalNote) %>, <%= c.CamperID %>)">&#128221; Note</button><% } %>
+                            <% if (c.icpNote) { %><button type="button" class="badge-note badge-note-icp" onclick="openNote(<%= JSON.stringify((c.PreferredName || c.FirstName) + ' ' + c.LastName) %>, <%= JSON.stringify('ICP / Health Note') %>, <%= JSON.stringify(c.icpNote) %>, <%= c.CamperID %>)">&#9877; ICP</button><% } %>
+                            <% if (c.generalNote) { %><button type="button" class="badge-note" onclick="openNote(<%= JSON.stringify((c.PreferredName || c.FirstName) + ' ' + c.LastName) %>, <%= JSON.stringify('Camper Note') %>, <%= JSON.stringify(c.generalNote) %>, <%= c.CamperID %>)">&#128221; Note</button><% } %>
                             <span style="font-size:0.72rem; color:var(--text-muted); font-style:italic;">via Specialty AM</span>
                         </div>
                         <div class="toggle-wrap">
@@ -152,8 +152,8 @@
                         <span style="font-size:0.7rem; font-weight:600; background:#fef3c7; color:#92400e; border-radius:4px; padding:1px 7px; white-space:nowrap;">&#9200; Extended</span>
                         <% } %>
                         <div class="camper-badges">
-                            <% if (c.icpNote) { %><button type="button" class="badge-note badge-note-icp" onclick="openNote('<%= c.PreferredName || c.FirstName %> <%= c.LastName %>', 'ICP / Health Note', <%- JSON.stringify(c.icpNote) %>, <%= c.CamperID %>)">&#9877; ICP</button><% } %>
-                            <% if (c.generalNote) { %><button type="button" class="badge-note" onclick="openNote('<%= c.PreferredName || c.FirstName %> <%= c.LastName %>', 'Camper Note', <%- JSON.stringify(c.generalNote) %>, <%= c.CamperID %>)">&#128221; Note</button><% } %>
+                            <% if (c.icpNote) { %><button type="button" class="badge-note badge-note-icp" onclick="openNote(<%= JSON.stringify((c.PreferredName || c.FirstName) + ' ' + c.LastName) %>, <%= JSON.stringify('ICP / Health Note') %>, <%= JSON.stringify(c.icpNote) %>, <%= c.CamperID %>)">&#9877; ICP</button><% } %>
+                            <% if (c.generalNote) { %><button type="button" class="badge-note" onclick="openNote(<%= JSON.stringify((c.PreferredName || c.FirstName) + ' ' + c.LastName) %>, <%= JSON.stringify('Camper Note') %>, <%= JSON.stringify(c.generalNote) %>, <%= c.CamperID %>)">&#128221; Note</button><% } %>
                             <% if (c.halfDay) { %><span style="font-size:0.7rem; font-weight:600; background:#fce7f3; color:#9d174d; border-radius:9999px; padding:1px 8px; white-space:nowrap;">&#128337; Half Day</span><% } %>
                             <% if (c.campLunch === 'Yes') { %><span class="badge-lunch-camp">&#127857; Camp Lunch</span><% } else if (c.campLunch === 'Allergy') { %><span class="badge-lunch-allergy">&#9888; Allergy Meal</span><% } %>
                             <% if (c.shirtQty) { %>
