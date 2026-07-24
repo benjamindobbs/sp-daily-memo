@@ -7,6 +7,7 @@
   - [Faculty Full Summer — Multi-Week Setup](#faculty-full-summer--multi-week-setup)
   - [Session Management & Active Weeks](#session-management--active-weeks)
   - [Counselor Scheduling](#counselor-scheduling)
+  - [Swim Scheduling](#swim-scheduling)
   - [Editing Campers & Staff Profiles](#editing-campers--staff-profiles)
   - [Attendance Sheet Symbols](#attendance-sheet-symbols)
 - [Feature Map](#feature-map)
@@ -177,6 +178,72 @@ Backups are managed at `/counselor-schedule-backups`. Each backup stores the ful
 
 ---
 
+### Swim Scheduling
+
+Swim Counselors are staffed and tracked through two connected tools that are independent of the main Counselor Scheduling builder: **Swim Levels** (`/swim-levels`) records what each camper can swim, and **Swim Scheduling** (`/swim-scheduling`) staffs Rec Swim guards, Swim Lessons pool guards, and skill-level lesson groups. Neither shows up in Master Schedule, Attendance, or the staff Daily Assignments card — it's a fully separate schedule that only affects Swim Counselors.
+
+#### Views
+
+| Page | URL | Description |
+|---|---|---|
+| Swim Levels | `/swim-levels` | Editing page for camper swim levels. Campers currently enrolled in Rec Swim or Swim Lessons for the target week, grouped by period (each with its own show/hide section, Rec Swim then Swim Lessons within it), alphabetical within each group. Inline form to update each camper's level. Has a name filter that auto-expands the period containing a match. |
+| Swim Levels Report | `/reports/swim-levels` | Printable version of the same roster (Settings → Print Reports), with a session picker so you can print any week's roster. |
+| Swim Scheduling | `/swim-scheduling` | The staffing tool — lesson groups, guards, certifications, auto-assign, warnings. Reached from the **🏊 Swim Scheduling** nav link on `/counselor-scheduling`. See Major Functions below. |
+| Swim Schedule Report | `/reports/swim-schedule` | Printable 2-page (AM/PM) staffing sheet, 3 columns (one per period): Rec Swim's full numbered camper list (flagging anyone not yet tested) and guards, each Lessons group's campers with their levels and instructor(s), and who's free to send to Sports that period. |
+
+#### Key Concepts
+
+**Swim level** — each camper's recorded ability (`Low`/`High` + Level 1–6), recorded per week. If a week has no update on file, the camper's level carries forward from the last week it was recorded.
+
+**Swim certification** — each Swim Counselor's **Highest Swim Level Able to Teach** (1–6). Blank means levels 1–3 only, the default everyone can teach. Edit one counselor at a time on their profile, or bulk-edit every swim counselor at once with the collapsible **Edit Swim Certifications** panel on `/swim-scheduling`.
+
+**Lesson groups** — skill-level groups capped at 5 campers each. A group of exactly 5 gets a second instructor slot. Groups can be **locked** to protect them from the next Generate Groups run, **split** if they grow past 5 (manual adds, a merge), or **merged** with an adjacent-level group to share one instructor (e.g. 2 kids at Level 5 + 1 at Level 6 taught together).
+
+**Guards** — two separate roles per period, distinct from lesson-group instructors: Rec Swim lifeguards, and Swim Lessons pool guards (always needs 2).
+
+**Also Scheduled / conflicts** — the water-time roster table's **Also Scheduled** column shows any Sports/Enrichment Schedule Type a swim counselor has been given on the main Counselor Scheduling page. A counselor with a schedule type like "AM Sports Only" is automatically treated as unavailable for swim during that half of the day: Full Auto Assign skips them for those periods, manual guard checklists and instructor dropdowns grey them out (dropdowns block picking them at all, same as being under-certified), and the warnings panel flags it if they're already assigned to swim duty during a period their schedule type says they shouldn't be.
+
+**Send to Sports** — once a period's guards are met and every lesson group is instructed, leftover swim counselors surface in a **Send to Sports** box so they can be loaned out. Nobody's listed until the period's actual needs are covered.
+
+#### Major Functions (`/swim-scheduling`)
+
+| Function | What it does |
+|---|---|
+| **Generate Groups** | Auto-forms lesson groups from current effective swim levels, capped at 5 each. Locked groups are preserved; campers with no recorded level surface as "not yet in a group" instead of being silently dropped. |
+| **Split** | Breaks a group that's grown past 5 back into groups of 5 or fewer. |
+| **Merge** | Combines two small adjacent-level groups to share one instructor; the merged group is auto-locked so it survives the next Generate Groups run. A group that Full Auto Assign merged on its own (to free up a guard) can't be merged again in either direction — that was an automated last-resort decision, not something to build on further; groups merged by hand stay merge-able. |
+| **Recent Merges / Undo** | A collapsible panel lists every merge (manual or automatic) not yet undone. **Undo** recreates the original group and moves back whichever campers are still in the merged group — instructor assignments aren't restored, since that person may have since been reassigned elsewhere. |
+| **Assign instructor / camper** | Hand-edit any group's instructor slot(s) or membership directly. |
+| **Save Guards** | Hand-edit the Rec Swim and Lessons pool guard checklists per period. |
+| **Edit Swim Certifications** | Collapsible panel to bulk-edit every swim counselor's highest teachable level in one form. |
+| **Full Auto Assign** | Fills every open guard slot and un-instructored group slot in one click — respecting each counselor's certified level, avoiding double-booking, balancing time between guarding (out-of-water) and teaching (in-water), fairly rotating early-morning guard duty week to week, honoring Also Scheduled conflicts, and staffing the hardest-to-fill high-level classes first so a highly-certified counselor doesn't get soaked up guarding while a high-level class goes unstaffed. If a guard slot still can't be filled, it'll try merging two small same-period classes (closest skill level first, only when the combined class stays small enough to still need one instructor) as a genuine last resort. Never touches anything already set by hand. |
+| **Clear All Assignments** | Unassigns everyone for the week in one click (guards and both instructor slots on every group, including locked ones). Groups and campers aren't touched — just a clean slate to re-run Full Auto Assign or reassign by hand. |
+| **Warnings panel** | Flags under-guarded periods, empty groups, oversized/under-instructed groups, a counselor teaching above their max level, Also Scheduled conflicts, and anyone double-booked. |
+| **Print** | Opens the 2-page AM/PM printable staffing sheet (`/reports/swim-schedule`). |
+
+Each period is its own show/hide section (click "Period N" to collapse/expand).
+
+#### Workflow & Weekly Lifecycle
+
+Every swim table is keyed by week number, same as `Sessions` — all six weeks' groups, guards, and levels coexist independently, so switching the app's active week elsewhere doesn't touch swim data. `/swim-scheduling` and both print reports have their own `?week=` session picker (defaulting to the Prep Target week if set, else the Active week); `/swim-levels` itself always shows the Prep Target-or-Active week only, with no separate selector.
+
+For a given week:
+
+1. **Import campers & staff** as usual (All Staff → Camper Roster → Master Camper Schedule) — Rec Swim/Swim Lessons enrollment comes from the same schedule import as any other class.
+2. **Import or hand-enter swim levels** — Settings → CSV Data Imports → Swim Levels (must run after Camper Roster), or edit inline at `/swim-levels`.
+3. **Set swim certifications** — per-profile, or in bulk via the Edit Swim Certifications panel on `/swim-scheduling`.
+4. **Generate Groups** on `/swim-scheduling`.
+5. **Hand-adjust** — merge, split, lock, or manually move campers as needed.
+6. **Full Auto Assign** to fill guard and instructor slots.
+7. **Manual touch-up** — guard checklists and instructor dropdowns stay hand-editable at any point (subject to the certification/Also Scheduled gates on instructor dropdowns).
+8. **Review the warnings panel** and resolve anything flagged.
+9. **Print** (`/reports/swim-schedule`, `/reports/swim-levels`) for distribution.
+10. **Clear All Assignments** before re-running Full Auto Assign or reassigning by hand, if staffing changes mid-week.
+
+Repeat steps 4–9 independently for each week — nothing carries forward automatically except swim levels themselves, which persist until a newer week's level is recorded.
+
+---
+
 ### Editing Campers & Staff Profiles
 
 All profile editing requires **admin view**. Staff view shows the same pages read-only.
@@ -285,8 +352,8 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | Home Group Assignment | `/homegroup-assignment` | Assign counselors to color-group home groups by week. Can mirror assignments from one week to another. |
 | SPLIT Scheduling | `/split-scheduling` | Dedicated view for managing SPLIT camper period assignments (periods 1, 2, 4, 5, 6). |
 | Audit Roster | `/audit` | Flags scheduling issues: missing grades, duplicate assignments, unassigned campers, classes with no counselor. Each section has a Show/Hide toggle; collapsed sections are remembered per browser. |
-| Swim Levels | `/swim-levels` | Campers currently enrolled in Rec Swim or Swim Lessons for the target week, grouped by period (each with its own show/hide section, Rec Swim then Swim Lessons within it), alphabetical within each group. Inline form to update each camper's level. Printable version at `/reports/swim-levels` (Settings → Print Reports), with a session picker so you can print any week's roster. See the Swim Levels CSV import above and Swim Scheduling below. |
-| Swim Scheduling | `/swim-scheduling` | Staffing schedule for Rec Swim lifeguards, Swim Lessons pool guards, and skill-level lesson groups — separate from the main Counselor Scheduling builder and only applies to Swim Counselors. **Generate Groups** auto-forms lesson groups from current swim levels, capped at 5 campers each (locked groups are preserved); groups, instructors, and guards can all be hand-edited. A group of exactly 5 campers gets a second instructor slot; if a group ever grows past 5 (manual adds, a merge), a **Split** button breaks it back into groups of 5 or fewer. Small adjacent-level groups can be **merged** to share one instructor (e.g. 2 kids at Level 5 + 1 at Level 6 taught together) — the merged group is auto-locked so it survives the next Generate Groups run. A group that **Full Auto Assign** merged on its own (to free up a guard) can't be merged again in either direction — its Merge button is hidden and it's left out of every other group's "merge into" list — since that was an automated last-resort decision, not something to keep building on; groups you merge by hand stay merge-able. A collapsible **Recent Merges** panel lists every merge (manual or automatic) that hasn't been undone yet, with an **Undo** button that recreates the original group and moves back whichever campers are still in the merged group — instructor assignments aren't restored, since that person may have since been reassigned elsewhere. Each group shows a Low/Nominal/High breakdown of who's actually in it, labeled by level too once merged, so you can see at a glance what a combined group is made of. A warnings panel flags under-guarded periods, empty groups, oversized/under-instructed groups, a counselor teaching above their max level, or anyone double-booked. A collapsible **Edit Swim Certifications** panel bulk-edits every swim counselor's highest teachable level in one form, instead of editing each profile individually. **Full Auto Assign** fills every open guard slot and un-instructored group slot in one click — respecting each counselor's certified level, avoiding double-booking, balancing time between guarding (out-of-water) and teaching (in-water, since you're in the pool with the campers at any level), fairly rotating early-morning guard duty week to week, and staffing the hardest-to-fill high-level classes first so a highly-certified counselor doesn't get soaked up guarding while a Level 6 class goes unstaffed — without touching anything already set by hand. If there still aren't enough staff to cover a guard slot, it'll try merging two small same-period classes (closest skill level first, only when the combined class stays small enough to still need just one instructor) to free someone up for guard duty — a genuine last resort, not something it does just to consolidate classes. The water-time roster table splits In-Water and Out-of-Water into AM/PM columns so you can see morning vs. afternoon load separately, plus an **Also Scheduled** column showing any Sports/Enrichment schedule type a swim counselor has been given on the main Counselor Scheduling page. A swim counselor with a schedule type like "AM Sports Only" is automatically treated as unavailable for swim during that half of the day — Full Auto Assign skips them for those periods, the manual guard checklists and instructor dropdowns grey them out (instructor dropdowns block picking them at all, same as being under-certified), and the warnings panel flags it if they're already assigned to swim duty during a period their schedule type says they shouldn't be. Each period card ends with a **Send to Sports** box that auto-populates with whichever swim counselors are left over once that period is fully staffed (guards met, every lesson group instructed) — nobody's listed until the period's actual needs are covered, so it never wrongly suggests someone's free. **Clear All Assignments** unassigns everyone for the week in one click (guards and both instructor slots on every group, including locked ones) — groups and campers aren't touched, just a clean slate to re-run Full Auto Assign or reassign by hand. In the manual guard checklists and instructor dropdowns, a counselor's name greys out (with a note of what they're already doing) if they're assigned to something else that period, though they're still selectable if you want to override it. A **Print** button at the top right opens a 2-page (AM/PM) printable version — 3 columns, one per period — with Rec Swim's full numbered camper list (flagging anyone not yet tested) and guards, then each Lessons group's campers with their individual levels and assigned instructor(s), then who's free to send to Sports that period; see `/reports/swim-schedule` below. Each period is a show/hide section (click "Period N" to collapse/expand). Does not appear in Master Schedule, Attendance, or staff Daily Assignments — it's an independent schedule. |
+| Swim Levels | `/swim-levels` | Camper swim level tracking. Printable version at `/reports/swim-levels` (Settings → Print Reports). See [Swim Scheduling](#swim-scheduling) above for full detail. |
+| Swim Scheduling | `/swim-scheduling` | Staffing schedule for Rec Swim lifeguards, Swim Lessons pool guards, and skill-level lesson groups — separate from the main Counselor Scheduling builder and only applies to Swim Counselors. See [Swim Scheduling](#swim-scheduling) above for full detail. |
 
 ---
 
