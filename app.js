@@ -4568,12 +4568,16 @@ app.post('/camper/:id/update', (req, res) => {
 app.post('/camper/:id/delete', (req, res) => {
     const id = req.params.id;
     db.transaction(() => {
-        db.prepare("DELETE FROM Schedules       WHERE PersonID = ? AND PersonType = 'Camper'").run(id);
-        db.prepare("DELETE FROM Waitlists       WHERE CamperID = ?").run(id);
-        db.prepare("DELETE FROM Attendance      WHERE CamperID = ?").run(id);
-        db.prepare("DELETE FROM EarlyDismissals WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM Schedules        WHERE PersonID = ? AND PersonType = 'Camper'").run(id);
+        db.prepare("DELETE FROM Waitlists        WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM Attendance       WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM EarlyDismissals  WHERE CamperID = ?").run(id);
         db.prepare("DELETE FROM CamperHomeGroups WHERE CamperID = ?").run(id);
-        db.prepare("DELETE FROM Campers         WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM ScheduleChanges  WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM ScheduledPickups WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM NurseLog         WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM CaseLog          WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM Campers          WHERE CamperID = ?").run(id);
     })();
     res.redirect('/search');
 });
