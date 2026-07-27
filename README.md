@@ -309,7 +309,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | 🚗 **Pickup [time]** | A scheduled pickup has been entered for this camper (yellow badge, clickable to see pickup time and notes) |
 | ✓ **Seen Earlier** | Camper was marked present on a different roster earlier in the same session |
 | 🏕️ **Field Trip** | Shown on SPLIT AM specialty sheets when the group has been marked as on a field trip; individual SPLIT campers appearing on class sheets show a bus icon next to their name |
-| 👕 **Shirt Size / ×Quantity** | Monday AM Home Group sheets only, main camp campers (Red/Carolina/Green/Navy) only. Shows the camper's shirt size and how many shirts to hand out (registered weeks + 1, capped at 5) |
+| 👕 **Shirt Size / ×Quantity** | Monday AM sheets only (Home Group sheets for main camp, specialty sheets for KP/LP/SPLIT/SPRC/Swim). Shows the camper's shirt size and how many shirts to hand out (registered weeks + 1, capped at 5) |
 | 👕 **Shirts Received** | Replaces the size/quantity pills once the camper already picked up shirts during an earlier, completed week. Click it to reveal the size and quantity again |
 | 🍱 **Camp Lunch** | Lunch Home Group sheets only. Shown when the camper is signed up for a camp-provided lunch |
 | ⚠️ **Allergy Meal** | Lunch Home Group sheets only. Shown when the camper needs an allergy meal |

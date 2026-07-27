@@ -139,11 +139,12 @@ function parseSessionWeeks(codes) {
     return weeks.sort((a, b) => a - b);
 }
 
-// Shirt order info for a main-camp camper: how many shirts to hand out (session count + 1,
-// capped at 5 — the max days in a camp week) and whether they already received shirts during
-// an earlier, already-completed week (i.e. their earliest registered week precedes the active one).
+// Shirt order info for a main-camp or specialty-camp camper: how many shirts to hand out
+// (session count + 1, capped at 5 — the max days in a camp week) and whether they already
+// received shirts during an earlier, already-completed week (i.e. their earliest registered
+// week precedes the active one).
 function getShirtInfo(camper, activeWeek) {
-    if (!MAIN_CAMP_COLORS.has(camper.HomeGroupColor)) return null;
+    if (!MAIN_CAMP_COLORS.has(camper.HomeGroupColor) && !SPECIALTY_CAMP_COLORS.includes(camper.HomeGroupColor)) return null;
     const weeks = parseSessionWeeks(camper.SessionCodes);
     if (weeks.length === 0) return null;
     return {
@@ -4568,12 +4569,16 @@ app.post('/camper/:id/update', (req, res) => {
 app.post('/camper/:id/delete', (req, res) => {
     const id = req.params.id;
     db.transaction(() => {
-        db.prepare("DELETE FROM Schedules       WHERE PersonID = ? AND PersonType = 'Camper'").run(id);
-        db.prepare("DELETE FROM Waitlists       WHERE CamperID = ?").run(id);
-        db.prepare("DELETE FROM Attendance      WHERE CamperID = ?").run(id);
-        db.prepare("DELETE FROM EarlyDismissals WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM Schedules        WHERE PersonID = ? AND PersonType = 'Camper'").run(id);
+        db.prepare("DELETE FROM Waitlists        WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM Attendance       WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM EarlyDismissals  WHERE CamperID = ?").run(id);
         db.prepare("DELETE FROM CamperHomeGroups WHERE CamperID = ?").run(id);
-        db.prepare("DELETE FROM Campers         WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM ScheduleChanges  WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM ScheduledPickups WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM NurseLog         WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM CaseLog          WHERE CamperID = ?").run(id);
+        db.prepare("DELETE FROM Campers          WHERE CamperID = ?").run(id);
     })();
     res.redirect('/search');
 });
@@ -7028,7 +7033,7 @@ app.get('/attendance/specialty/:color/:session', (req, res) => {
     // PM excludes Half Day campers — they leave midday (Specialty Half Day session)
     const halfDayFilter = session === 'pm' ? "AND COALESCE(cwd.ScheduleType,'') != 'Half Day'" : '';
     const campers = db.prepare(`
-        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize,
+        SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Grade, c.ShirtSize, c.SessionCodes,
                cwd.HomeGroupColor, cwd.CampLunch, cwd.ExtendedHours,
                cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM, cwd.ScheduleType
         FROM Campers c
@@ -7036,6 +7041,9 @@ app.get('/attendance/specialty/:color/:session', (req, res) => {
         WHERE cwd.HomeGroupColor = ? ${halfDayFilter}
         ORDER BY c.LastName, c.FirstName
     `).all(aw, color);
+
+    // Shirt size/quantity pills: AM specialty attendance on Mondays only (same rule as main camp).
+    const showShirtInfo = session === 'am' && isMonday(date);
 
     const absentAMSet = new Set();
     if (showAmIndicator) {
@@ -7059,17 +7067,22 @@ app.get('/attendance/specialty/:color/:session', (req, res) => {
     const nurseAMSet3 = getNurseAMSet(date);
     const caseLogSet3 = getCaseLogSet(date);
     const pickupMap3 = getScheduledPickupMap(date);
-    const roster = campers.map(c => ({
-        ...c,
-        currentStatus: statusMap[c.CamperID] || null,
-        absentAM: absentAMSet.has(c.CamperID),
-        nurseAM: nurseAMSet3.has(c.CamperID),
-        caseLog: caseLogSet3.has(c.CamperID),
-        dismissed: dismissedSet.has(c.CamperID),
-        seenEarlier: seenEarlierSet.has(c.CamperID),
-        scheduledPickup: pickupMap3[c.CamperID] || null,
-        halfDay: session === 'am' && c.ScheduleType === 'Half Day'
-    }));
+    const roster = campers.map(c => {
+        const shirtInfo = showShirtInfo ? getShirtInfo(c, aw) : null;
+        return {
+            ...c,
+            currentStatus: statusMap[c.CamperID] || null,
+            absentAM: absentAMSet.has(c.CamperID),
+            nurseAM: nurseAMSet3.has(c.CamperID),
+            caseLog: caseLogSet3.has(c.CamperID),
+            dismissed: dismissedSet.has(c.CamperID),
+            seenEarlier: seenEarlierSet.has(c.CamperID),
+            scheduledPickup: pickupMap3[c.CamperID] || null,
+            halfDay: session === 'am' && c.ScheduleType === 'Half Day',
+            shirtQty: shirtInfo?.shirtQty ?? null,
+            shirtsReceived: shirtInfo?.shirtsReceived ?? false
+        };
+    });
 
     const isSplitAM = color === 'SPLIT' && session === 'am';
     const fieldTripActive = isSplitAM
