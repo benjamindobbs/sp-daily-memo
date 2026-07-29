@@ -8068,6 +8068,46 @@ function buildCoverageCandidates(period, side, week, excludeCounselorId) {
     };
 }
 
+// Candidate pool of other Unit Leaders / Sports Leaders for covering a Unit Leader's own
+// period — two separate, first-listed buckets (Unit Leaders then Sports Leaders) ahead of the
+// usual 3 (correct side / swim / opposite side), only built when the out person is themselves
+// a Unit Leader. Neither role is scheduled through CounselorWeekSchedules, so their current
+// assignment is looked up the same way getCounselorPeriodsForWeek() does for non-Counselor roles.
+function buildLeadershipCandidates(role, period, week, excludeCounselorId) {
+    const pool = db.prepare(
+        "SELECT CounselorID, FirstName, LastName FROM Counselors WHERE StaffRole = ? AND CounselorID != ? ORDER BY LastName, FirstName"
+    ).all(role, excludeCounselorId);
+
+    const currentAssignment = db.prepare(`
+        SELECT ActivityName FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ? AND PeriodNumber = ?
+        UNION
+        SELECT ActivityName FROM CounselorScheduleAssignments WHERE PersonID = ? AND WeekNumber = ? AND PeriodNumber = ? AND PersonType IN ('Instructor','Staff')
+    `);
+    const classHeadcount = db.prepare(`
+        SELECT COUNT(*) AS n FROM (
+            SELECT CounselorID AS id FROM CounselorWeekSchedules WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ?
+            UNION
+            SELECT StaffID AS id FROM StaffWeekSchedules WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
+            UNION
+            SELECT PersonID AS id FROM CounselorScheduleAssignments WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE AND PersonType IN ('Instructor','Staff')
+        )
+    `);
+    const classEnrollment = db.prepare(
+        "SELECT PreliminaryEnrollment FROM WeeklyOfferings WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ?"
+    );
+
+    return pool.map(c => {
+        const cur = currentAssignment.get(c.CounselorID, week, period, c.CounselorID, week, period);
+        if (!cur) return { ...c, currentActivity: null, currentHeadcount: 0, currentEnrollment: null };
+        return {
+            ...c,
+            currentActivity: cur.ActivityName,
+            currentHeadcount: classHeadcount.get(week, period, cur.ActivityName, week, period, cur.ActivityName, week, period, cur.ActivityName)?.n || 0,
+            currentEnrollment: classEnrollment.get(week, period, cur.ActivityName)?.PreliminaryEnrollment ?? null
+        };
+    });
+}
+
 // One card per period the out-counselor is assigned that week, each carrying its 3 candidate
 // buckets and (on a re-visit) whatever was already saved for that date/period.
 function buildCoverageCards(outCounselorId, staffRole, week, date) {
@@ -8108,6 +8148,8 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
         const side = db.prepare("SELECT SideOfCamp FROM Activities WHERE Name = ?").get(p.ActivityName)?.SideOfCamp || 'Sports';
         const { correctSide, swim, oppositeSide } = buildCoverageCandidates(p.PeriodNumber, side, week, outCounselorId);
         swim.forEach(c => { c.sendToSports = sendToSportsByPeriod[p.PeriodNumber]?.has(c.CounselorID) || false; });
+        const unitLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Unit Leader', p.PeriodNumber, week, outCounselorId) : [];
+        const sportsLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Sports Leader', p.PeriodNumber, week, outCounselorId) : [];
         const existing = existingByPeriod[p.PeriodNumber] || null;
         const counselorNames = classAssigned
             .all(week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName)
@@ -8116,7 +8158,7 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
         return {
             periodNumber: p.PeriodNumber,
             activityName: p.ActivityName,
-            side, correctSide, swim, oppositeSide,
+            side, unitLeaders, sportsLeaders, correctSide, swim, oppositeSide,
             counselorNames, enrollment,
             savedCoveringCounselorId: existing?.CoveringCounselorID || null,
             savedSkipped: existing?.Skipped === 1

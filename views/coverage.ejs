@@ -127,6 +127,24 @@
                         <select name="coveringCounselorId" id="cover-<%= card.periodNumber %>"
                                 class="cov-select <%= card.savedSkipped ? 'cov-skipped' : '' %>">
                             <option value="">— Select covering counselor —</option>
+                            <% if (card.unitLeaders && card.unitLeaders.length > 0) { %>
+                            <optgroup label="Unit Leaders">
+                                <% card.unitLeaders.forEach(function(c) { %>
+                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    </option>
+                                <% }) %>
+                            </optgroup>
+                            <% } %>
+                            <% if (card.sportsLeaders && card.sportsLeaders.length > 0) { %>
+                            <optgroup label="Sports Leaders">
+                                <% card.sportsLeaders.forEach(function(c) { %>
+                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    </option>
+                                <% }) %>
+                            </optgroup>
+                            <% } %>
                             <% if (card.correctSide.length > 0) { %>
                             <optgroup label="Correct Side (<%= card.side %>)">
                                 <% card.correctSide.forEach(function(c) { %>
