@@ -2733,17 +2733,22 @@
             const prefMap  = {};
             PREFERENCES.forEach(p => { prefMap[p.CounselorID] = p; });
 
-            // Collect the rebuild pool: counselors currently assigned to any unlocked target-side class
-            const rebuildPoolIds = new Set();
-            OFFERINGS.forEach((act, idx) => {
-                if (act.SideOfCamp !== targetSide || lockedOfferings.has(idx)) return;
-                state[idx].counselors.forEach(id => { if (id) rebuildPoolIds.add(id); });
+            // Rebuild pool: every working counselor eligible for targetSide by schedule type in
+            // at least one period — mirrors buildSchedule's full pool (getAssignablePool()) instead
+            // of only counselors already assigned there, so idle/unassigned counselors get pulled
+            // in too, not just reshuffled among the ones already placed on this side.
+            const rebuildPool = getAssignablePool().filter(c => {
+                const sel   = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
+                const sched = sel ? sel.value : (c.ScheduleType || '');
+                for (let p = 1; p <= 6; p++) {
+                    if (isCounselorAvailableFor(sched, p, targetSide)) return true;
+                }
+                return false;
             });
-            if (rebuildPoolIds.size === 0) {
-                statusEl.textContent = `No counselors assigned to unlocked ${targetSide} classes to rebuild.`;
+            if (rebuildPool.length === 0) {
+                statusEl.textContent = `No counselors eligible for ${targetSide} to rebuild.`;
                 return;
             }
-            const rebuildPool = getAssignablePool().filter(c => rebuildPoolIds.has(c.CounselorID));
             statusEl.textContent = `Rebuilding ${targetSide}…`;
 
             // Clear unlocked target-side counselors only; autoCalculateSlots recalculates empty arrays.
