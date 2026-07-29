@@ -2273,10 +2273,10 @@
         // fix single-gender classes by swapping a counselor with another class in
         // the same period+side (respecting variety, Go Girl, and the donor's own
         // split). Returns offering indexes still violating afterwards.
-        function enforceGenderSplit() {
+        function enforceGenderSplit(sides = ['Sports', 'Enrichment']) {
             const violations = [];
             for (let period = 1; period <= 6; period++) {
-                for (const side of ['Sports', 'Enrichment']) {
+                for (const side of sides) {
                     const idxs = [];
                     OFFERINGS.forEach((act, idx) => {
                         if (act.PeriodNumber === period && act.SideOfCamp === side) idxs.push(idx);
@@ -2936,7 +2936,21 @@
                 });
                 const preferred = shuffle(eligible.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
                 const nonPref   = shuffle(eligible.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
-                const pool = mode === 'pref' ? [...preferred] : [...preferred, ...nonPref];
+                let pool = mode === 'pref' ? [...preferred] : [...preferred, ...nonPref];
+
+                // Gender split: filling the LAST open slot of a 2+ class that is
+                // single-gender so far → prefer the missing gender if available.
+                if (pool.length > 1 &&
+                    state[bestIdx].counselors.length >= 2 &&
+                    state[bestIdx].counselors.filter(id => id === null).length === 1) {
+                    const { m, f } = genderMix(bestIdx);
+                    const need = (m > 0 && f === 0) ? 'F' : (f > 0 && m === 0) ? 'M' : null;
+                    if (need) {
+                        const genderPool = pool.filter(c => GENDER_BY_ID[c.CounselorID] === need);
+                        if (genderPool.length) pool = genderPool;
+                    }
+                }
+
                 if (pool.length === 0) {
                     state[bestIdx].counselors[slotPos] = -1;
                 } else {
@@ -2954,30 +2968,35 @@
                 state[idx].counselors = state[idx].counselors.map(id => id === -1 ? null : id);
             });
 
-            // Triple-period sync
-            const tripleGroups = {};
-            OFFERINGS.forEach((act, idx) => {
-                if (act.SideOfCamp !== targetSide || !act.ActivityName.toLowerCase().includes('triple period')) return;
-                if (!tripleGroups[act.ActivityName]) tripleGroups[act.ActivityName] = [];
-                tripleGroups[act.ActivityName].push(idx);
-            });
-            for (const [, indices] of Object.entries(tripleGroups)) {
-                if (indices.length < 2) continue;
-                indices.sort((a, b) => OFFERINGS[a].PeriodNumber - OFFERINGS[b].PeriodNumber);
-                const maxSlots = Math.max(...indices.map(i => state[i].counselors.length));
-                for (let slot = 0; slot < maxSlots; slot++) {
-                    const cId = state[indices[0]].counselors[slot] ?? null;
-                    if (cId === null) continue;
-                    for (const idx of indices.slice(1)) {
-                        if (state[idx].counselors.length <= slot) {
-                            const mc = manualCounts[idx]?.counselors;
-                            if (mc == null || state[idx].counselors.length < mc) state[idx].counselors.push(cId);
-                        } else {
-                            state[idx].counselors[slot] = cId;
+            // Triple-period sync: propagate the lowest period's counselors to the rest of
+            // the group (target side only). Re-run after Fill extras/Phase 3 too, since
+            // those can add counselors to just one period of a triple-period group.
+            const syncTriplePeriodsForSide = () => {
+                const tripleGroups = {};
+                OFFERINGS.forEach((act, idx) => {
+                    if (act.SideOfCamp !== targetSide || !act.ActivityName.toLowerCase().includes('triple period')) return;
+                    if (!tripleGroups[act.ActivityName]) tripleGroups[act.ActivityName] = [];
+                    tripleGroups[act.ActivityName].push(idx);
+                });
+                for (const [, indices] of Object.entries(tripleGroups)) {
+                    if (indices.length < 2) continue;
+                    indices.sort((a, b) => OFFERINGS[a].PeriodNumber - OFFERINGS[b].PeriodNumber);
+                    const maxSlots = Math.max(...indices.map(i => state[i].counselors.length));
+                    for (let slot = 0; slot < maxSlots; slot++) {
+                        const cId = state[indices[0]].counselors[slot] ?? null;
+                        if (cId === null) continue;
+                        for (const idx of indices.slice(1)) {
+                            if (state[idx].counselors.length <= slot) {
+                                const mc = manualCounts[idx]?.counselors;
+                                if (mc == null || state[idx].counselors.length < mc) state[idx].counselors.push(cId);
+                            } else {
+                                state[idx].counselors[slot] = cId;
+                            }
                         }
                     }
                 }
-            }
+            };
+            syncTriplePeriodsForSide();
 
             // Fill extras — target side, rebuild pool only
             for (let period = 1; period <= 6; period++) {
@@ -3097,6 +3116,9 @@
                     if (act.PeriodNumber !== p3 || act.SideOfCamp !== targetSide) return;
                     if (/hartt.+chamber/i.test(act.ActivityName) || /learning.zone/i.test(act.ActivityName)) return;
                     if (lockedOfferings.has(idx)) return; // skip locked
+                    // Skip triple-period classes: syncTriplePeriodsForSide() below overwrites
+                    // their slots from the first period, evicting force-placed counselors
+                    if (act.ActivityName.toLowerCase().includes('triple period')) return;
                     tIdxs.push(idx);
                 });
                 if (tIdxs.length === 0) continue;
@@ -3126,6 +3148,16 @@
                 }
             }
 
+            // Re-sync triple periods once more: Fill extras / Phase 3 above may have added
+            // counselors to only one period of a triple-period group.
+            syncTriplePeriodsForSide();
+
+            // Gender split: fix single-gender 2+ classes via swaps, target side only —
+            // enforceGenderSplit() naturally never crosses sides (it swaps within the same
+            // period+side group), but scoping to [targetSide] keeps it from re-touching the
+            // untouched side's classes at all.
+            const genderViolations = enforceGenderSplit([targetSide]);
+
             // Compact: remove nulls, enforce enrichment minimums, sync count inputs (skip locked)
             OFFERINGS.forEach((act, idx) => {
                 if (act.SideOfCamp !== targetSide || lockedOfferings.has(idx)) return;
@@ -3143,7 +3175,12 @@
             renderAllFromState();
             updateAllCounters();
             updateGroupCounters();
-            statusEl.textContent = `${targetSide} rebuilt from ${rebuildPool.length} counselor${rebuildPool.length !== 1 ? 's' : ''}. Review and save when ready.`;
+            let doneMsg = `${targetSide} rebuilt from ${rebuildPool.length} counselor${rebuildPool.length !== 1 ? 's' : ''}. Review and save when ready.`;
+            if (genderViolations.length > 0) {
+                const names = genderViolations.map(i => `P${OFFERINGS[i].PeriodNumber} ${OFFERINGS[i].ActivityName}`).join(', ');
+                doneMsg += ` Gender split unmet: ${names}.`;
+            }
+            statusEl.textContent = doneMsg;
         }
 
         // ── Assign Schedule Types only ───────────────────────────────────────────
