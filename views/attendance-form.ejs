@@ -55,7 +55,7 @@
             <% } %>
             <% if (counselorRows.length > 0) { %>
             <div><span style="font-weight:600; color:var(--text-muted);">Counselors:</span>
-                 <%= counselorRows.map(c => c.FirstName + ' ' + c.LastName).join(', ') %></div>
+                 <%= counselorRows.map(c => c.FirstName + ' ' + c.LastName + (c.covering ? ' (covering for ' + c.coveringForName + ')' : '')).join(', ') %></div>
             <% } %>
         </div>
         <% } %>

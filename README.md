@@ -8,6 +8,7 @@
   - [Session Management & Active Weeks](#session-management--active-weeks)
   - [Counselor Scheduling](#counselor-scheduling)
   - [Swim Scheduling](#swim-scheduling)
+  - [Coverage](#coverage)
   - [Editing Campers & Staff Profiles](#editing-campers--staff-profiles)
   - [Attendance Sheet Symbols](#attendance-sheet-symbols)
 - [Feature Map](#feature-map)
@@ -256,6 +257,30 @@ Repeat steps 4–9 independently for each week — nothing carries forward autom
 
 ---
 
+### Coverage
+
+The Coverage tool is at `/coverage` — use it when a counselor or staff member is out for the day and their classes need a temporary substitute. It never edits the underlying week schedule, so it reverts automatically once the covered day passes.
+
+#### Workflow
+
+1. Pick the **date** (defaults to today) and the **counselor/staff member who is out**.
+2. One card appears per period they're assigned that week, showing their original class, everyone currently assigned to it (including the out counselor themself), and how many campers are enrolled.
+3. For each period, either:
+   - Check **"Skip this period"** if no coverage is needed, or
+   - Pick a **covering counselor** from the dropdown. When covering a **Unit Leader**, the first two groups are **Unit Leaders** (every other Unit Leader) and, directly below, **Sports Leaders** — both listed ahead of the usual groups below. When covering an **Instructor**, the first group is **Instructors** — every other instructor who has at least one class scheduled this week (instructors with no classes at all this week aren't offered). The dropdown is then split into:
+     - **Correct Side** — counselors already eligible for that class's Sports/Enrichment side that period
+     - **Swim Counselors** — highlighted green if the Swim Scheduling page currently has them free ("Send to Sports")
+     - **Opposite Side** — everyone else
+   
+   Every name in the dropdown shows what that counselor is **currently** assigned that period — their class name, how many other counselors are already on it, and how many campers are enrolled — so you can judge the cost of pulling them off it before picking them.
+4. Click **Save Coverage**. A summary of the day's coverage (across every counselor who's out) appears above the form, with a **Remove** button on each entry.
+
+#### Where the substitute shows up
+
+Once saved, the covering counselor's name replaces the out counselor's for that specific date (tagged "covering for X") on: Class Roster, Master Schedule, the camper's own schedule, that day's Attendance sheet, and both counselors' Daily Assignments cards. It also appears in the covering counselor's own filtered Attendance view (Staff view, filtered to "my classes") alongside their normal classes, tagged with a green **Covering** badge — and if they also have their own normal class in that same period, that card is greyed out too and tagged **"Covering [class] this period"**, so there's only ever one obvious card to act on per period. On the out counselor's own filtered Attendance view, that same period's original class is greyed out and tagged **"Covered by X"** (or **"No coverage needed"** if the period was skipped instead of assigned). CSV exports and printable rosters are not affected — they reflect the static weekly plan.
+
+---
+
 ### Editing Campers & Staff Profiles
 
 All profile editing requires **admin view**. Staff view shows the same pages read-only.
@@ -366,6 +391,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | Audit Roster | `/audit` | Flags scheduling issues: missing grades, duplicate assignments, unassigned campers, classes with no counselor. Each section has a Show/Hide toggle; collapsed sections are remembered per browser. |
 | Swim Levels | `/swim-levels` | Camper swim level tracking. Printable version at `/reports/swim-levels` (Settings → Print Reports). See [Swim Scheduling](#swim-scheduling) above for full detail. |
 | Swim Scheduling | `/swim-scheduling` | Staffing schedule for Rec Swim lifeguards, Swim Lessons pool guards, and skill-level lesson groups — separate from the main Counselor Scheduling builder and only applies to Swim Counselors. See [Swim Scheduling](#swim-scheduling) above for full detail. |
+| Coverage | `/coverage` | Temporarily reassign a counselor/staff member's classes for a single day when they're out. See [Coverage](#coverage) above for full detail. |
 
 ---
 

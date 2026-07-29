@@ -239,3 +239,65 @@ A **Deny** button (`POST /remove-waitlist/:id`) is available on both the "Ready 
 | Counselor Schedule CSV | `GET /export-counselor-schedule` | `CounselorScheduleAssignments` + `Counselors` |
 | Staff Schedule CSV | `GET /export-staff-schedule` | `CounselorScheduleAssignments` + `Counselors` |
 | Master Schedule CSV | `GET /export-master-schedule` | `WeeklyOfferings` + `CounselorScheduleAssignments` |
+
+CSV exports and the printable `/reports/attendance-rosters` roster are **not** patched by Coverage (below) — they reflect the static weekly plan, not a specific calendar day.
+
+---
+
+## Coverage
+
+Day-specific substitute assignment (`/coverage`, `views/coverage.ejs`) for when a counselor or staff member is out for the day. Unlike everything else on this page, Coverage is scoped to one calendar date, not a week — it never edits `CounselorWeekSchedules`/`CounselorScheduleAssignments`, it's a pure overlay resolved at render time, so it reverts automatically once the covered day passes.
+
+### `CounselorCoverage` table
+
+```sql
+CREATE TABLE CounselorCoverage (
+    CoverageID          INTEGER PRIMARY KEY AUTOINCREMENT,
+    Date                TEXT    NOT NULL,
+    WeekNumber          INTEGER NOT NULL,
+    OutCounselorID      INTEGER NOT NULL,
+    PeriodNumber        INTEGER NOT NULL,
+    ActivityName        TEXT    NOT NULL,       -- snapshot of the out counselor's original class
+    CoveringCounselorID INTEGER,                -- NULL when Skipped
+    Skipped             INTEGER NOT NULL DEFAULT 0,  -- explicit "no coverage needed" for this period
+    CreatedAt           DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt           DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (Date, OutCounselorID, PeriodNumber),
+    FOREIGN KEY (OutCounselorID) REFERENCES Counselors(CounselorID) ON DELETE CASCADE,
+    FOREIGN KEY (CoveringCounselorID) REFERENCES Counselors(CounselorID) ON DELETE SET NULL
+);
+```
+
+### Workflow (`GET /coverage`)
+
+1. Pick a date (defaults to today) and the counselor/staff member who's out.
+2. Their period assignments for the active/prep week are pulled the same way their own Daily Assignments card does — `CounselorWeekSchedules` for `Counselor`/`Swim Counselor` roles, `StaffWeekSchedules` ∪ `CounselorScheduleAssignments` for `Instructor`/`Unit Leader`/`Sports Leader` (`getCounselorPeriodsForWeek()`). One card is rendered per period, each showing everyone currently assigned to that class (the out counselor always included, regardless of role — same 3-source union as Class Roster/Master Schedule) and its `WeeklyOfferings.PreliminaryEnrollment` camper count.
+3. Each card has a **"Skip this period"** checkbox (no coverage needed that period) and a covering-counselor `<select>`, built by `buildCoverageCandidates(period, side, week, excludeCounselorId)` plus, for leadership/instructor roles, `buildLeadershipCandidates(role, period, week, excludeCounselorId, requireScheduledThisWeek)`:
+   - **Unit Leaders** — shown first, and only when the out person's own `StaffRole` is `Unit Leader`: every other `StaffRole='Unit Leader'`, via `buildLeadershipCandidates('Unit Leader', ...)`.
+   - **Sports Leaders** — shown directly below Unit Leaders, under the same condition (out person is a `Unit Leader`): every `StaffRole='Sports Leader'`, via `buildLeadershipCandidates('Sports Leader', ...)`.
+   - **Instructors** — shown first, and only when the out person's own `StaffRole` is `Instructor`: every other `StaffRole='Instructor'` **who has at least one period on the schedule this week** (`buildLeadershipCandidates('Instructor', ..., true)` — the trailing `true` adds an `EXISTS` filter against `StaffWeekSchedules`/`CounselorScheduleAssignments` for the week, so idle/roster-only instructors with zero classes aren't offered as candidates).
+
+     None of these three roles are scheduled through `CounselorWeekSchedules`, so `buildLeadershipCandidates()` looks up their current assignment the same way `getCounselorPeriodsForWeek()` does for non-Counselor roles (`StaffWeekSchedules` ∪ `CounselorScheduleAssignments`).
+   - **Correct side** — `StaffRole='Counselor'` whose effective `ScheduleType` (`COALESCE(CounselorWeekAttributes.ScheduleType, Counselors.ScheduleType)`) is eligible for the class's `Activities.SideOfCamp` during that period, per `isCounselorAvailableForSide()` — a server-side port of `isCounselorAvailableFor()` from `views/counselor-scheduling.ejs`.
+   - **Swim** — every `StaffRole='Swim Counselor'`, green-highlighted when they're in that week/period's Send to Sports list (`getSendToSportsSets()` reuses `getSwimSchedulingData()` + `attachSendToSports()` from [Swim Scheduling](./Swim-Scheduling.md#send-to-sports) as-is).
+   - **Opposite side** — `StaffRole='Counselor'` who fail the eligibility check above.
+
+   Every candidate (in any bucket, never filtered out) is annotated with **their own current assignment that period** — activity name, how many counselors are already on it, and its enrollment — so the admin can judge the cost of pulling them off it. The out counselor themself is excluded from every bucket. The Unit Leaders/Sports Leaders/Instructors buckets are additive — covering one of those roles still also shows the normal correct-side/swim/opposite-side buckets after them, unchanged. Unit Leaders+Sports Leaders and Instructors are mutually exclusive (keyed off the out person's own `StaffRole`), so a card only ever shows one of the two special-role bucket sets.
+4. **Save** (`POST /coverage/save`) upserts one `CounselorCoverage` row per period (parallel arrays, same convention as the swim-scheduling guard checklists); a period with neither a covering counselor nor Skip checked has its row cleared instead. Re-visiting the same date/counselor pre-fills every card from the existing rows.
+5. A per-date summary card lists every `CounselorCoverage` row for the selected date across all out counselors, each with a **Remove** button (`POST /coverage/clear-row`).
+
+### Rendering the overlay elsewhere
+
+`getCoverageForDate(date)` returns a `OutCounselorID|PeriodNumber → substitute` map (non-skipped, assigned rows only). `applyCoverageOverlay(rows, coverageMap, period)` takes a list of counselor rows for one class/period (each needing a `CounselorID` field) and swaps the out counselor for their substitute, tagging the sub with `covering: true` / `coveringForName` for display. Applied in:
+
+- **Class Roster, Master Schedule, Camper Profile** — none of these take a `date` param; they implicitly render "right now," so the overlay is always resolved against `todayStr()`.
+- **Attendance class sheet** (`/attendance/class/:period/:activity`) — already carries `?date=`, so the overlay is resolved against that exact date, not just today.
+- **Daily Assignments card** (`/counselor-profile/:id`) — the out counselor's own period card shows "Covered by X" or "no coverage needed" for today; the covering counselor's own profile gets an additive banner listing what they're covering, since they still keep their own normal assignment too (an intentional double-booking that day).
+- **Attendance overview, staff self-filtered view** (`/attendance` with a `selectedCounselor` cookie set and `showAll` not `1`) — `allowedClasses` (the set of `period|activityName` the filter shows) additionally includes any class the covering counselor is covering that date, alongside their real `CounselorWeekSchedules`/`StaffWeekSchedules`/`CounselorScheduleAssignments`-sourced classes, so the covered class isn't invisible to them when checking their own day. The flat session list then annotates each class card:
+  - A class the viewer is covering gets a green "Covering" badge.
+  - A class the viewer is out of (they're the `OutCounselorID` on a non-skipped `CounselorCoverage` row) is greyed out (`att-flat-covered-away`) and tagged "Covered by X", or "No coverage needed" when `Skipped=1`.
+  - If the viewer is covering a *different* class that same period, their own normal class card for that period is also greyed out and tagged "Covering `<ActivityName>` this period" — so only one card per period ever looks actionable, avoiding the ambiguity of two live-looking cards for the same clock block (`coveringByPeriod` lookup, keyed by period only, catches this alongside the exact-match `coveringByKey`).
+
+  This annotation only applies to the filtered flat view — the unfiltered "Show All Sessions" admin view is untouched.
+
+A substitute can be picked even if they already have their own class that period — nothing blocks it, matching how an intentional Send to Sports overlap already can happen; they'll simply show up assigned to both classes for that day.

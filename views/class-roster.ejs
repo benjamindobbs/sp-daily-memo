@@ -95,7 +95,7 @@
                             <% counselors.forEach(function(c) { %>
                                 <a href="/counselor-profile/<%= c.CounselorID %>" class="counselor-item">
                                     <span class="tag <%= c.HomeGroupColor %>" style="font-size: 0.65rem; padding: 2px 7px;"><%= c.HomeGroupColor %></span>
-                                    <div><div class="counselor-name-text"><%= c.FirstName %> <%= c.LastName %></div><div class="counselor-group-label"><%= c.HomeGroupColor %> Group</div></div>
+                                    <div><div class="counselor-name-text"><%= c.FirstName %> <%= c.LastName %></div><div class="counselor-group-label"><%= c.covering ? ('Covering for ' + c.coveringForName) : (c.HomeGroupColor + ' Group') %></div></div>
                                 </a>
                             <% }); %>
                         </div>

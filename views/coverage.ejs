@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coverage | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+    <style>
+        .cov-card { margin-bottom: 16px; }
+        .cov-card-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+        .cov-skip-label { display:flex; align-items:center; gap:6px; font-size:0.82rem; margin-bottom:8px; color:var(--text-muted); }
+        .cov-select { width:100%; padding:8px 10px; border:1px solid var(--border-color); border-radius:8px; font-size:0.85rem; }
+        .cov-select.cov-skipped { opacity:0.45; pointer-events:none; }
+        .send-to-sports-option { background:#dcfce7; }
+        .cov-summary-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border-bottom:1px solid var(--border-color); font-size:0.85rem; flex-wrap:wrap; }
+        .cov-summary-row:last-child { border-bottom:none; }
+        .cov-arrow { color:var(--text-muted); }
+    </style>
+</head>
+<body>
+
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/counselor-scheduling" class="nav-btn">&#128203; Counselor Scheduling</a>
+        <a href="/coverage" class="nav-btn primary">&#128260; Coverage</a>
+    </nav>
+
+    <div class="container-md" style="max-width: 1000px;">
+
+        <div class="page-header" style="margin-bottom: 16px;">
+            <div>
+                <h1 style="margin:0;">Coverage</h1>
+                <p class="text-muted" style="margin:4px 0 0;">Temporarily reassign a counselor's classes for a single day. Never edits the underlying week schedule — reverts automatically once the day passes.</p>
+            </div>
+        </div>
+
+        <% if (message) { %>
+            <div class="alert" style="<%= /error|missing/i.test(message) ? 'background:#fee2e2; color:#991b1b; border-color:#fca5a5;' : '' %>">
+                <%= message.replace(/\+/g, ' ') %>
+            </div>
+        <% } %>
+
+        <form method="GET" class="card" style="margin-bottom:16px; display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+                <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Date</label>
+                <input type="date" name="date" value="<%= date %>" class="form-input" style="padding:8px 10px;">
+            </div>
+            <div style="display:flex; flex-direction:column; gap:4px;">
+                <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600;">Counselor / Staff Out</label>
+                <select name="counselorId" class="form-input" style="padding:8px 10px; min-width:220px;">
+                    <option value="">— Select who is out —</option>
+                    <% allCounselors.forEach(function(c) { %>
+                        <option value="<%= c.CounselorID %>" <%= outCounselorId === c.CounselorID ? 'selected' : '' %>>
+                            <%= c.FirstName %> <%= c.LastName %> (<%= c.StaffRole %>)
+                        </option>
+                    <% }) %>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Load</button>
+        </form>
+
+        <% if (todaysCoverage.length > 0) { %>
+        <div class="card cov-card">
+            <h3 style="margin:0 0 10px; font-size:0.95rem;">Coverage for <%= date %></h3>
+            <% todaysCoverage.forEach(function(r) { %>
+                <div class="cov-summary-row">
+                    <strong>Period <%= r.PeriodNumber %></strong>
+                    <span><%= r.OutFirstName %> <%= r.OutLastName %></span>
+                    <span class="cov-arrow">&rarr;</span>
+                    <% if (r.Skipped) { %>
+                        <span style="color:var(--text-muted); font-style:italic;">No coverage needed</span>
+                    <% } else { %>
+                        <span><%= r.CoverFirstName %> <%= r.CoverLastName %></span>
+                    <% } %>
+                    <span style="color:var(--text-muted); font-size:0.8rem;">(<%= r.ActivityName %>)</span>
+                    <form method="POST" action="/coverage/clear-row" style="margin-left:auto;">
+                        <input type="hidden" name="coverageId" value="<%= r.CoverageID %>">
+                        <input type="hidden" name="date" value="<%= date %>">
+                        <input type="hidden" name="outCounselorId" value="<%= outCounselorId || '' %>">
+                        <button type="submit" class="btn btn-small" style="background:#fee2e2; color:#991b1b;">Remove</button>
+                    </form>
+                </div>
+            <% }) %>
+        </div>
+        <% } %>
+
+        <% if (outCounselorId && !outCounselor) { %>
+            <div class="alert" style="background:#fee2e2; color:#991b1b; border-color:#fca5a5;">Counselor not found.</div>
+        <% } else if (outCounselor && cards.length === 0) { %>
+            <p class="card" style="text-align:center; color:var(--text-muted);">
+                <%= outCounselor.FirstName %> <%= outCounselor.LastName %> has no assigned classes for the active week.
+            </p>
+        <% } else if (outCounselor) { %>
+            <form method="POST" action="/coverage/save">
+                <input type="hidden" name="date" value="<%= date %>">
+                <input type="hidden" name="weekNumber" value="<%= planWeek %>">
+                <input type="hidden" name="outCounselorId" value="<%= outCounselorId %>">
+
+                <h3 style="margin:18px 0 10px;"><%= outCounselor.FirstName %> <%= outCounselor.LastName %> — <%= date %></h3>
+
+                <% cards.forEach(function(card) { %>
+                    <div class="card cov-card">
+                        <input type="hidden" name="periodNumber" value="<%= card.periodNumber %>">
+                        <input type="hidden" name="activityName" value="<%= card.activityName %>">
+                        <input type="hidden" name="skipped" id="skipped-<%= card.periodNumber %>" value="<%= card.savedSkipped ? '1' : '0' %>">
+
+                        <div class="cov-card-header">
+                            <strong>Period <%= card.periodNumber %></strong>
+                            <span><%= card.activityName %></span>
+                            <span class="side-pill <%= card.side === 'Sports' ? 'side-sports' : 'side-enrichment' %>"><%= card.side %></span>
+                        </div>
+                        <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:10px;">
+                            <span>&#128101; <%= card.counselorNames.length > 0 ? card.counselorNames.join(', ') : 'No counselors currently assigned' %></span>
+                            <span style="margin-left:10px;">&#127959;&#65039; <%= card.enrollment ?? '?' %> camper<%= card.enrollment === 1 ? '' : 's' %> enrolled</span>
+                        </div>
+
+                        <label class="cov-skip-label">
+                            <input type="checkbox" onchange="
+                                document.getElementById('skipped-<%= card.periodNumber %>').value = this.checked ? '1' : '0';
+                                document.getElementById('cover-<%= card.periodNumber %>').classList.toggle('cov-skipped', this.checked);
+                            " <%= card.savedSkipped ? 'checked' : '' %>>
+                            Skip this period — no coverage needed
+                        </label>
+
+                        <select name="coveringCounselorId" id="cover-<%= card.periodNumber %>"
+                                class="cov-select <%= card.savedSkipped ? 'cov-skipped' : '' %>">
+                            <option value="">— Select covering counselor —</option>
+                            <% if (card.unitLeaders && card.unitLeaders.length > 0) { %>
+                            <optgroup label="Unit Leaders">
+                                <% card.unitLeaders.forEach(function(c) { %>
+                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    </option>
+                                <% }) %>
+                            </optgroup>
+                            <% } %>
+                            <% if (card.sportsLeaders && card.sportsLeaders.length > 0) { %>
+                            <optgroup label="Sports Leaders">
+                                <% card.sportsLeaders.forEach(function(c) { %>
+                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    </option>
+                                <% }) %>
+                            </optgroup>
+                            <% } %>
+                            <% if (card.instructors && card.instructors.length > 0) { %>
+                            <optgroup label="Instructors">
+                                <% card.instructors.forEach(function(c) { %>
+                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    </option>
+                                <% }) %>
+                            </optgroup>
+                            <% } %>
+                            <% if (card.correctSide.length > 0) { %>
+                            <optgroup label="Correct Side (<%= card.side %>)">
+                                <% card.correctSide.forEach(function(c) { %>
+                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    </option>
+                                <% }) %>
+                            </optgroup>
+                            <% } %>
+                            <% if (card.swim.length > 0) { %>
+                            <optgroup label="Swim Counselors">
+                                <% card.swim.forEach(function(c) { %>
+                                    <option value="<%= c.CounselorID %>" class="<%= c.sendToSports ? 'send-to-sports-option' : '' %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.sendToSports ? ' ⭐ Send to Sports' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    </option>
+                                <% }) %>
+                            </optgroup>
+                            <% } %>
+                            <% if (card.oppositeSide.length > 0) { %>
+                            <optgroup label="Opposite Side">
+                                <% card.oppositeSide.forEach(function(c) { %>
+                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    </option>
+                                <% }) %>
+                            </optgroup>
+                            <% } %>
+                        </select>
+                    </div>
+                <% }) %>
+
+                <button type="submit" class="btn btn-primary">Save Coverage</button>
+            </form>
+        <% } %>
+
+    </div>
+</body>
+</html>

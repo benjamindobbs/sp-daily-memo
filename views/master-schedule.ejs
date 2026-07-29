@@ -180,8 +180,9 @@
                             <div class="counselor-chips">
                                 <% cls.counselors.forEach(function(c) { %>
                                     <a href="/counselor-profile/<%= c.CounselorID %>"
-                                       class="counselor-chip <%= c.HomeGroupColor || 'no-group' %>">
-                                        <%= c.FirstName %> <%= c.LastName %>
+                                       class="counselor-chip <%= c.HomeGroupColor || 'no-group' %>"
+                                       title="<%= c.covering ? ('Covering for ' + c.coveringForName) : '' %>">
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.covering ? ' ↔' : '' %>
                                     </a>
                                 <% }); %>
                                 <% if (cls.counselors.length === 0) { %>

@@ -618,6 +618,25 @@ Default coordinates for both maps are seeded (and re-applied via upsert) on ever
 
 ---
 
+## CounselorCoverage
+
+Day-specific substitute overlay on top of `CounselorWeekSchedules`/`CounselorScheduleAssignments` — see [Scheduling System](./Scheduling-System.md#coverage). Unlike every other scheduling table, this is scoped to a calendar `Date`, not just a week; it's a pure overlay resolved at render time and never edits the base schedule tables.
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `CoverageID` | INTEGER | PK, AUTOINCREMENT | |
+| `Date` | TEXT | NOT NULL | ISO date the coverage applies to |
+| `WeekNumber` | INTEGER | NOT NULL | Week the out counselor's schedule was pulled from |
+| `OutCounselorID` | INTEGER | NOT NULL, FK → `Counselors` ON DELETE CASCADE | Who is out |
+| `PeriodNumber` | INTEGER | NOT NULL | Clock block 1–6 |
+| `ActivityName` | TEXT | NOT NULL | Snapshot of the out counselor's original class that period |
+| `CoveringCounselorID` | INTEGER | FK → `Counselors` ON DELETE SET NULL | NULL when `Skipped` |
+| `Skipped` | INTEGER | NOT NULL, DEFAULT `0` | `1` = admin explicitly marked this period as needing no coverage |
+| `CreatedAt` / `UpdatedAt` | DATETIME | DEFAULT `CURRENT_TIMESTAMP` | |
+| UNIQUE | | `(Date, OutCounselorID, PeriodNumber)` | Re-saving the same date/counselor/period upserts in place |
+
+---
+
 ## LockedOfferings
 
 Server-side persistence for locked class offerings in the counselor scheduler. A locked offering is excluded from auto-build and rebuild passes. Previously lock state lived only in client-side JavaScript; this table makes locks survive page refreshes.
