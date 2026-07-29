@@ -188,7 +188,7 @@ The Coverage tool is at `/coverage` — use it when a counselor or staff member 
 2. One card appears per period they're assigned that week, showing their original class, everyone currently assigned to it (including the out counselor themself), and how many campers are enrolled.
 3. For each period, either:
    - Check **"Skip this period"** if no coverage is needed, or
-   - Pick a **covering counselor** from the dropdown. When covering a **Unit Leader**, the first two groups are **Unit Leaders** (every other Unit Leader) and, directly below, **Sports Leaders** — both listed ahead of the usual groups below. The dropdown is then split into:
+   - Pick a **covering counselor** from the dropdown. When covering a **Unit Leader**, the first two groups are **Unit Leaders** (every other Unit Leader) and, directly below, **Sports Leaders** — both listed ahead of the usual groups below. When covering an **Instructor**, the first group is **Instructors** — every other instructor who has at least one class scheduled this week (instructors with no classes at all this week aren't offered). The dropdown is then split into:
      - **Correct Side** — counselors already eligible for that class's Sports/Enrichment side that period
      - **Swim Counselors** — highlighted green if the Swim Scheduling page currently has them free ("Send to Sports")
      - **Opposite Side** — everyone else

@@ -145,6 +145,15 @@
                                 <% }) %>
                             </optgroup>
                             <% } %>
+                            <% if (card.instructors && card.instructors.length > 0) { %>
+                            <optgroup label="Instructors">
+                                <% card.instructors.forEach(function(c) { %>
+                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    </option>
+                                <% }) %>
+                            </optgroup>
+                            <% } %>
                             <% if (card.correctSide.length > 0) { %>
                             <optgroup label="Correct Side (<%= card.side %>)">
                                 <% card.correctSide.forEach(function(c) { %>

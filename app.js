@@ -8068,15 +8068,27 @@ function buildCoverageCandidates(period, side, week, excludeCounselorId) {
     };
 }
 
-// Candidate pool of other Unit Leaders / Sports Leaders for covering a Unit Leader's own
-// period — two separate, first-listed buckets (Unit Leaders then Sports Leaders) ahead of the
-// usual 3 (correct side / swim / opposite side), only built when the out person is themselves
-// a Unit Leader. Neither role is scheduled through CounselorWeekSchedules, so their current
+// Candidate pool of other Unit Leaders / Sports Leaders / Instructors for covering one of
+// their own — first-listed bucket(s) ahead of the usual 3 (correct side / swim / opposite
+// side), only built when the out person is themselves that role. Passing
+// `requireScheduledThisWeek` (used for Instructors) additionally excludes anyone with zero
+// periods on the schedule this week, so idle/roster-only instructors aren't offered as
+// candidates. None of these roles are scheduled through CounselorWeekSchedules, so current
 // assignment is looked up the same way getCounselorPeriodsForWeek() does for non-Counselor roles.
-function buildLeadershipCandidates(role, period, week, excludeCounselorId) {
-    const pool = db.prepare(
-        "SELECT CounselorID, FirstName, LastName FROM Counselors WHERE StaffRole = ? AND CounselorID != ? ORDER BY LastName, FirstName"
-    ).all(role, excludeCounselorId);
+function buildLeadershipCandidates(role, period, week, excludeCounselorId, requireScheduledThisWeek = false) {
+    const scheduledFilter = requireScheduledThisWeek ? `
+        AND EXISTS (
+            SELECT 1 FROM StaffWeekSchedules sws WHERE sws.StaffID = c.CounselorID AND sws.WeekNumber = ?
+            UNION
+            SELECT 1 FROM CounselorScheduleAssignments csa WHERE csa.PersonID = c.CounselorID AND csa.WeekNumber = ? AND csa.PersonType IN ('Instructor','Staff')
+        )
+    ` : '';
+    const poolParams = requireScheduledThisWeek ? [role, excludeCounselorId, week, week] : [role, excludeCounselorId];
+    const pool = db.prepare(`
+        SELECT c.CounselorID, c.FirstName, c.LastName FROM Counselors c
+        WHERE c.StaffRole = ? AND c.CounselorID != ? ${scheduledFilter}
+        ORDER BY c.LastName, c.FirstName
+    `).all(...poolParams);
 
     const currentAssignment = db.prepare(`
         SELECT ActivityName FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ? AND PeriodNumber = ?
@@ -8150,6 +8162,7 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
         swim.forEach(c => { c.sendToSports = sendToSportsByPeriod[p.PeriodNumber]?.has(c.CounselorID) || false; });
         const unitLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Unit Leader', p.PeriodNumber, week, outCounselorId) : [];
         const sportsLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Sports Leader', p.PeriodNumber, week, outCounselorId) : [];
+        const instructors = staffRole === 'Instructor' ? buildLeadershipCandidates('Instructor', p.PeriodNumber, week, outCounselorId, true) : [];
         const existing = existingByPeriod[p.PeriodNumber] || null;
         const counselorNames = classAssigned
             .all(week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName)
@@ -8158,7 +8171,7 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
         return {
             periodNumber: p.PeriodNumber,
             activityName: p.ActivityName,
-            side, unitLeaders, sportsLeaders, correctSide, swim, oppositeSide,
+            side, unitLeaders, sportsLeaders, instructors, correctSide, swim, oppositeSide,
             counselorNames, enrollment,
             savedCoveringCounselorId: existing?.CoveringCounselorID || null,
             savedSkipped: existing?.Skipped === 1
