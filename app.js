@@ -6917,12 +6917,16 @@ app.get('/attendance', (req, res) => {
             .all(date, filterCid)
             .forEach(r => { outCoverageByKey[`${r.PeriodNumber}|${r.ActivityName.toLowerCase()}`] = r; });
         const coveringByKey = {};
+        const coveringByPeriod = {};
         db.prepare(`
             SELECT cc.PeriodNumber, cc.ActivityName, out.FirstName AS OutFirstName, out.LastName AS OutLastName
             FROM CounselorCoverage cc JOIN Counselors out ON out.CounselorID = cc.OutCounselorID
             WHERE cc.Date = ? AND cc.CoveringCounselorID = ? AND cc.Skipped = 0
         `).all(date, filterCid)
-            .forEach(r => { coveringByKey[`${r.PeriodNumber}|${r.ActivityName.toLowerCase()}`] = r; });
+            .forEach(r => {
+                coveringByKey[`${r.PeriodNumber}|${r.ActivityName.toLowerCase()}`] = r;
+                coveringByPeriod[r.PeriodNumber] = r;
+            });
         const coverNameCache = {};
         const coverName = id => {
             if (!(id in coverNameCache)) {
@@ -6946,6 +6950,13 @@ app.get('/attendance', (req, res) => {
                 }
                 if (coveringRow) {
                     return { ...s, covering: true, coveringForName: `${coveringRow.OutFirstName} ${coveringRow.OutLastName}` };
+                }
+                // This counselor's own normal class for the period — but they're covering a
+                // different class that same period, so they won't actually be here. Grey it
+                // out too so there's only one obvious card to act on per period.
+                const coveringElsewhere = coveringByPeriod[s.filterPeriod];
+                if (coveringElsewhere) {
+                    return { ...s, coveringElsewhere: true, coveringElsewhereActivity: coveringElsewhere.ActivityName };
                 }
                 return s;
             });

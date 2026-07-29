@@ -136,10 +136,10 @@
             busAM.forEach(s => flatItems.push({ icon: '&#128652;', cat: 'Bus AM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
             hgAM.forEach(s => flatItems.push({ icon: '&#127968;', cat: 'Home Group AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             spAM.forEach(s => flatItems.push({ icon: '&#11088;', cat: 'Specialty AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
-            classSessions.filter(s => parseInt(s.periodKey) <= 3).forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null, covering: s.covering, coveringForName: s.coveringForName, coveredAway: s.coveredAway, coveredByName: s.coveredByName }));
+            classSessions.filter(s => parseInt(s.periodKey) <= 3).forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null, covering: s.covering, coveringForName: s.coveringForName, coveredAway: s.coveredAway, coveredByName: s.coveredByName, coveringElsewhere: s.coveringElsewhere, coveringElsewhereActivity: s.coveringElsewhereActivity }));
             hgLunch.forEach(s => flatItems.push({ icon: '&#127869;', cat: 'Home Group Lunch', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             spHD.forEach(s => flatItems.push({ icon: '&#128337;', cat: 'Specialty Half Day', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
-            classSessions.filter(s => parseInt(s.periodKey) > 3).forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null, covering: s.covering, coveringForName: s.coveringForName, coveredAway: s.coveredAway, coveredByName: s.coveredByName }));
+            classSessions.filter(s => parseInt(s.periodKey) > 3).forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null, covering: s.covering, coveringForName: s.coveringForName, coveredAway: s.coveredAway, coveredByName: s.coveredByName, coveringElsewhere: s.coveringElsewhere, coveringElsewhereActivity: s.coveringElsewhereActivity }));
             spPM.forEach(s => flatItems.push({ icon: '&#11088;', cat: 'Specialty PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             hgPM.forEach(s => flatItems.push({ icon: '&#127968;', cat: 'Home Group PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             busPM.forEach(s => flatItems.push({ icon: '&#128652;', cat: 'Bus PM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
@@ -147,7 +147,7 @@
         %>
         <div class="att-flat-list">
             <% flatItems.forEach(function(item) { %>
-            <a href="<%= item.link %>" class="att-flat-item<%= item.coveredAway ? ' att-flat-covered-away' : '' %>">
+            <a href="<%= item.link %>" class="att-flat-item<%= (item.coveredAway || item.coveringElsewhere) ? ' att-flat-covered-away' : '' %>">
                 <div>
                     <div class="att-flat-cat"><%- item.icon %> <%= item.cat %></div>
                     <div class="att-flat-name">
@@ -160,6 +160,9 @@
                         <% } %>
                         <% if (item.coveredAway) { %>
                             <span class="badge-covered-away"><%= item.coveredByName ? ('Covered by ' + item.coveredByName) : 'No coverage needed' %></span>
+                        <% } %>
+                        <% if (item.coveringElsewhere) { %>
+                            <span class="badge-covered-away">Covering <%= item.coveringElsewhereActivity %> this period</span>
                         <% } %>
                     </div>
                 </div>
