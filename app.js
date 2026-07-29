@@ -465,7 +465,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/counselor-view', '/promotions',
     '/promote-waitlist', '/force-promote-waitlist', '/promote-all', '/remove-waitlist', '/upload-campers', '/upload-campers-schedule', '/upload-counselors',
     '/upload-bus-am', '/upload-bus-pm', '/upload-kp-lp',
-    '/upload-staff', '/upload-staff-contacts', '/upload-instructors', '/upload-activity-rules', '/add-activity',
+    '/upload-staff', '/upload-staff-contacts', '/upload-camper-contacts', '/upload-instructors', '/upload-activity-rules', '/add-activity',
     '/swim-levels', '/upload-swim-levels', '/swim-scheduling',
     '/upload-icp-notes', '/upload-camper-notes',
     '/delete-activity', '/update-activity', '/add-activity-period-group',
@@ -1185,6 +1185,19 @@ try {
     const camperNameCols = db.prepare("PRAGMA table_info(Campers)").all().map(c => c.name);
     if (!camperNameCols.includes('PreferredName')) db.exec("ALTER TABLE Campers ADD COLUMN PreferredName TEXT");
 } catch(e) { console.error('[migration] Campers.PreferredName:', e.message); }
+
+// Parent/guardian contact info from the "Person and Parent Contacts" export. Admin-only
+// display on the camper profile (see /camper/:id and camper-profile.ejs).
+try {
+    const camperContactCols = db.prepare("PRAGMA table_info(Campers)").all().map(c => c.name);
+    const contactCols = [
+        'P1FirstName', 'P1LastName', 'P1CellPhone', 'P1HomePhone', 'P1WorkPhone',
+        'P2FirstName', 'P2LastName', 'P2CellPhone', 'P2HomePhone', 'P2WorkPhone',
+    ];
+    for (const col of contactCols) {
+        if (!camperContactCols.includes(col)) db.exec(`ALTER TABLE Campers ADD COLUMN ${col} TEXT`);
+    }
+} catch(e) { console.error('[migration] Campers parent contact columns:', e.message); }
 
 try {
     const cwaCols = db.prepare("PRAGMA table_info(CounselorWeekAttributes)").all().map(c => c.name);
@@ -4563,6 +4576,8 @@ app.get('/camper/:id', (req, res) => {
         const camper = db.prepare(`
             SELECT c.CamperID, c.FirstName, c.LastName, c.PreferredName, c.Age, c.Grade, c.ShirtSize,
                    c.HomeGroupCounselorID,
+                   c.P1FirstName, c.P1LastName, c.P1CellPhone, c.P1HomePhone, c.P1WorkPhone,
+                   c.P2FirstName, c.P2LastName, c.P2CellPhone, c.P2HomePhone, c.P2WorkPhone,
                    cwd.HomeGroupColor, cwd.CampLunch, cwd.ExtendedHours,
                    cwd.BusRoute, cwd.BusRidesAM, cwd.BusRidesPM, cwd.BusStopAM, cwd.BusStopPM,
                    COALESCE(
@@ -5986,6 +6001,60 @@ app.post('/upload-staff-contacts', upload.single('file'), (req, res) => {
     if (unmatched.length) msg += `.+No+match:+${encodeURIComponent(unmatched.join(', '))}`;
     if (ambiguous.length) msg += `.+Multiple+matches+skipped:+${encodeURIComponent(ambiguous.join(', '))}`;
     res.redirect(`/settings?message=${msg}`);
+});
+
+// 1c2. IMPORT PARENT/GUARDIAN CONTACTS — "Person and Parent Contacts" export. Standard CSV
+// with one row per camper. Matches each camper by full name; only updates campers who already
+// exist (never creates new records). Admin-only display: see /camper/:id and camper-profile.ejs.
+app.post('/upload-camper-contacts', upload.single('file'), (req, res) => {
+    if (!req.file) return res.redirect('/settings?message=No+file+uploaded');
+    const results = [];
+    fs.createReadStream(req.file.path).pipe(csv()).on('data', d => results.push(d)).on('end', () => {
+        fs.unlinkSync(req.file.path);
+
+        const trim = v => (v && typeof v === 'string') ? v.trim() : '';
+        const findCampers = db.prepare("SELECT CamperID FROM Campers WHERE UPPER(FirstName || ' ' || LastName) = UPPER(?)");
+        const updContacts = db.prepare(`
+            UPDATE Campers SET
+                P1FirstName = ?, P1LastName = ?, P1CellPhone = ?, P1HomePhone = ?, P1WorkPhone = ?,
+                P2FirstName = ?, P2LastName = ?, P2CellPhone = ?, P2HomePhone = ?, P2WorkPhone = ?
+            WHERE CamperID = ?
+        `);
+
+        let updated = 0;
+        const unmatched = [], ambiguous = [];
+        db.transaction(() => {
+            for (const row of results) {
+                const firstName = trim(row['First Name']);
+                const lastName  = trim(row['Last Name']);
+                if (!firstName && !lastName) continue;
+                const fullName = `${firstName} ${lastName}`;
+
+                const matches = findCampers.all(fullName);
+                if (matches.length === 0) { unmatched.push(fullName); continue; }
+                if (matches.length > 1)  { ambiguous.push(fullName); continue; }
+
+                updContacts.run(
+                    trim(row['P1 First Name']), trim(row['P1 Last Name']),
+                    trim(row['P1 Cell Phone']), trim(row['P1 Home Phone']), trim(row['P1 Work Phone']),
+                    trim(row['P2 First Name']), trim(row['P2 Last Name']),
+                    trim(row['P2 Cell Phone']), trim(row['P2 Home Phone']), trim(row['P2 Work Phone']),
+                    matches[0].CamperID
+                );
+                updated++;
+            }
+        })();
+
+        // Cap list length so the redirect URL can't blow past browser/server limits on a large roster.
+        const summarize = list => list.length > 20
+            ? `${list.slice(0, 20).join(', ')}, and ${list.length - 20} more`
+            : list.join(', ');
+
+        let msg = `Updated+contacts+for+${updated}+campers`;
+        if (unmatched.length) msg += `.+No+match:+${encodeURIComponent(summarize(unmatched))}`;
+        if (ambiguous.length) msg += `.+Multiple+matches+skipped:+${encodeURIComponent(summarize(ambiguous))}`;
+        res.redirect(`/settings?message=${msg}`);
+    }).on('error', () => res.redirect('/settings?message=Error+reading+file.'));
 });
 
 // 1c. IMPORT SWIM LEVELS — "Group Attendance Sheet with Swim Level" export from camp

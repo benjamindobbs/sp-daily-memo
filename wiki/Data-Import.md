@@ -71,6 +71,22 @@ The CSR-300: Staff Profile export is **not** a normal tabular CSV — it's one v
 
 ---
 
+## Parent/Guardian Contacts
+
+**Route:** `POST /upload-camper-contacts`
+**File:** `views/settings.ejs`
+**Report:** Person and Parent Contacts export
+**Parser:** `csv-parser`, standard tabular CSV (one row per camper) — not week-scoped.
+
+**What it does:**
+- Matches each row's camper (`First Name`/`Last Name` columns — the child, not the household) against `Campers` via `UPPER(FirstName || ' ' || LastName) = UPPER(?)`.
+- Zero or multiple matches are skipped and listed in the redirect summary (capped at 20 names each, `+N more`), same convention as the CSR-300/Swim Levels importers above.
+- Overwrites `P1FirstName`/`P1LastName`/`P1CellPhone`/`P1HomePhone`/`P1WorkPhone` and the `P2*` equivalents from the matching CSV columns — a full re-upload always reflects the export exactly, including clearing a field that's now blank.
+
+**Does not:** create new `Campers` rows, or write anything week-scoped. Rendered on `/camper/:id` in an admin-only card — see [Database-Schema](./Database-Schema.md#campers).
+
+---
+
 ## Swim Levels
 
 **Route:** `POST /upload-swim-levels`

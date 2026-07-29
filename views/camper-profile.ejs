@@ -152,6 +152,34 @@
                         </button>
                     </form>
                 </div>
+
+                <% var hasP1 = camper.P1FirstName || camper.P1LastName || camper.P1CellPhone || camper.P1HomePhone || camper.P1WorkPhone; %>
+                <% var hasP2 = camper.P2FirstName || camper.P2LastName || camper.P2CellPhone || camper.P2HomePhone || camper.P2WorkPhone; %>
+                <div class="card" style="margin-top:20px;">
+                    <h3 style="margin:0 0 16px;">Parent/Guardian Contacts</h3>
+                    <% if (!hasP1 && !hasP2) { %>
+                        <p class="text-muted" style="font-size:0.85rem; margin:0;">No contact info on file.</p>
+                    <% } else { %>
+                        <% if (hasP1) { %>
+                        <div style="margin-bottom:<%= hasP2 ? '16px' : '0' %>;">
+                            <div class="info-label" style="margin-bottom:4px;">Parent 1</div>
+                            <div style="font-size:0.9rem; font-weight:600;"><%= [camper.P1FirstName, camper.P1LastName].filter(Boolean).join(' ') || '—' %></div>
+                            <% if (camper.P1CellPhone) { %><div style="font-size:0.85rem;">&#128241; Cell: <a href="tel:<%= camper.P1CellPhone %>"><%= camper.P1CellPhone %></a></div><% } %>
+                            <% if (camper.P1HomePhone) { %><div style="font-size:0.85rem;">&#127968; Home: <a href="tel:<%= camper.P1HomePhone %>"><%= camper.P1HomePhone %></a></div><% } %>
+                            <% if (camper.P1WorkPhone) { %><div style="font-size:0.85rem;">&#128188; Work: <a href="tel:<%= camper.P1WorkPhone %>"><%= camper.P1WorkPhone %></a></div><% } %>
+                        </div>
+                        <% } %>
+                        <% if (hasP2) { %>
+                        <div>
+                            <div class="info-label" style="margin-bottom:4px;">Parent 2</div>
+                            <div style="font-size:0.9rem; font-weight:600;"><%= [camper.P2FirstName, camper.P2LastName].filter(Boolean).join(' ') || '—' %></div>
+                            <% if (camper.P2CellPhone) { %><div style="font-size:0.85rem;">&#128241; Cell: <a href="tel:<%= camper.P2CellPhone %>"><%= camper.P2CellPhone %></a></div><% } %>
+                            <% if (camper.P2HomePhone) { %><div style="font-size:0.85rem;">&#127968; Home: <a href="tel:<%= camper.P2HomePhone %>"><%= camper.P2HomePhone %></a></div><% } %>
+                            <% if (camper.P2WorkPhone) { %><div style="font-size:0.85rem;">&#128188; Work: <a href="tel:<%= camper.P2WorkPhone %>"><%= camper.P2WorkPhone %></a></div><% } %>
+                        </div>
+                        <% } %>
+                    <% } %>
+                </div>
             </div>
             <% } else { %>
             <!-- Left column: read-only details (staff view) -->

@@ -27,6 +27,10 @@ Primary record for every enrolled camper.
 | `BusStopAM` | TEXT | | **[migrated]** — raw ACR-005 `AM Bus` cell text. Legacy/vestigial — retained from the old stop-name bus flow but no longer read by any live feature (the Bus Route Audit that used it has been retired). |
 | `BusStopPM` | TEXT | | **[migrated]** — raw ACR-005 `PM Bus` cell text. Legacy/vestigial (see `BusStopAM`). |
 | `SessionCodes` | TEXT | | **[migrated]** — raw ACR-005 `Sessions` cell (e.g. `"SP01/SP02/SP03"`), one `SPnn` code per registered week. Used to compute the shirt-order quantity and "Shirts Received" flag on the Monday AM Home Group attendance sheet — see [Attendance-and-Health](./Attendance-and-Health.md). |
+| `P1FirstName`, `P1LastName`, `P1CellPhone`, `P1HomePhone`, `P1WorkPhone` | TEXT | | **[migrated]** — Parent 1 name and phone numbers, from the Parent/Guardian Contacts import. Not week-scoped. |
+| `P2FirstName`, `P2LastName`, `P2CellPhone`, `P2HomePhone`, `P2WorkPhone` | TEXT | | **[migrated]** — Parent 2 name and phone numbers, same import. |
+
+> **Parent/guardian contacts:** Rendered on the camper profile (`/camper/:id`) in a dedicated card, gated on `viewMode === 'admin'` in `camper-profile.ejs` — the fields are fetched into the `camper` object regardless of view mode, but the server-rendered template omits the card entirely in Staff View, so the data never reaches the client's HTML when not in admin view. See [Data-Import](./Data-Import.md).
 
 > **Bus route source:** All bus data (`BusRoute`, `BusRidesAM`, `BusRidesPM`) comes from the **ACR-132 (AM Bus) / ACR-133 (PM Bus)** imports, which list every camper under an explicit `Bus N` section — so routes are unambiguous and no manual audit is needed. Neither ACR-005 nor ACR-255 writes bus fields. The previously ambiguous stops (West Hartford = Bus 2/5, Wolcott Park / Bishops Corner = Bus 3/4) are resolved directly by ACR-132/133; the old Bus Route Audit has been retired. See [Data-Import](./Data-Import.md).
 
