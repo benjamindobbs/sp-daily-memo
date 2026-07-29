@@ -6646,6 +6646,13 @@ app.get('/attendance', (req, res) => {
                 }
             }
         }
+        // Coverage: also surface any class this counselor is covering for someone else on
+        // this specific date, so it shows up in their filtered attendance view alongside
+        // their own normal classes.
+        const coverageRows = db.prepare(
+            "SELECT PeriodNumber, ActivityName FROM CounselorCoverage WHERE Date = ? AND CoveringCounselorID = ? AND Skipped = 0"
+        ).all(date, filterCid);
+        for (const r of coverageRows) allowedClasses.add(`${r.PeriodNumber}|${r.ActivityName.toLowerCase()}`);
     }
 
     // Homegroup sessions — grouped by counselor

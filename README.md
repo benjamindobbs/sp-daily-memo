@@ -198,7 +198,7 @@ The Coverage tool is at `/coverage` — use it when a counselor or staff member 
 
 #### Where the substitute shows up
 
-Once saved, the covering counselor's name replaces the out counselor's for that specific date (tagged "covering for X") on: Class Roster, Master Schedule, the camper's own schedule, that day's Attendance sheet, and both counselors' Daily Assignments cards. CSV exports and printable rosters are not affected — they reflect the static weekly plan.
+Once saved, the covering counselor's name replaces the out counselor's for that specific date (tagged "covering for X") on: Class Roster, Master Schedule, the camper's own schedule, that day's Attendance sheet, and both counselors' Daily Assignments cards. It also appears in the covering counselor's own filtered Attendance view (Staff view, filtered to "my classes") alongside their normal classes. CSV exports and printable rosters are not affected — they reflect the static weekly plan.
 
 ---
 
