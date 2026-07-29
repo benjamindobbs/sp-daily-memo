@@ -302,7 +302,7 @@ Notable migrations in order:
 | `PdfDocuments` created | PDF files stored as BLOBs in the database instead of the filesystem, so they survive server restarts. Any PDFs already in `uploads/` are migrated in automatically on first boot. |
 | `DirectorNotes.category` added | **[migrated]** — Adds tab-based categorization. Values: `director`, `camper`, `staff`, `timesheet`. Existing notes default to `director`. |
 | `Campers.BusRidesAM` / `BusRidesPM` added | **[migrated]** — Per-direction bus ride flags. Default `1` (rides). Set from the ACR-005 `AM Bus` / `PM Bus` columns (see the bus model in the ACR-005 section). |
-| `Campers.BusStopAM` / `BusStopPM` added | **[migrated]** — Raw ACR-005 stop text, retained so the Bus Route Audit can resolve ambiguous stops (West Hartford 2/5, Wolcott Park / Bishops Corner 3/4). |
+| `Campers.BusStopAM` / `BusStopPM` added | **[migrated]** — Raw ACR-005 stop text from the old stop-name bus flow. Now legacy/vestigial: bus routes come from ACR-132/133 (which resolve the ambiguous West Hartford 2/5 and Wolcott Park / Bishops Corner 3/4 stops directly), and the Bus Route Audit that read these columns has been retired. |
 | `Campers.SessionCodes` added | **[migrated]** — Raw ACR-005 `Sessions` cell text (e.g. `"SP01/SP02/SP03"`). Drives the shirt-order pills on the Monday AM Home Group attendance sheet. |
 | `AppConfig` created | Key/value store for persistent server config (currently VAPID keys for web push). Auto-generates VAPID keys on first startup. |
 | `PushSubscriptions` created | Stores web push subscriptions for counselor attendance nudge notifications. One row per browser endpoint. |

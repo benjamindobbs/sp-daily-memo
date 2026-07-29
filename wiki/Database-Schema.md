@@ -18,17 +18,17 @@ Primary record for every enrolled camper.
 | `Grade` | INTEGER | | **[migrated]** — same source; copied from `Age` on migration |
 | `HomeGroupColor` | TEXT | | `Red`, `Carolina`, `Green`, `Navy`, `LilPlace`, `KinderPlace`, `SPLIT`, `SPRC`, `Swim` |
 | `HomeGroupCounselorID` | INTEGER | | FK → `Counselors.CounselorID` (soft reference, not enforced) |
-| `BusRoute` | TEXT | | Stored as a string (e.g. `"3"`). Null = no bus. |
+| `BusRoute` | TEXT | | Stored as a string (e.g. `"3"`). Null = no bus. Set from the ACR-132/133 bus imports. |
 | `ExtendedHours` | TEXT | | `AM`, `PM`, `AM+PM`, or NULL |
 | `CampLunch` | TEXT | DEFAULT `'No'` | `No – Packed`, `Yes`, `Allergy Meal` |
 | `ShirtSize` | TEXT | | **[migrated]** — from ACR-005 import |
-| `BusRidesAM` | INTEGER | DEFAULT `1` | **[migrated]** — `1` = rides the AM bus, `0` = does not. Set from ACR-005 `AM Bus` column. |
-| `BusRidesPM` | INTEGER | DEFAULT `1` | **[migrated]** — `1` = rides the PM bus, `0` = does not. Set from ACR-005 `PM Bus` column. |
-| `BusStopAM` | TEXT | | **[migrated]** — raw ACR-005 `AM Bus` cell text. Used by the Bus Route Audit to resolve ambiguous stops. |
-| `BusStopPM` | TEXT | | **[migrated]** — raw ACR-005 `PM Bus` cell text. |
+| `BusRidesAM` | INTEGER | DEFAULT `1` | **[migrated]** — `1` = rides the AM bus, `0` = does not. Set from the ACR-132 (AM Bus) import. |
+| `BusRidesPM` | INTEGER | DEFAULT `1` | **[migrated]** — `1` = rides the PM bus, `0` = does not. Set from the ACR-133 (PM Bus) import. |
+| `BusStopAM` | TEXT | | **[migrated]** — raw ACR-005 `AM Bus` cell text. Legacy/vestigial — retained from the old stop-name bus flow but no longer read by any live feature (the Bus Route Audit that used it has been retired). |
+| `BusStopPM` | TEXT | | **[migrated]** — raw ACR-005 `PM Bus` cell text. Legacy/vestigial (see `BusStopAM`). |
 | `SessionCodes` | TEXT | | **[migrated]** — raw ACR-005 `Sessions` cell (e.g. `"SP01/SP02/SP03"`), one `SPnn` code per registered week. Used to compute the shirt-order quantity and "Shirts Received" flag on the Monday AM Home Group attendance sheet — see [Attendance-and-Health](./Attendance-and-Health.md). |
 
-> **Bus route source:** Main camp (Red/Carolina/Green/Navy) gets `BusRoute` from ACR-255's `Bus Number`. Specialty campers (KinderPlace/LilPlace/SPLIT/SPRC/Robotics) get it from the ACR-005 stop name; ambiguous stops (West Hartford = Bus 2/5, Wolcott Park / Bishops Corner = Bus 3/4) are left NULL and resolved in the [Bus Route Audit](./Data-Import.md#bus-route-audit). See [Data-Import](./Data-Import.md).
+> **Bus route source:** All bus data (`BusRoute`, `BusRidesAM`, `BusRidesPM`) comes from the **ACR-132 (AM Bus) / ACR-133 (PM Bus)** imports, which list every camper under an explicit `Bus N` section — so routes are unambiguous and no manual audit is needed. Neither ACR-005 nor ACR-255 writes bus fields. The previously ambiguous stops (West Hartford = Bus 2/5, Wolcott Park / Bishops Corner = Bus 3/4) are resolved directly by ACR-132/133; the old Bus Route Audit has been retired. See [Data-Import](./Data-Import.md).
 
 **Normalizations applied at startup:**
 - `BusRoute` values of `'null'`, `''`, or a color group name are cleared to NULL.
