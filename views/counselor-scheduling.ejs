@@ -2758,6 +2758,31 @@
                     calcSlots[idx] = state[idx].counselors.length;
             });
 
+            // Seed blockUsed from: other side AND locked target-side classes (all stay untouched).
+            // Built before the supply-aware redistribution below, which reads usedThisPeriod.
+            const blockUsed = {};
+            COUNSELORS.forEach(c => { blockUsed[c.CounselorID] = { am: new Set(), pm: new Set() }; });
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber) return;
+                if (act.SideOfCamp !== targetSide || lockedOfferings.has(idx)) {
+                    const block = act.PeriodNumber <= 3 ? 'am' : 'pm';
+                    state[idx].counselors.forEach(id => {
+                        if (id && blockUsed[id]) blockUsed[id][block].add(blockKey(act.ActivityName));
+                    });
+                }
+            });
+
+            // usedThisPeriod: pre-lock other-side AND locked target-side counselors; always lock staff
+            const usedThisPeriod = {};
+            for (let p = 1; p <= 6; p++) usedThisPeriod[p] = new Set();
+            OFFERINGS.forEach((act, idx) => {
+                if (!act.PeriodNumber) return;
+                if (act.SideOfCamp !== targetSide || lockedOfferings.has(idx)) {
+                    state[idx].counselors.forEach(id => { if (id) usedThisPeriod[act.PeriodNumber].add(id); });
+                }
+                state[idx].staff.forEach(id => { if (id) usedThisPeriod[act.PeriodNumber].add(id); });
+            });
+
             // Supply-aware redistribution: for each period, count how many rebuild-pool counselors
             // are actually available, and if that's less than total demand, redistribute slots
             // proportionally (by enrollment) so the greedy loop can fill every opened slot.
@@ -2819,30 +2844,6 @@
                     calcSlots[idx] = alloc[idx]; // update cap for fill phases
                 });
             }
-
-            // Seed blockUsed from: other side AND locked target-side classes (all stay untouched)
-            const blockUsed = {};
-            COUNSELORS.forEach(c => { blockUsed[c.CounselorID] = { am: new Set(), pm: new Set() }; });
-            OFFERINGS.forEach((act, idx) => {
-                if (!act.PeriodNumber) return;
-                if (act.SideOfCamp !== targetSide || lockedOfferings.has(idx)) {
-                    const block = act.PeriodNumber <= 3 ? 'am' : 'pm';
-                    state[idx].counselors.forEach(id => {
-                        if (id && blockUsed[id]) blockUsed[id][block].add(blockKey(act.ActivityName));
-                    });
-                }
-            });
-
-            // usedThisPeriod: pre-lock other-side AND locked target-side counselors; always lock staff
-            const usedThisPeriod = {};
-            for (let p = 1; p <= 6; p++) usedThisPeriod[p] = new Set();
-            OFFERINGS.forEach((act, idx) => {
-                if (!act.PeriodNumber) return;
-                if (act.SideOfCamp !== targetSide || lockedOfferings.has(idx)) {
-                    state[idx].counselors.forEach(id => { if (id) usedThisPeriod[act.PeriodNumber].add(id); });
-                }
-                state[idx].staff.forEach(id => { if (id) usedThisPeriod[act.PeriodNumber].add(id); });
-            });
 
             // Triple-period pre-fill (target side only)
             const tripleGroupsPre = {};

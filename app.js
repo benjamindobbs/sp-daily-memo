@@ -2854,7 +2854,54 @@ app.get('/audit', (req, res) => {
         ORDER BY a.Name
     `).all(activeWeek);
 
-    res.render('audit', { activeSession, alertMessage, noCounselor, missingSchedule, counselorMismatch, EXPECTED, suspects, allClassNames, unclassifiedActivities });
+    // Schedule rule violations: a duplicate class within the same AM (periods 1-3) or PM
+    // (periods 4-6) block, or more than 1 swim-variant class within a block — mirrors the
+    // scheduler's blockKey()/variety-rule intent (see views/counselor-scheduling.ejs), but
+    // checked against the actual saved CounselorWeekSchedules rather than re-simulating the
+    // build, so it also catches violations introduced by manual edits.
+    const scheduleRuleRows = db.prepare(`
+        SELECT cws.CounselorID, c.FirstName, c.LastName, cws.PeriodNumber, cws.ActivityName
+        FROM CounselorWeekSchedules cws
+        JOIN Counselors c ON c.CounselorID = cws.CounselorID
+        WHERE cws.WeekNumber = ?
+        ORDER BY c.LastName, c.FirstName, cws.PeriodNumber
+    `).all(activeWeek);
+    const byCounselorBlock = {};
+    scheduleRuleRows.forEach(r => {
+        const entry = (byCounselorBlock[r.CounselorID] ??= {
+            CounselorID: r.CounselorID, FirstName: r.FirstName, LastName: r.LastName, am: [], pm: []
+        });
+        entry[r.PeriodNumber <= 3 ? 'am' : 'pm'].push(r);
+    });
+    const scheduleRuleViolations = [];
+    for (const entry of Object.values(byCounselorBlock)) {
+        for (const block of ['am', 'pm']) {
+            const rows = entry[block];
+            const nameCounts = {};
+            rows.forEach(r => { nameCounts[r.ActivityName] = (nameCounts[r.ActivityName] || 0) + 1; });
+            const duplicateNames = Object.entries(nameCounts).filter(([, n]) => n > 1).map(([name]) => name);
+            const swimRows = rows.filter(r => /swim/i.test(r.ActivityName));
+
+            const issues = [];
+            if (duplicateNames.length > 0) {
+                issues.push(`Duplicate class: ${duplicateNames.join(', ')}`);
+            }
+            if (swimRows.length > 1) {
+                issues.push(`${swimRows.length} swim classes (max 1): ${swimRows.map(r => `P${r.PeriodNumber} ${r.ActivityName}`).join(', ')}`);
+            }
+            if (issues.length > 0) {
+                scheduleRuleViolations.push({
+                    CounselorID: entry.CounselorID,
+                    FirstName: entry.FirstName,
+                    LastName: entry.LastName,
+                    block: block.toUpperCase(),
+                    issues
+                });
+            }
+        }
+    }
+
+    res.render('audit', { activeSession, alertMessage, noCounselor, missingSchedule, counselorMismatch, EXPECTED, suspects, allClassNames, unclassifiedActivities, scheduleRuleViolations });
 });
 
 app.post('/set-activity-side', (req, res) => {
@@ -2916,7 +2963,10 @@ app.post('/merge-class', (req, res) => {
 // --- MASTER SCHEDULE ---
 app.get('/master-schedule', (req, res) => {
     try {
-        const isAdmin = req.cookies.adminAuth === 'true';
+        // Prep-week preview only applies while actually viewing as admin — an admin who has
+        // toggled to Staff View should see exactly what staff see (the active week), even
+        // though their adminAuth cookie is still set.
+        const isAdmin = req.cookies.adminAuth === 'true' && req.cookies.viewMode === 'admin';
         const aw = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
         const classes = db.prepare(`
             SELECT DISTINCT
@@ -3494,7 +3544,8 @@ app.get('/class-roster/:period/:activity', (req, res) => {
     try {
         const period      = parseInt(req.params.period);
         const rawActivity = req.params.activity;
-        const isAdmin    = req.cookies.adminAuth === 'true';
+        // See /master-schedule — prep-week preview only applies while actually viewing as admin.
+        const isAdmin    = req.cookies.adminAuth === 'true' && req.cookies.viewMode === 'admin';
         const activeWeek = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
 
         // If this activity is in a merge group and all members exist this period, show merged view
@@ -4401,7 +4452,8 @@ app.get('/faculty-summer', (req, res) => {
 });
 
 app.get('/counselor-profile/:id', (req, res) => {
-    const isAdmin = req.cookies.adminAuth === 'true';
+    // See /master-schedule — prep-week preview only applies while actually viewing as admin.
+    const isAdmin = req.cookies.adminAuth === 'true' && req.cookies.viewMode === 'admin';
     const aw = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
     const isPrepping = isAdmin && getPrepTargetWeek() === aw && aw !== getActiveWeek();
     const counselor = db.prepare(`

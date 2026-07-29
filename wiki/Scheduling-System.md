@@ -232,6 +232,21 @@ A **Deny** button (`POST /remove-waitlist/:id`) is available on both the "Ready 
 
 ---
 
+## Audit Schedule Rule Checks
+
+`GET /audit`'s **Duplicate / Swim Overload** card re-checks, against the actual saved `CounselorWeekSchedules` for the active/prep week, two of the rules the auto-builder is supposed to enforce at build time — so a violation introduced by a manual edit after the build (or by any other path that writes to the table) still gets caught, not just build-time mistakes.
+
+For each counselor, periods are split into the AM block (`PeriodNumber <= 3`) and PM block (`PeriodNumber > 3`), same boundary used everywhere else in the app (`scheduleTypeBusy()`, `getCounselorWaterBreakdown()`, etc.). Within each block independently:
+
+- **Duplicate class** — the same `ActivityName` appears more than once in that block. Unlike the day-level variety rule below, this does not collapse swim variants into one key — an exact repeated name is what's flagged here.
+- **Swim overload** — more than 1 class whose `ActivityName` matches `/swim/i` (e.g. `Rec Swim`, `Swim Lessons`) appears in that block. This catches two *different* swim classes stacked in the same block (e.g. Rec Swim period 1 + Swim Lessons period 2), which the duplicate-name check above wouldn't flag since the names differ.
+
+This mirrors, but is independent from, the auto-builder's own **variety rule** (`blockKey()`/`blockUsed`/`usedEitherBlock()` in `views/counselor-scheduling.ejs`, described under [Auto-builder](#counselor-scheduler-pipeline) above), which collapses all swim variants into one `'swim'` key and prevents a counselor from getting the same activity twice across the **whole day** (both blocks combined) during a fresh build. The audit check is narrower in scope (block-level, not whole-day) but reads the live data directly, so it's the source of truth for what's actually saved — including schedules built before the variety rule existed, edited by hand, or written by any path other than the auto-builder.
+
+Each violation row shows the counselor, which block (AM/PM), and the specific issue(s) found, with a link to their profile. No auto-fix — this is a report, not a repair tool; resolve violations by hand in Counselor Scheduling.
+
+---
+
 ## Exports
 
 | Export | Route | Source tables |

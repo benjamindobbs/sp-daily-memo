@@ -25,6 +25,8 @@ Set by `POST /choose-view`. Value is either `'admin'` or `'staff'`.
 
 Templates use `viewMode` to show or hide admin-only UI elements (edit forms, delete buttons, admin nav links) without a separate database lookup. A user in staff view visiting an admin URL directly would be stopped by route-level auth (below), not by `viewMode`.
 
+**The two cookies are independent, so all four combinations are real** — most notably, a logged-in admin who toggles to Staff View still carries `adminAuth=true` while `viewMode` reads `'staff'`. `/master-schedule`, `/class-roster/:period/:activity`, and `/counselor-profile/:id` check both cookies together (`adminAuth === 'true' && viewMode === 'admin'`) before showing prep-target-week data, specifically so that combination sees the active week — exactly what a real staff member sees — instead of leaking a prep-week preview into Staff View. See [Sessions and Weeks](./Sessions-and-Weeks.md#prep-target-week).
+
 ---
 
 ## Admin Authentication (`adminAuth` cookie)

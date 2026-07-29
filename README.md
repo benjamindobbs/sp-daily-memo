@@ -19,7 +19,10 @@
   - [Dismissals](#dismissals)
   - [Health](#health)
   - [Settings & Data Management](#settings--data-management)
-  - [Other Admin Tools](#other-admin-tools)
+  - [Reports & Exports](#reports--exports)
+  - [Staff Data & Preferences](#staff-data--preferences)
+  - [Communication & Notifications](#communication--notifications)
+  - [Staff Engagement](#staff-engagement)
 - [Staff: Setting Up Notifications](#staff-setting-up-notifications)
 
 ---
@@ -41,11 +44,13 @@ All imports happen on the **Settings** page (`/settings`).
 1. Import Activities (CSV bulk upload or add individually in the Activity Manager)
 2. **Import All Staff Roster**
 3. **Import Camper Roster** (ACR-005 report)
-4. **Import Master Camper Schedule (ACR-255)** (enriches campers with grade, bus, extended hours, activity schedule)
-5. Set the target week as **Active**
-6. **Sync** offerings from the imported schedule (or upload a Weekly Offerings CSV)
-7. Build the counselor schedule
-8. Import Instructor Schedules when ready (uploads to the active week)
+4. **Import Master Camper Schedule (ACR-255)** (enriches campers with grade, extended hours, activity schedule)
+5. **Import AM/PM Bus Attendance** (ACR-132 / ACR-133) to set bus routes and ride flags
+6. **Import KP/LP Schedule Types** (ACR-003) for Kinder Place / Li'l Place full-/half-day status
+7. Set the target week as **Active**
+8. **Sync** offerings from the imported schedule (or upload a Weekly Offerings CSV)
+9. Build the counselor schedule
+10. Import Instructor Schedules when ready (uploads to the active week)
 
 **CSV formats:**
 
@@ -55,23 +60,19 @@ All imports happen on the **Settings** page (`/settings`).
 | All Staff | `Name` (Last, First), `Positions`, `Camp` | Handles all roles. Home group color is set in the Schedule Builder, not here. |
 | Staff Contact Info (CSR-300) | CSR-300: Staff Profile export from camp management | Not a normal tabular CSV — one vertical block per staff member. Matches each block to an existing staff member by full name and fills in their phone number (prefers Cell/Mobile over Home/Work when a person lists more than one). Only updates staff who already exist; never creates new records, so run **after** All Staff import. |
 | Camper Roster (ACR-005) | ACR-005 export from camp management | Creates/updates: name, color group, lunch, shirt size, extended hours (when the export's Ext AM/PM columns are populated — the source for specialty campers, who aren't on ACR-255), registered session codes (drives the Monday shirt-order pills). Must run **after** staff import. **In CB:** Select All Seasons → add Session filter → select relevant weeks for all specialty camps and main camp → Run report as CSV. If a **Prep Target** week is set in Session Management, the upload goes to that week instead of the active week. |
-| Master Camper Schedule (ACR-255) | ACR-255 export from camp management | Enriches existing campers with: grade, bus route, extended hours, activity schedule. Must run **after** camper roster import. **In CB:** Select All Seasons → add Session filter → select all SP W[X] - Period sessions (Periods 1–5) → Run report as CSV. Covers Summer Place campers only — KP/LP extended hours come from the ACR-003 import below. |
+| Master Camper Schedule (ACR-255) | ACR-255 export from camp management | Enriches existing campers with: grade, extended hours, activity schedule. Does **not** set bus data (that comes from ACR-132/133). Must run **after** camper roster import. **In CB:** Select All Seasons → add Session filter → select all SP W[X] - Period sessions (Periods 1–5) → Run report as CSV. Covers Summer Place campers only — KP/LP extended hours come from the ACR-003 import below. |
+| AM / PM Bus Attendance (ACR-132 / ACR-133) | ACR-132 (AM Bus) · ACR-133 (PM Bus) exports from camp management | The authoritative source for all bus data — sets each camper's `BusRoute` plus that direction's ride flag from the report's explicit **Bus N** sections (no stop-name guessing, no audit). Update-only by name; run **after** camper roster import. Import both (AM report sets AM ride flag, PM report sets PM). |
 | KP/LP Schedule Types (ACR-003) | ACR-003 Group Attendance Sheet with KP/LP | Sets each Kinder Place / Li'l Place camper's **Full Day / Half Day** schedule type and extended hours for the selected week. Half Day campers get their own Specialty Half Day attendance sheet and are excluded from PM specialty rosters. Must run **after** camper roster import. **In CB:** filter Session to the KP and LP weeks for the target week → Run report as CSV. |
 | Swim Levels | Group Attendance Sheet with Swim Level export from camp management | Matches campers by name and records their swim level (e.g. `2`, `Low 2`, `High 3`) for the selected week. Blank levels (not yet tested) are skipped. Only updates campers who already exist, so run **after** camper roster import. Levels can also be edited by hand at `/swim-levels`. |
 | ICP Notes | ICP Notes (Health Care Need / Plan for Care) export from camp management | Matches campers by name; shows a red &#9877; ICP flag on their attendance rows and profile. Not week-scoped — each import **fully replaces** the previous set, so a resolved note disappears rather than lingering. |
 | Camper Notes | Camper Notes (behavioral/social) export from camp management | Same matching and full-replace behavior as ICP Notes, shown as a separate purple &#128221; Note flag. A camper can have both an ICP note and a Camper Note at once. |
 | Instructor Schedules | `FirstName`, `LastName`, `P1`–`P6`, `L1`–`L6` | Locations (`L1`–`L6`) are optional. Unknown names are auto-created as Instructors. Uploads to the **Prep Target** week if one is set, otherwise to the active week. |
 
-#### Bus routes & the Bus Route Audit
+#### Bus routes (ACR-132 / ACR-133)
 
-Bus assignment is read from two reports:
+All bus data comes from the **AM/PM Bus Attendance imports**: **ACR-132 (AM Bus)** and **ACR-133 (PM Bus)**. These reports list every camper under their actual **Bus N** section, so the route and per-direction ride flag are read directly — no stop-name guessing and no manual audit. Import both from Settings after the roster import; each sets every camper's route plus that direction's ride flag (AM report → rides AM, PM report → rides PM).
 
-- **Main camp** (Red/Carolina/Green/Navy) carries its real bus number on **ACR-255** — that's the source of truth for their route. (Even if their ACR-005 shows "No Bus Selected," they still ride; only an explicit "No Bus N AM/PM" takes them off that direction.)
-- **Specialty camp** (KinderPlace, Li'l Place, SPLIT, SPRC, Robotics) isn't on ACR-255, so their route comes from the ACR-005 bus **stop name**.
-
-Most specialty stops map cleanly to a bus, but two are ambiguous: **West Hartford** (Bus 2 or 5) and **Wolcott Park / Bishops Corner** (Bus 3 or 4). Those campers are parked with no route until you resolve them in **Settings → Bus Route Audit** (`/bus-audit`), which lists them in two sections with a dropdown to pick the bus. Run the audit after each ACR-005 re-import.
-
-**New: AM/PM Bus Attendance imports (ACR-132 / ACR-133).** These reports list every camper under their actual **Bus N** section, so the route and ride direction are unambiguous — no audit needed. Import **ACR-132 (AM Bus)** and **ACR-133 (PM Bus)** from Settings after the roster import; each sets every camper's route plus that direction's ride flag. This is a newer path being trialed alongside the ACR-005/255 bus handling.
+Neither ACR-005 nor ACR-255 writes bus fields — ACR-132/133 are the only imports that set `BusRoute`, `BusRidesAM`, and `BusRidesPM`. Previously ambiguous specialty stops (West Hartford = Bus 2/5, Wolcott Park / Bishops Corner = Bus 3/4) are listed under their real `Bus N` section in these reports, so the old manual Bus Route Audit is no longer needed and has been retired.
 
 ---
 
@@ -356,7 +357,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 
 | Page | URL | Admin Only | Description |
 |---|---|:---:|---|
-| Admin Hub | `/admin` | ✓ | Dashboard: director notes, announcements, camper/staff counts, links to all admin tools. Admins can edit their own notes inline using the pencil button next to each note. Includes a **day schedule bar** showing all periods and non-class blocks (lunch, big game, popsicle break, dismissal) for both sides of camp. Click a period to jump to that class's attendance. |
+| Admin Hub | `/admin` | ✓ | Dashboard: director notes, announcements, camper/staff counts, links to all admin tools. Director notes are organized into **category tabs** — Director, Camper, Staff, and Timesheet — so notes can be filed by topic. Admins can edit their own notes inline using the pencil button next to each note. Includes a **day schedule bar** showing all periods and non-class blocks (lunch, big game, popsicle break, dismissal) for both sides of camp. Click a period to jump to that class's attendance. |
 | Staff Hub | `/staff` | | Counselor-facing dashboard: day schedule bar, home group roster, attendance links. Auto-refreshes silently every 15 minutes. The schedule bar defaults to the counselor's own side of camp (sports or enrichment); Unit Leaders and Sports Leaders default to the sports schedule. Hovering a period block shows start and end times. **Attendance at a Glance** shows all camp absences, nurse check-ins, and active case log entries. **Today's Memo** includes a section for campers absent from your home group specifically. When a future week is released (Settings → Session Management), a **Your Upcoming Schedule** card shows that week's periods; Unit Leaders, Sports Leaders, and Instructors also see the class location for each period. |
 
 ---
@@ -388,7 +389,7 @@ Every attendance roster (home group, class, bus, extended care) shows status bad
 | Counselor Schedule Backups | `/counselor-schedule-backups` | Named snapshots of saved counselor assignments. Restore or delete from here. |
 | Home Group Assignment | `/homegroup-assignment` | Assign counselors to color-group home groups by week. Can mirror assignments from one week to another. |
 | SPLIT Scheduling | `/split-scheduling` | Dedicated view for managing SPLIT camper period assignments (periods 1, 2, 4, 5, 6). |
-| Audit Roster | `/audit` | Flags scheduling issues: missing grades, duplicate assignments, unassigned campers, classes with no counselor. Each section has a Show/Hide toggle; collapsed sections are remembered per browser. |
+| Audit Roster | `/audit` | Flags scheduling issues: missing grades, duplicate assignments, unassigned campers, classes with no counselor. **Duplicate / Swim Overload** flags a counselor assigned the same class twice within one AM (periods 1–3) or PM (periods 4–6) block, or more than 1 swim class (Rec Swim, Swim Lessons, etc.) within one block — checked against the actual saved schedule, so it catches manual-edit mistakes too, not just build-time issues. Each section has a Show/Hide toggle; collapsed sections are remembered per browser. |
 | Swim Levels | `/swim-levels` | Camper swim level tracking. Printable version at `/reports/swim-levels` (Settings → Print Reports). See [Swim Scheduling](#swim-scheduling) above for full detail. |
 | Swim Scheduling | `/swim-scheduling` | Staffing schedule for Rec Swim lifeguards, Swim Lessons pool guards, and skill-level lesson groups — separate from the main Counselor Scheduling builder and only applies to Swim Counselors. See [Swim Scheduling](#swim-scheduling) above for full detail. |
 | Coverage | `/coverage` | Temporarily reassign a counselor/staff member's classes for a single day when they're out. See [Coverage](#coverage) above for full detail. |
@@ -439,10 +440,10 @@ All at `/settings`.
 
 | Section | Description |
 |---|---|
-| **Session Management** | Set active/released weeks; edit labels and start dates; clear week data; sync offerings from imported schedule |
+| **Session Management** | Set active/released weeks; set/unset the prep target week; edit labels and start dates; clear week data; sync offerings from the imported schedule, or upload a **Weekly Offerings CSV** (`ActivityName`, `PeriodNumber`, `PreliminaryEnrollment`, `SideOfCamp`) to specify offerings manually instead of syncing |
 | **Activity Manager** | Add, edit, and delete activities; configure side of camp, max capacity, and allowed groups; set period-specific group overrides; bulk CSV import. **Sync Activity Groups** button analyzes actual camper enrollment to automatically derive the correct color-group restrictions for each activity; also runs automatically on week rollover. |
 | **Camp Map Buildings** | Manage building pin positions for the interactive camp map. Two maps are available (`enrichment` and `sports`). Enter a building name (must match the `Location` value used in the schedule), choose the map, and provide X/Y pixel coordinates from the map image. The settings page lists all distinct location names currently in the schedule as a reference. |
-| **CSV Data Imports** | Import all staff, instructor schedules, camper roster (ACR-005), and camper master schedule |
+| **CSV Data Imports** | All camp-management report imports in one place: All Staff, Staff Contact Info (CSR-300), Camper Roster (ACR-005), Master Camper Schedule (ACR-255), AM/PM Bus Attendance (ACR-132/133), KP/LP Schedule Types (ACR-003), Swim Levels, ICP Notes, Camper Notes, and Instructor Schedules. See the [CSV formats table](#importing-data) above for each report's columns and run order. |
 | **Documents** | Upload up to 7 PDF documents in a 3×3 grid. Current documents: 📄 Camper Notes, 📄 ICP Notes, 🗺️ AM Enrichment Meeting Locations, 🗺️ Snack Break Meeting Locations, 🗺️ Lunch Enrichment Meeting Locations, 🗺️ Popsicle Break Meeting Locations, 🗺️ Enrichment Locations Map. Each card shows upload status and a form to replace the file. All uploaded documents are viewable by all staff from the **Document Hub** (`/docs`). |
 | **Print Reports** | Printable attendance rosters, camper name cards, a swim levels report, and a 2-page AM/PM swim staffing schedule |
 | **Add Staff Member** | Create an individual staff record with all profile fields (name, role, group color, schedule type, bus, extended hours, phone, email) |
@@ -451,24 +452,47 @@ All at `/settings`.
 
 ---
 
-### Other Admin Tools
+### Reports & Exports
 
 | Tool | URL | Description |
 |---|---|---|
-| Counselor Preferences | `/counselor-preferences` | View and edit each counselor's activity preferences, used by the auto-scheduler to influence assignments. The activity list reflects next week's offerings when they've been uploaded (falling back to the current week), and the form notes which week is shown. Counselors submit Home Group, Schedule Type, and Activity preferences; Swim Counselors submit Activity (class) preferences only — the Home Group and Schedule Type sections don't apply to them and are hidden |
-| Photo of the Day | `/photo-day` | Upload a photo for the day. Accessible to all staff (not admin-only). |
-| Attendance Nudge Notifications | — | Push notifications sent to subscribed counselors reminding them to submit attendance 15+ minutes into a class period. Staff subscribe via the **Enable notifications** button in My Preferences. One notification per class per day; no notification if attendance is already submitted. See [Staff: Setting Up Notifications](#staff-setting-up-notifications). |
-| Instant Alerts | `/alerts` | Send a push notification to a named group or individual counselor. Seven built-in system groups are available (All Counselors, All Unit Leaders, All Admin, and the four AM/PM Sports/Enrichment splits). Admins can also create custom named groups with a hand-picked member list. Alerts sent to **All Admin** additionally display a red banner at the top of the admin hub for any admin currently logged in, regardless of whether they have push notifications enabled. All sent alerts are logged with recipient group, sender, timestamp, and delivery count. |
-| Spartan Games | `/spartan-games` | Annual counselor signup event. Counselors select events they want to participate in. Solo events are a single checkbox; group events reveal a partner selector once checked. The partner list includes both Counselors and Swim Counselors. The group always includes the logged-in counselor — they cannot be unchecked. Conflict detection prevents any name from appearing on two separate groups for the same event. **Admin view** (admin hub only): edit event definitions (name, date, block, participant count, subtext), add new events, view all signups with delete buttons, and toggle whether submissions are open or closed. When closed, counselors can still view the form and their existing registrations but cannot submit new ones. Each event's add/edit form also has an **Enforce Gender Ratio** checkbox; checking it reveals **Min Male** and **Min Female** fields. Any signed-up group that doesn't meet those minimums (based on each counselor's Gender in their profile) is flagged invalid — a warning badge appears next to the group on the admin Signups list, and the counselor sees a warning below their registration on the signup page. |
-| Photo Gallery | `/photo-gallery` | Browse uploaded photos; staff can vote. Photos display in a polaroid-style card; click any photo (including the winner) to open it full-size, uncropped, in a lightbox. |
-| All Photos (Admin) | `/photo-gallery/all` | Admin-only view of every submitted photo across all dates. Sort by date or by likes. Select one or multiple photos and download — single photos download directly, multiple photos download as a `.zip` file. |
+| Counselor Preferences Summary | `/counselor-preferences-summary` | Admin-only summary table of every main counselor's submitted preferences — home group, schedule type, and activity preferences (activity prefs split into Sports and Enrichment columns) — plus a **pref-match count** showing how many of each counselor's assigned classes actually appear in their preferences. A 🔔 **Alerts** column shows a ✓ for each counselor with an active push subscription, so you can see at a glance who will receive Instant Alerts and attendance nudges. |
+| Camper Attendance History | `/camper-attendance` | Admin-only report. Select a camper via searchable dropdown and view a calendar grid of their attendance across all weeks (or a filtered subset). Each day shows a colored dot: **green** = present (at least one class marked present), **red** = absent all day, **yellow** = late arrival or early dismissal, **gray** = no data. Each week section includes a present and absent day count. |
 | Export Counselor Schedule | `/export-counselor-schedule` | Download current counselor assignments as CSV |
 | Export Staff Schedule | `/export-staff-schedule` | Download instructor/unit leader assignments as CSV |
 | Export Master Schedule | `/export-master-schedule` | Download the full class-by-period master schedule as CSV |
-| Spartan Games | `/spartan-games` | Counselor sign-up sheet for Spartan Games events. Admin can add/edit/delete events, view all sign-ups, and toggle submissions open or closed. When closed, counselors can still view the page and see their existing registrations but cannot submit new entries. Events can optionally enforce a minimum male/female count per group; groups that don't meet it are flagged with a warning. |
-| Counselor Talent Show | `/talent-show` (staff) · `/admin#talent-show` (admin hub) | Counselors submit a one-line description of their act. Submissions are weekly (reset on week rollover). The admin hub shows all submissions for the current week with Approve / Deny / Delete actions and an Open/Close toggle. When submissions are closed the card does not appear in the Staff Hub. |
-| Camper Attendance History | `/camper-attendance` | Admin-only report. Select a camper via searchable dropdown and view a calendar grid of their attendance across all weeks (or a filtered subset). Each day shows a colored dot: **green** = present (at least one class marked present), **red** = absent all day, **yellow** = late arrival or early dismissal, **gray** = no data. Each week section includes a present and absent day count. |
+
+> Printable reports (attendance rosters, camper name cards, swim levels, AM/PM swim staffing schedule) live under **Settings → Print Reports** — see [Settings & Data Management](#settings--data-management) above.
+
+---
+
+### Staff Data & Preferences
+
+| Tool | URL | Description |
+|---|---|---|
+| Counselor Preferences | `/counselor-preferences` | View and edit each counselor's activity preferences, used by the auto-scheduler to influence assignments. The activity list reflects next week's offerings when they've been uploaded (falling back to the current week), and the form notes which week is shown. Counselors submit Home Group, Schedule Type, and Activity preferences; Swim Counselors submit Activity (class) preferences only — the Home Group and Schedule Type sections don't apply to them and are hidden. (For the read-only cross-counselor rollup, see **Counselor Preferences Summary** under Reports & Exports.) |
 | Mass Edit Staff | `/mass-edit-staff` | Admin-only spreadsheet-style editor: one row per staff member with the same fields as the profile page (name, role, group, schedule type, bus, extended hours, phone, email) plus **Gender**. Filter by name, role, or gender; edited rows highlight yellow; one Save All button writes everything. Gender feeds the scheduler's gender-split rules. |
+
+---
+
+### Communication & Notifications
+
+| Tool | URL | Description |
+|---|---|---|
+| Instant Alerts | `/alerts` | Send a push notification to a named group or individual counselor. Seven built-in system groups are available (All Counselors, All Unit Leaders, All Admin, and the four AM/PM Sports/Enrichment splits). Admins can also create custom named groups with a hand-picked member list. Alerts sent to **All Admin** additionally display a red banner at the top of the admin hub for any admin currently logged in, regardless of whether they have push notifications enabled. All sent alerts are logged with recipient group, sender, timestamp, and delivery count. |
+| Attendance Nudge Notifications | — | Push notifications sent to subscribed counselors reminding them to submit attendance 15+ minutes into a class period. Staff subscribe via the **Enable notifications** button in My Preferences. One notification per class per day; no notification if attendance is already submitted. See [Staff: Setting Up Notifications](#staff-setting-up-notifications). |
+
+---
+
+### Staff Engagement
+
+| Tool | URL | Description |
+|---|---|---|
+| Spartan Games | `/spartan-games` | Annual counselor signup event. Counselors select events they want to participate in. Solo events are a single checkbox; group events reveal a partner selector once checked. The partner list includes both Counselors and Swim Counselors. The group always includes the logged-in counselor — they cannot be unchecked. Conflict detection prevents any name from appearing on two separate groups for the same event. **Admin view** (admin hub only): edit event definitions (name, date, block, participant count, subtext), add new events, view all signups with delete buttons, and toggle whether submissions are open or closed. When closed, counselors can still view the form and their existing registrations but cannot submit new ones. Each event's add/edit form also has an **Enforce Gender Ratio** checkbox; checking it reveals **Min Male** and **Min Female** fields. Any signed-up group that doesn't meet those minimums (based on each counselor's Gender in their profile) is flagged invalid — a warning badge appears next to the group on the admin Signups list, and the counselor sees a warning below their registration on the signup page. |
+| Counselor Talent Show | `/talent-show` (staff) · `/admin#talent-show` (admin hub) | Counselors submit a one-line description of their act. Submissions are weekly (reset on week rollover). The admin hub shows all submissions for the current week with Approve / Deny / Delete actions and an Open/Close toggle. When submissions are closed the card does not appear in the Staff Hub. |
+| Photo of the Day | `/photo-day` | Upload a photo for the day. Accessible to all staff (not admin-only). |
+| Photo Gallery | `/photo-gallery` | Browse uploaded photos; staff can vote. Photos display in a polaroid-style card; click any photo (including the winner) to open it full-size, uncropped, in a lightbox. |
+| All Photos (Admin) | `/photo-gallery/all` | Admin-only view of every submitted photo across all dates. Sort by date or by likes. Select one or multiple photos and download — single photos download directly, multiple photos download as a `.zip` file. |
 
 ---
 

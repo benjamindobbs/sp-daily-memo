@@ -48,6 +48,15 @@ const targetWeek = getPrepTargetWeek() || getActiveWeek();
 - `GET /counselor-profile/:id` — admins see the prep week's schedule, campers, and week attributes (banner shows the prep week); staff always see the active week
 - `POST /update-staff-info/:id` — mirrors week attributes into the prep week for admins (same week the profile displays)
 
+**Prep preview requires actually being in admin view, not just having admin credentials.** `/master-schedule`, `/class-roster/:period/:activity`, and `/counselor-profile/:id` are reachable in both admin view and Staff View (the `viewMode` cookie toggle), and an admin who has switched to Staff View to check what staff see keeps their `adminAuth` cookie the whole time. So these three routes gate the prep-week check on both cookies together, not `adminAuth` alone:
+
+```js
+const isAdmin = req.cookies.adminAuth === 'true' && req.cookies.viewMode === 'admin';
+const aw = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
+```
+
+This means toggling to Staff View always shows the active week's data on those three pages — identical to what a real, non-admin staff member sees — regardless of whether a prep target is set. Admin-only routes (`/audit`, `/swim-levels`, `/swim-scheduling`, the CSV upload/prep-writing routes, etc.) don't need this extra check: they're already blocked entirely for non-admins by `ADMIN_ONLY_PREFIXES`, so `viewMode` never comes into play for them.
+
 **Toggling:** `POST /set-prep-week` accepts `{ weekNumber }`. It clears `isPrepTarget` on all rows, then sets it on the given week. Sending the same week number again unsets it (toggle behavior). Managed from the Settings page ("Set Prep" / "Unset Prep" buttons in Session Management).
 
 ---
