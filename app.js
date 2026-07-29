@@ -2916,7 +2916,10 @@ app.post('/merge-class', (req, res) => {
 // --- MASTER SCHEDULE ---
 app.get('/master-schedule', (req, res) => {
     try {
-        const isAdmin = req.cookies.adminAuth === 'true';
+        // Prep-week preview only applies while actually viewing as admin — an admin who has
+        // toggled to Staff View should see exactly what staff see (the active week), even
+        // though their adminAuth cookie is still set.
+        const isAdmin = req.cookies.adminAuth === 'true' && req.cookies.viewMode === 'admin';
         const aw = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
         const classes = db.prepare(`
             SELECT DISTINCT
@@ -3494,7 +3497,8 @@ app.get('/class-roster/:period/:activity', (req, res) => {
     try {
         const period      = parseInt(req.params.period);
         const rawActivity = req.params.activity;
-        const isAdmin    = req.cookies.adminAuth === 'true';
+        // See /master-schedule — prep-week preview only applies while actually viewing as admin.
+        const isAdmin    = req.cookies.adminAuth === 'true' && req.cookies.viewMode === 'admin';
         const activeWeek = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
 
         // If this activity is in a merge group and all members exist this period, show merged view
@@ -4401,7 +4405,8 @@ app.get('/faculty-summer', (req, res) => {
 });
 
 app.get('/counselor-profile/:id', (req, res) => {
-    const isAdmin = req.cookies.adminAuth === 'true';
+    // See /master-schedule — prep-week preview only applies while actually viewing as admin.
+    const isAdmin = req.cookies.adminAuth === 'true' && req.cookies.viewMode === 'admin';
     const aw = (isAdmin ? getPrepTargetWeek() : null) || getActiveWeek();
     const isPrepping = isAdmin && getPrepTargetWeek() === aw && aw !== getActiveWeek();
     const counselor = db.prepare(`
