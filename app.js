@@ -8024,15 +8024,46 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
     db.prepare("SELECT PeriodNumber, CoveringCounselorID, Skipped FROM CounselorCoverage WHERE Date = ? AND OutCounselorID = ?")
         .all(date, outCounselorId).forEach(r => { existingByPeriod[r.PeriodNumber] = r; });
 
+    // Everyone currently assigned to the card's own class/period — Counselor/Swim Counselor via
+    // CounselorWeekSchedules, Instructor/Unit Leader/Sports Leader via StaffWeekSchedules ∪
+    // CounselorScheduleAssignments — so the out counselor always shows up in this list
+    // regardless of their role, alongside anyone else already on that class.
+    const classAssigned = db.prepare(`
+        SELECT DISTINCT FirstName, LastName FROM (
+            SELECT c.FirstName, c.LastName
+            FROM Counselors c
+            JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID
+            WHERE cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ?
+            UNION
+            SELECT st.FirstName, st.LastName
+            FROM Counselors st JOIN StaffWeekSchedules sws ON sws.StaffID = st.CounselorID
+            WHERE sws.WeekNumber = ? AND sws.PeriodNumber = ? AND sws.ActivityName = ? COLLATE NOCASE
+            UNION
+            SELECT st.FirstName, st.LastName
+            FROM Counselors st JOIN CounselorScheduleAssignments csa ON csa.PersonID = st.CounselorID
+            WHERE csa.WeekNumber = ? AND csa.PeriodNumber = ? AND csa.ActivityName = ? COLLATE NOCASE
+              AND csa.PersonType IN ('Instructor','Staff')
+        )
+        ORDER BY LastName, FirstName
+    `);
+    const classEnrollment = db.prepare(
+        "SELECT PreliminaryEnrollment FROM WeeklyOfferings WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ?"
+    );
+
     return periods.map(p => {
         const side = db.prepare("SELECT SideOfCamp FROM Activities WHERE Name = ?").get(p.ActivityName)?.SideOfCamp || 'Sports';
         const { correctSide, swim, oppositeSide } = buildCoverageCandidates(p.PeriodNumber, side, week, outCounselorId);
         swim.forEach(c => { c.sendToSports = sendToSportsByPeriod[p.PeriodNumber]?.has(c.CounselorID) || false; });
         const existing = existingByPeriod[p.PeriodNumber] || null;
+        const counselorNames = classAssigned
+            .all(week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName)
+            .map(c => `${c.FirstName} ${c.LastName}`);
+        const enrollment = classEnrollment.get(week, p.PeriodNumber, p.ActivityName)?.PreliminaryEnrollment ?? null;
         return {
             periodNumber: p.PeriodNumber,
             activityName: p.ActivityName,
             side, correctSide, swim, oppositeSide,
+            counselorNames, enrollment,
             savedCoveringCounselorId: existing?.CoveringCounselorID || null,
             savedSkipped: existing?.Skipped === 1
         };

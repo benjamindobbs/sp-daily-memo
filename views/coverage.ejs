@@ -111,6 +111,10 @@
                             <span><%= card.activityName %></span>
                             <span class="side-pill <%= card.side === 'Sports' ? 'side-sports' : 'side-enrichment' %>"><%= card.side %></span>
                         </div>
+                        <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:10px;">
+                            <span>&#128101; <%= card.counselorNames.length > 0 ? card.counselorNames.join(', ') : 'No counselors currently assigned' %></span>
+                            <span style="margin-left:10px;">&#127959;&#65039; <%= card.enrollment ?? '?' %> camper<%= card.enrollment === 1 ? '' : 's' %> enrolled</span>
+                        </div>
 
                         <label class="cov-skip-label">
                             <input type="checkbox" onchange="

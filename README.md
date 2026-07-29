@@ -185,7 +185,7 @@ The Coverage tool is at `/coverage` — use it when a counselor or staff member 
 #### Workflow
 
 1. Pick the **date** (defaults to today) and the **counselor/staff member who is out**.
-2. One card appears per period they're assigned that week, showing their original class.
+2. One card appears per period they're assigned that week, showing their original class, everyone currently assigned to it (including the out counselor themself), and how many campers are enrolled.
 3. For each period, either:
    - Check **"Skip this period"** if no coverage is needed, or
    - Pick a **covering counselor** from the dropdown, which is split into three groups:
