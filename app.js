@@ -6910,9 +6910,45 @@ app.get('/attendance', (req, res) => {
     let filteredSpecialtySessions = specialtySessions;
     let filteredHalfDaySessions = halfDaySessions;
     if (filterCid) {
-        filteredClassSessions = classSessions.filter(s =>
-            allowedClasses.has(`${s.filterPeriod}|${s.activityName.toLowerCase()}`)
-        );
+        // Coverage annotations for this counselor's filtered view on the viewed date:
+        // their own covered-away class (greyed out) vs. a class they're covering for someone else.
+        const outCoverageByKey = {};
+        db.prepare("SELECT PeriodNumber, ActivityName, CoveringCounselorID, Skipped FROM CounselorCoverage WHERE Date = ? AND OutCounselorID = ?")
+            .all(date, filterCid)
+            .forEach(r => { outCoverageByKey[`${r.PeriodNumber}|${r.ActivityName.toLowerCase()}`] = r; });
+        const coveringByKey = {};
+        db.prepare(`
+            SELECT cc.PeriodNumber, cc.ActivityName, out.FirstName AS OutFirstName, out.LastName AS OutLastName
+            FROM CounselorCoverage cc JOIN Counselors out ON out.CounselorID = cc.OutCounselorID
+            WHERE cc.Date = ? AND cc.CoveringCounselorID = ? AND cc.Skipped = 0
+        `).all(date, filterCid)
+            .forEach(r => { coveringByKey[`${r.PeriodNumber}|${r.ActivityName.toLowerCase()}`] = r; });
+        const coverNameCache = {};
+        const coverName = id => {
+            if (!(id in coverNameCache)) {
+                const n = db.prepare("SELECT FirstName, LastName FROM Counselors WHERE CounselorID = ?").get(id);
+                coverNameCache[id] = n ? `${n.FirstName} ${n.LastName}` : null;
+            }
+            return coverNameCache[id];
+        };
+
+        filteredClassSessions = classSessions
+            .filter(s => allowedClasses.has(`${s.filterPeriod}|${s.activityName.toLowerCase()}`))
+            .map(s => {
+                const key = `${s.filterPeriod}|${s.activityName.toLowerCase()}`;
+                const outRow = outCoverageByKey[key];
+                const coveringRow = coveringByKey[key];
+                if (outRow && !outRow.Skipped && outRow.CoveringCounselorID) {
+                    return { ...s, coveredAway: true, coveredByName: coverName(outRow.CoveringCounselorID) };
+                }
+                if (outRow && outRow.Skipped) {
+                    return { ...s, coveredAway: true, coveredByName: null };
+                }
+                if (coveringRow) {
+                    return { ...s, covering: true, coveringForName: `${coveringRow.OutFirstName} ${coveringRow.OutLastName}` };
+                }
+                return s;
+            });
         if (isStaffMemberFilter) {
             // Instructors/ULs/SLs: no home groups, bus, extended, or specialty
             filteredHomegroupSessions = [];

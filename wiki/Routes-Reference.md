@@ -185,7 +185,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 
 | Method | Path | Admin only | Description |
 |---|---|:---:|---|
-| GET | `/attendance` | | Attendance overview. When a staff viewer is filtered to their own classes (`selectedCounselor` cookie, not `showAll=1`), `allowedClasses` also includes any class they're covering via `CounselorCoverage` for the viewed `date` (`Skipped=0`), so a covering counselor sees the covered class alongside their own normal ones |
+| GET | `/attendance` | | Attendance overview. When a staff viewer is filtered to their own classes (`selectedCounselor` cookie, not `showAll=1`), `allowedClasses` also includes any class they're covering via `CounselorCoverage` for the viewed `date` (`Skipped=0`), so a covering counselor sees the covered class alongside their own normal ones, tagged with a green "Covering" badge. Conversely, a period the viewer is out of (has a `CounselorCoverage` row as `OutCounselorID`) is greyed out on their own filtered view and tagged "Covered by X" / "No coverage needed" |
 | GET | `/attendance/homegroup/counselor/:counselorId/:session` | | Home group roster by counselor |
 | GET | `/attendance/homegroup/:color/:session` | | Home group roster by color |
 | GET | `/attendance/specialty/:color/:session` | | Specialty program roster. AM: all campers, with a 🕑 Half Day pill on `ScheduleType='Half Day'` campers; PM: Half Day campers excluded |

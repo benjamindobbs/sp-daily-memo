@@ -10,6 +10,9 @@
         .att-flat-list { display: flex; flex-direction: column; gap: 8px; }
         .att-flat-item { display: flex; align-items: center; justify-content: space-between; padding: 13px 18px; background: white; border: 1px solid var(--border-color); border-radius: 10px; text-decoration: none; color: var(--text); transition: background 0.12s, border-color 0.12s; }
         .att-flat-item:hover { background: #f8fafc; border-color: #94a3b8; }
+        .att-flat-item.att-flat-covered-away { opacity: 0.55; background: #f1f5f9; }
+        .badge-covering { display: inline-block; background: #dcfce7; color: #166534; font-size: 0.68rem; font-weight: 700; border-radius: 10px; padding: 2px 8px; margin-left: 6px; white-space: nowrap; }
+        .badge-covered-away { display: inline-block; background: #e2e8f0; color: #475569; font-size: 0.68rem; font-weight: 700; border-radius: 10px; padding: 2px 8px; margin-left: 6px; white-space: nowrap; }
         .att-flat-cat { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 2px; }
         .att-flat-name { font-weight: 600; font-size: 0.92rem; display: flex; align-items: center; gap: 6px; }
         .period-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; align-items: center; }
@@ -133,10 +136,10 @@
             busAM.forEach(s => flatItems.push({ icon: '&#128652;', cat: 'Bus AM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
             hgAM.forEach(s => flatItems.push({ icon: '&#127968;', cat: 'Home Group AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             spAM.forEach(s => flatItems.push({ icon: '&#11088;', cat: 'Specialty AM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
-            classSessions.filter(s => parseInt(s.periodKey) <= 3).forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null }));
+            classSessions.filter(s => parseInt(s.periodKey) <= 3).forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null, covering: s.covering, coveringForName: s.coveringForName, coveredAway: s.coveredAway, coveredByName: s.coveredByName }));
             hgLunch.forEach(s => flatItems.push({ icon: '&#127869;', cat: 'Home Group Lunch', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             spHD.forEach(s => flatItems.push({ icon: '&#128337;', cat: 'Specialty Half Day', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
-            classSessions.filter(s => parseInt(s.periodKey) > 3).forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null }));
+            classSessions.filter(s => parseInt(s.periodKey) > 3).forEach(s => flatItems.push({ icon: '&#127939;', cat: 'Period ' + s.periodLabel, label: s.activityName, link: s.link, submitted: s.submitted, color: null, covering: s.covering, coveringForName: s.coveringForName, coveredAway: s.coveredAway, coveredByName: s.coveredByName }));
             spPM.forEach(s => flatItems.push({ icon: '&#11088;', cat: 'Specialty PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             hgPM.forEach(s => flatItems.push({ icon: '&#127968;', cat: 'Home Group PM', label: s.label.split('—')[0].trim(), link: s.link, submitted: s.submitted, color: s.color }));
             busPM.forEach(s => flatItems.push({ icon: '&#128652;', cat: 'Bus PM', label: s.label, link: s.link, submitted: s.submitted, color: null }));
@@ -144,7 +147,7 @@
         %>
         <div class="att-flat-list">
             <% flatItems.forEach(function(item) { %>
-            <a href="<%= item.link %>" class="att-flat-item">
+            <a href="<%= item.link %>" class="att-flat-item<%= item.coveredAway ? ' att-flat-covered-away' : '' %>">
                 <div>
                     <div class="att-flat-cat"><%- item.icon %> <%= item.cat %></div>
                     <div class="att-flat-name">
@@ -152,6 +155,12 @@
                         <span class="tag <%= item.color %>" style="font-size:0.65rem; padding:1px 6px;"><%= item.color %></span>
                         <% } %>
                         <%= item.label %>
+                        <% if (item.covering) { %>
+                            <span class="badge-covering" title="Covering for <%= item.coveringForName %>">&#128260; Covering</span>
+                        <% } %>
+                        <% if (item.coveredAway) { %>
+                            <span class="badge-covered-away"><%= item.coveredByName ? ('Covered by ' + item.coveredByName) : 'No coverage needed' %></span>
+                        <% } %>
                     </div>
                 </div>
                 <span class="<%= item.submitted ? 'badge-submitted' : 'badge-pending' %>"><% if (item.submitted) { %>&#10003; Submitted<% } else { %>Pending<% } %></span>
