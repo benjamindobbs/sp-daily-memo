@@ -34,8 +34,8 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 
 | Method | Path | Admin only | Description |
 |---|---|:---:|---|
-| GET | `/master-schedule` | | All classes by period. Filterable by period, side, group. Searchable by class name or camper name. Uses the prep target week if one is set, otherwise the active week. Week-agnostic legacy `Schedules` instructor rows (staff names + locations) are only included when viewing the active week — in prep mode, staff/locations come solely from the week-scoped `StaffWeekSchedules`/`CounselorScheduleAssignments`. Counselors without a color group render as a neutral gray chip. |
-| GET | `/class-roster/:period/:activity` | | Camper list for one class/period. Respects prep mode (uses prep target week when admin is in prep mode). Dance & Cheerleading merge detected at query time — both activities served under one roster when they share a period. Camper names link to camper profiles. |
+| GET | `/master-schedule` | | All classes by period. Filterable by period, side, group. Searchable by class name or camper name. Uses the prep target week if one is set, otherwise the active week. Week-agnostic legacy `Schedules` instructor rows (staff names + locations) are only included when viewing the active week — in prep mode, staff/locations come solely from the week-scoped `StaffWeekSchedules`/`CounselorScheduleAssignments`. Counselors without a color group render as a neutral gray chip. Today's `CounselorCoverage` substitutions are swapped in automatically — see [Coverage](./Scheduling-System.md#coverage). |
+| GET | `/class-roster/:period/:activity` | | Camper list for one class/period. Respects prep mode (uses prep target week when admin is in prep mode). Dance & Cheerleading merge detected at query time — both activities served under one roster when they share a period. Camper names link to camper profiles. Today's `CounselorCoverage` substitutions are swapped in automatically. |
 | GET | `/swim-levels` | ✓ | Roster of campers enrolled in Rec Swim/Swim Lessons for the target week, with inline swim-level editing. See [Swim Scheduling](./Swim-Scheduling.md) |
 | POST | `/swim-levels/update` | ✓ | Upsert one camper's `CamperSwimLevels` row for a given week |
 | POST | `/upload-swim-levels` | ✓ | CSV import: "Group Attendance Sheet with Swim Level" export |
@@ -62,14 +62,14 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | GET | `/search` | | Camper search by name. Lists every camper enrolled in the active week (a `CamperWeekData` row **or** any `Schedules` row) — so schedule-less campers (KP/LP, some SPLIT) are included. Group/bus/extended filter values are week-scoped via `COALESCE(cwd.*, c.*)` |
 | GET | `/counselor-directory` | | Staff directory grouped by role |
 | GET | `/staff-lookup` | | Redirect → `/counselor-directory` |
-| GET | `/counselor-profile/:id` | | Individual staff profile. For admins, schedule/campers/week attributes reflect the prep target week when one is set (with a banner noting the prep week); staff always see the active week |
+| GET | `/counselor-profile/:id` | | Individual staff profile. For admins, schedule/campers/week attributes reflect the prep target week when one is set (with a banner noting the prep week); staff always see the active week. The Daily Assignments card shows today's `CounselorCoverage` overlay: a "Covered by X" / "no coverage needed" tag on the out counselor's own periods, and a banner on the covering counselor's profile listing what they're covering |
 | POST | `/delete-counselor/:id` | ✓ | Delete a counselor record |
 | POST | `/update-staff-info/:id` | ✓ | Edit all counselor profile fields incl. `gender` (base record + week attributes for the same week the profile displays: prep target for admins, else active week) |
 | GET | `/mass-edit-staff` | ✓ | Spreadsheet-style editor: one row per staff member with all profile fields plus Gender; filter by name/role/gender |
 | POST | `/mass-edit-staff/save` | ✓ | JSON bulk save of every row (transaction); mirrors group/schedule/bus/extended into `CounselorWeekAttributes` for the active week |
 | POST | `/update-staff-period` | ✓ | Add/update one period on an instructor's weekly schedule |
 | POST | `/remove-staff-period` | ✓ | Remove one period from an instructor's weekly schedule |
-| GET | `/camper/:id` | | Individual camper profile |
+| GET | `/camper/:id` | | Individual camper profile. Each period's class counselor(s) reflect today's `CounselorCoverage` substitutions |
 | POST | `/camper/:id/update` | ✓ | Edit camper fields: `preferredName`, `homeGroupCounselorID`, `busRoute`, `busRidesAM` (checkbox → `1`/`0`), `busRidesPM` (checkbox → `1`/`0`), `extendedHours`, `campLunch`. If `busRoute` is cleared, both ride flags are forced to `0`. |
 | POST | `/camper/:id/delete` | ✓ | Remove a camper from the roster |
 | GET | `/faculty-summer` | | Full-summer instructor schedule view |
@@ -111,6 +111,16 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | GET | `/audit` | ✓ | Audit page — flags scheduling issues. Uses the prep target week if one is set, otherwise the active week. Counselor class-count check credits periods covered under a dual-enrolled staff identity (same name, e.g. Sports Leader/Counselor), so dual staff aren't falsely flagged short. |
 | GET | `/counselor-week-assignments/:week` | ✓ | Ajax: get all assignments for a given week |
 | GET | `/api/counselor-week-pinned-types/:week` | ✓ | Ajax: `{CounselorID, ScheduleType}` rows for counselors with a manually-pinned (`ScheduleTypeManual=1`) schedule type in the given week; used by **Migrate Pinned Types** on the schedule builder |
+
+---
+
+## Coverage
+
+| Method | Path | Admin only | Description |
+|---|---|:---:|---|
+| GET | `/coverage` | ✓ | Day-specific substitute assignment tool. `?date=&counselorId=` picks the out counselor; renders one card per period they're assigned that week with a 3-bucket covering-counselor dropdown (correct side / swim / opposite side). See [Scheduling System](./Scheduling-System.md#coverage) |
+| POST | `/coverage/save` | ✓ | Upserts one `CounselorCoverage` row per submitted period (parallel arrays: `periodNumber[]`, `activityName[]`, `coveringCounselorId[]`, `skipped[]`); clears a period's row if neither a covering counselor nor skip was chosen |
+| POST | `/coverage/clear-row` | ✓ | Deletes a single `CounselorCoverage` row by `coverageId` |
 
 ---
 
@@ -180,7 +190,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | GET | `/attendance/homegroup/:color/:session` | | Home group roster by color |
 | GET | `/attendance/specialty/:color/:session` | | Specialty program roster. AM: all campers, with a 🕑 Half Day pill on `ScheduleType='Half Day'` campers; PM: Half Day campers excluded |
 | GET | `/attendance/specialty-halfday/:color` | | Specialty Half Day midday check-out roster (`specialty_halfday` session). KP/LP: half-day campers only; SPRC: whole camp (no PM session exists for SPRC) |
-| GET | `/attendance/class/:period/:activity` | | Class attendance sheet |
+| GET | `/attendance/class/:period/:activity` | | Class attendance sheet. `?date=` selects the day, defaults to today; the "Counselors:" line reflects that date's `CounselorCoverage` substitutions, tagged "(covering for X)" |
 | GET | `/attendance/bus/:route/:session` | | Bus route attendance |
 | GET | `/attendance/extended/:session` | | Extended care attendance |
 | GET | `/attendance/late-arrivals` | | Late arrival check-in |

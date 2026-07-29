@@ -97,6 +97,14 @@
                         &#128295; Showing schedule for prep week: <strong><%= prepWeekLabel %></strong> (not the active week)
                     </div>
                 <% } %>
+                <% if (typeof coveringToday !== 'undefined' && coveringToday.length > 0) { %>
+                    <div class="alert" style="background:#dcfce7; color:#166534; border-color:#86efac; margin-bottom:16px;">
+                        &#128260; Covering today:
+                        <% coveringToday.forEach(function(ct, i) { %>
+                            Period <%= ct.PeriodNumber %> — <%= ct.ActivityName %> for <%= ct.OutFirstName %> <%= ct.OutLastName %><%= i < coveringToday.length - 1 ? '; ' : '' %>
+                        <% }) %>
+                    </div>
+                <% } %>
                 <div class="schedule-list">
                     <%
                         const displaySchedule = isCounselor ? schedule : instructorSchedule;
@@ -107,6 +115,11 @@
                                 <small style="color: var(--primary); font-weight: 700;">PERIOD <%= s.PeriodNumber %></small>
                                 <div style="font-weight: 600; margin: 4px 0;"><%= s.ActivityName %></div>
                                 <div style="font-size: 0.85rem; color: #64748b;">&#128205; <%= s.Location || 'Main Field' %></div>
+                                <% if (s.coverageSkipped) { %>
+                                    <div style="font-size: 0.78rem; color: #92400e; font-style: italic; margin-top: 4px;">Out today — no coverage needed</div>
+                                <% } else if (s.coveredByName) { %>
+                                    <div style="font-size: 0.78rem; color: #166534; font-weight: 600; margin-top: 4px;">&#128260; Covered by <%= s.coveredByName %></div>
+                                <% } %>
                             </div>
                         <% }) %>
                     <% } else { %>

@@ -260,7 +260,7 @@
                                         <span>&#128203; <%= s.staff.map(function(p){ return p.FirstName + ' ' + p.LastName; }).join(', ') %></span>
                                     <% } %>
                                     <% if (s.classCounselors && s.classCounselors.length) { %>
-                                        <span>&#128100; <%= s.classCounselors.map(function(p){ return p.FirstName + ' ' + p.LastName; }).join(', ') %></span>
+                                        <span>&#128100; <%= s.classCounselors.map(function(p){ return p.FirstName + ' ' + p.LastName + (p.covering ? ' (covering for ' + p.coveringForName + ')' : ''); }).join(', ') %></span>
                                     <% } %>
                                 </div>
                                 <% } %>
