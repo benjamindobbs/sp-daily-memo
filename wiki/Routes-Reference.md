@@ -69,7 +69,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/mass-edit-staff/save` | ✓ | JSON bulk save of every row (transaction); mirrors group/schedule/bus/extended into `CounselorWeekAttributes` for the active week |
 | POST | `/update-staff-period` | ✓ | Add/update one period on an instructor's weekly schedule |
 | POST | `/remove-staff-period` | ✓ | Remove one period from an instructor's weekly schedule |
-| GET | `/camper/:id` | | Individual camper profile. Each period's class counselor(s) reflect today's `CounselorCoverage` substitutions |
+| GET | `/camper/:id` | | Individual camper profile. Each period's class counselor(s) reflect today's `CounselorCoverage` substitutions. Parent/guardian contact card is admin-view only |
 | POST | `/camper/:id/update` | ✓ | Edit camper fields: `preferredName`, `homeGroupCounselorID`, `busRoute`, `busRidesAM` (checkbox → `1`/`0`), `busRidesPM` (checkbox → `1`/`0`), `extendedHours`, `campLunch`. If `busRoute` is cleared, both ride flags are forced to `0`. |
 | POST | `/camper/:id/delete` | ✓ | Remove a camper from the roster |
 | GET | `/faculty-summer` | | Full-summer instructor schedule view |
@@ -260,6 +260,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/admin/building-coord` | ✓ | Upsert a building pin: body `{name, map, x, y}`. `map` must be `enrichment` or `sports`. Redirects to `/settings#map`. |
 | POST | `/admin/delete-building-coord` | ✓ | Delete a building pin by `id`. Redirects to `/settings#map`. |
 | POST | `/upload-campers` | ✓ | CSV import for camper roster (ACR-005). Sets color, shirt, lunch, and home group — does not touch bus data. Targets the prep target week if set, otherwise the active week. |
+| POST | `/upload-camper-contacts` | ✓ | CSV import of the Person and Parent Contacts export. Matches campers by name and sets Parent 1/2 name + phone numbers. Update-only, not week-scoped. Shown on `/camper/:id`, admin view only. |
 | POST | `/upload-campers-schedule` | ✓ | CSV import for master schedule (ACR-255). Sets grade, extended hours, and class schedule — does not touch bus data |
 | POST | `/upload-bus-am` | ✓ | CSV import of ACR-132 (AM Bus Attendance). Sets `BusRoute` + `BusRidesAM` per camper from the report's bus sections |
 | POST | `/upload-bus-pm` | ✓ | CSV import of ACR-133 (PM Bus Attendance). Sets `BusRoute` + `BusRidesPM` |
