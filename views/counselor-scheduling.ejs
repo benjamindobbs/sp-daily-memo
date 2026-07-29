@@ -2931,6 +2931,7 @@
                     const sel = document.querySelector(`.cg-schedule[data-cid="${c.CounselorID}"]`);
                     const sched = sel ? sel.value : (c.ScheduleType || '');
                     if (!isCounselorAvailableFor(sched, period, targetSide)) return false;
+                    if (usedEitherBlock(blockUsed, c.CounselorID, name)) return false; // day-level variety
                     return true;
                 });
                 const preferred = shuffle(eligible.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(name)));
@@ -3017,7 +3018,9 @@
                     const actName = OFFERINGS[eligIdx].ActivityName;
                     state[eligIdx].counselors.forEach((id, slotPos) => {
                         if (id !== null || extrasPool.length === 0) return;
-                        const elig_e  = extrasPool.filter(c => !(isFemaleOnlyClass(actName) && GENDER_BY_ID[c.CounselorID] === 'M'));
+                        const elig_e  = extrasPool.filter(c =>
+                            !(isFemaleOnlyClass(actName) && GENDER_BY_ID[c.CounselorID] === 'M') &&
+                            !usedEitherBlock(blockUsed, c.CounselorID, actName));
                         const pref    = shuffle(elig_e.filter(c =>  prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
                         const nonP    = shuffle(elig_e.filter(c => !prefMap[c.CounselorID]?.ActivityPreferences?.includes(actName)));
                         const chosen  = mode === 'pref' ? (pref[0] ?? null) : (pref[0] ?? nonP[0]);
@@ -3108,7 +3111,8 @@
                     const valid = tIdxs.filter(idx =>
                         belowCap(idx) &&
                         !(isFemaleOnlyClass(OFFERINGS[idx].ActivityName) && GENDER_BY_ID[c.CounselorID] === 'M') &&
-                        !state[idx].counselors.includes(c.CounselorID)
+                        !state[idx].counselors.includes(c.CounselorID) &&
+                        !usedEitherBlock(blockUsed, c.CounselorID, OFFERINGS[idx].ActivityName)
                     );
                     if (valid.length === 0) continue;
                     const tIdx = valid.reduce((best, idx) => {
