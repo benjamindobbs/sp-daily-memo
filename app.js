@@ -2413,7 +2413,7 @@ app.get('/admin-login', (req, res) => {
 });
 
 app.post('/admin-login', (req, res) => {
-    if (req.body.password === 'N0placeLike') {
+    if (req.body.password === 'th3SummerPl4ce') {
         res.cookie('adminAuth', 'true', { maxAge: 8 * 60 * 60 * 1000, httpOnly: true });
         res.cookie('viewMode', 'admin', { maxAge: 365 * 24 * 60 * 60 * 1000 });
         return res.redirect('/admin');
