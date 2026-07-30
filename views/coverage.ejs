@@ -181,6 +181,15 @@
                                 <% }) %>
                             </optgroup>
                             <% } %>
+                            <% if (card.specialty && card.specialty.length > 0) { %>
+                            <optgroup label="Specialty Camp Counselors (No Schedule)">
+                                <% card.specialty.forEach(function(c) { %>
+                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %> — Currently: Free
+                                    </option>
+                                <% }) %>
+                            </optgroup>
+                            <% } %>
                         </select>
                     </div>
                 <% }) %>
