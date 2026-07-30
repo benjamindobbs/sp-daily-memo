@@ -7063,14 +7063,19 @@ app.get('/attendance', (req, res) => {
                 const key = `${s.filterPeriod}|${s.activityName.toLowerCase()}`;
                 const outRow = outCoverageByKey[key];
                 const coveringRow = coveringByKey[key];
+                // Same period+activity on both sides means this counselor is covering a class
+                // they're already a counselor in themselves (e.g. covering a Unit Leader's
+                // leadership slot in the exact class they normally co-staff). Not an away/
+                // ambiguity case — it's the one attendance sheet they actually need, so
+                // "covering" wins even if their own out-row for this period is Skipped.
+                if (coveringRow) {
+                    return { ...s, covering: true, coveringForName: `${coveringRow.OutFirstName} ${coveringRow.OutLastName}` };
+                }
                 if (outRow && !outRow.Skipped && outRow.CoveringCounselorID) {
                     return { ...s, coveredAway: true, coveredByName: coverName(outRow.CoveringCounselorID) };
                 }
                 if (outRow && outRow.Skipped) {
                     return { ...s, coveredAway: true, coveredByName: null };
-                }
-                if (coveringRow) {
-                    return { ...s, covering: true, coveringForName: `${coveringRow.OutFirstName} ${coveringRow.OutLastName}` };
                 }
                 // This counselor's own normal class for the period — but they're covering a
                 // different class that same period, so they won't actually be here. Grey it

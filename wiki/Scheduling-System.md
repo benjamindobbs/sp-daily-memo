@@ -313,6 +313,7 @@ CREATE TABLE CounselorCoverage (
   - A class the viewer is covering gets a green "Covering" badge.
   - A class the viewer is out of (they're the `OutCounselorID` on a non-skipped `CounselorCoverage` row) is greyed out (`att-flat-covered-away`) and tagged "Covered by X", or "No coverage needed" when `Skipped=1`.
   - If the viewer is covering a *different* class that same period, their own normal class card for that period is also greyed out and tagged "Covering `<ActivityName>` this period" — so only one card per period ever looks actionable, avoiding the ambiguity of two live-looking cards for the same clock block (`coveringByPeriod` lookup, keyed by period only, catches this alongside the exact-match `coveringByKey`).
+  - **Same-class edge case:** if the class the viewer is covering is the *exact same* period+activity as their own normal class (e.g. covering a Unit Leader's leadership slot in a class they're already a counselor in themselves), the "Covering" badge wins over any own-row status — including a `Skipped=1` row for their own seat that period — so the card never gets incorrectly greyed out as covered-away. It's the one attendance sheet they actually still need. The exact-match `coveringByKey` check runs before the own-row `outCoverageByKey` check for this reason.
 
   This annotation only applies to the filtered flat view — the unfiltered "Show All Sessions" admin view is untouched.
 
