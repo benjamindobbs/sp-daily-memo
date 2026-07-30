@@ -191,9 +191,10 @@ The Coverage tool is at `/coverage` — use it when a counselor or staff member 
 3. For each period, either:
    - Check **"Skip this period"** if no coverage is needed, or
    - Pick a **covering counselor** from the dropdown. When covering a **Unit Leader**, the first two groups are **Unit Leaders** (every other Unit Leader) and, directly below, **Sports Leaders** — both listed ahead of the usual groups below. When covering an **Instructor**, the first group is **Instructors** — every other instructor who has at least one class scheduled this week (instructors with no classes at all this week aren't offered). The dropdown is then split into:
-     - **Correct Side** — counselors already eligible for that class's Sports/Enrichment side that period
+     - **Correct Side** — counselors already scheduled somewhere this week who are eligible for that class's Sports/Enrichment side that period
      - **Swim Counselors** — highlighted green if the Swim Scheduling page currently has them free ("Send to Sports")
-     - **Opposite Side** — everyone else
+     - **Opposite Side** — everyone else who's scheduled somewhere this week
+     - **Specialty Camp Counselors (No Schedule)** — last group; counselors with no schedule at all this week (almost always KP/LP/SPLIT/SPRC specialty-camp counselors, since they aren't part of the main-camp schedule builder)
    
    Every name in the dropdown shows what that counselor is **currently** assigned that period — their class name, how many other counselors are already on it, and how many campers are enrolled — so you can judge the cost of pulling them off it before picking them.
 4. Click **Save Coverage**. A summary of the day's coverage (across every counselor who's out) appears above the form, with a **Remove** button on each entry.

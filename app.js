@@ -8181,11 +8181,21 @@ function buildCoverageCandidates(period, side, week, excludeCounselorId) {
         };
     };
 
-    const mainCounselors = pool.filter(c => c.StaffRole === 'Counselor');
+    // Counselors with zero CounselorWeekSchedules rows this week are unscheduled — almost
+    // always specialty-camp (KP/LP/SPLIT/SPRC) counselors who were never part of the main-camp
+    // schedule builder. They fall out of correctSide/oppositeSide (which lean on ScheduleType,
+    // and otherwise default to "available" for a counselor with no ScheduleType at all — not a
+    // meaningful signal for someone who was never scheduled) and into their own bucket instead.
+    const scheduledIds = new Set(
+        db.prepare("SELECT DISTINCT CounselorID FROM CounselorWeekSchedules WHERE WeekNumber = ?").all(week).map(r => r.CounselorID)
+    );
+    const mainCounselors = pool.filter(c => c.StaffRole === 'Counselor' && scheduledIds.has(c.CounselorID));
+    const specialtyCounselors = pool.filter(c => c.StaffRole === 'Counselor' && !scheduledIds.has(c.CounselorID));
     return {
         correctSide:  mainCounselors.filter(c => isCounselorAvailableForSide(c.ScheduleType, period, side)).map(annotate),
         swim:         pool.filter(c => c.StaffRole === 'Swim Counselor').map(annotate),
-        oppositeSide: mainCounselors.filter(c => !isCounselorAvailableForSide(c.ScheduleType, period, side)).map(annotate)
+        oppositeSide: mainCounselors.filter(c => !isCounselorAvailableForSide(c.ScheduleType, period, side)).map(annotate),
+        specialty:    specialtyCounselors.map(annotate)
     };
 }
 
@@ -8279,7 +8289,7 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
 
     return periods.map(p => {
         const side = db.prepare("SELECT SideOfCamp FROM Activities WHERE Name = ?").get(p.ActivityName)?.SideOfCamp || 'Sports';
-        const { correctSide, swim, oppositeSide } = buildCoverageCandidates(p.PeriodNumber, side, week, outCounselorId);
+        const { correctSide, swim, oppositeSide, specialty } = buildCoverageCandidates(p.PeriodNumber, side, week, outCounselorId);
         swim.forEach(c => { c.sendToSports = sendToSportsByPeriod[p.PeriodNumber]?.has(c.CounselorID) || false; });
         const unitLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Unit Leader', p.PeriodNumber, week, outCounselorId) : [];
         const sportsLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Sports Leader', p.PeriodNumber, week, outCounselorId) : [];
@@ -8292,7 +8302,7 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
         return {
             periodNumber: p.PeriodNumber,
             activityName: p.ActivityName,
-            side, unitLeaders, sportsLeaders, instructors, correctSide, swim, oppositeSide,
+            side, unitLeaders, sportsLeaders, instructors, correctSide, swim, oppositeSide, specialty,
             counselorNames, enrollment,
             savedCoveringCounselorId: existing?.CoveringCounselorID || null,
             savedSkipped: existing?.Skipped === 1
