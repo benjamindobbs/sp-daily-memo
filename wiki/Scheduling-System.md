@@ -220,6 +220,12 @@ SPLIT campers have a non-standard schedule (AM specialty, PM standard classes). 
 
 Covered periods: **1, 2, 4, 5, 6**. Periods 1 and 2 are Enrichment AM; period 4 shows both Sports and Enrichment sides; periods 5 and 6 are Sports PM. Period 3 is not included (AM block 3 is not part of the SPLIT assignment set).
 
+### SPLIT Schedule (read-only view)
+
+`/split-schedule` is a read-only companion to `/split-scheduling` — a period-by-period listing of where every SPLIT camper actually ended up, for staff to consult day-to-day (not gated to admin, same access as `/master-schedule`). It reads the same `Schedules` rows the assignment editor writes (`PersonType = 'Camper'`, joined to `CamperWeekData` for `HomeGroupColor = 'SPLIT'` in the active week), so it only shows the periods a SPLIT camper actually has a class assignment for — periods 1, 2, 4, 5, 6, matching the editor's scope.
+
+Each period section lists one row per camper: camper name, class (`ActivityName`), and the class's location. Rows within a period are sorted by location alphabetically (ties broken by camper name). Location is resolved with the same priority order as Master Schedule: `StaffWeekSchedules.Location` (week-scoped override) → legacy `Schedules` `PersonType='Instructor'` row → `Activities.Location` fallback.
+
 ---
 
 ## Waitlist & Promotions
@@ -238,12 +244,18 @@ A **Deny** button (`POST /remove-waitlist/:id`) is available on both the "Ready 
 
 For each counselor, periods are split into the AM block (`PeriodNumber <= 3`) and PM block (`PeriodNumber > 3`), same boundary used everywhere else in the app (`scheduleTypeBusy()`, `getCounselorWaterBreakdown()`, etc.). Within each block independently:
 
-- **Duplicate class** — the same `ActivityName` appears more than once in that block. Unlike the day-level variety rule below, this does not collapse swim variants into one key — an exact repeated name is what's flagged here.
-- **Swim overload** — more than 1 class whose `ActivityName` matches `/swim/i` (e.g. `Rec Swim`, `Swim Lessons`) appears in that block. This catches two *different* swim classes stacked in the same block (e.g. Rec Swim period 1 + Swim Lessons period 2), which the duplicate-name check above wouldn't flag since the names differ.
+- **Duplicate class** — the same `ActivityName` appears more than once in that block. Unlike the day-level variety rule below, this does not collapse swim variants into one key — an exact repeated name is what's flagged here. Any activity whose name contains "triple period" (case-insensitive, e.g. `Sports Pals (triple period)`) is excluded from this count — the auto-builder deliberately assigns the same counselor to all 3 periods of these activities (see `tripleGroups`/`tripleGroupsPre` in `views/counselor-scheduling.ejs`), so a repeat there is by design, not a scheduling mistake.
+- **Swim overload** — more than 1 class whose `ActivityName` matches `/swim/i` (e.g. `Rec Swim`, `Swim Lessons`) appears in that block. This catches two *different* swim classes stacked in the same block (e.g. Rec Swim period 1 + Swim Lessons period 2), which the duplicate-name check above wouldn't flag since the names differ. Triple-period activities are not exempted from this one (none currently match `/swim/i`, but the exclusion is only applied to the duplicate-class count).
 
 This mirrors, but is independent from, the auto-builder's own **variety rule** (`blockKey()`/`blockUsed`/`usedEitherBlock()` in `views/counselor-scheduling.ejs`, described under [Auto-builder](#counselor-scheduler-pipeline) above), which collapses all swim variants into one `'swim'` key and prevents a counselor from getting the same activity twice across the **whole day** (both blocks combined) during a fresh build. The audit check is narrower in scope (block-level, not whole-day) but reads the live data directly, so it's the source of truth for what's actually saved — including schedules built before the variety rule existed, edited by hand, or written by any path other than the auto-builder.
 
 Each violation row shows the counselor, which block (AM/PM), and the specific issue(s) found, with a link to their profile. No auto-fix — this is a report, not a repair tool; resolve violations by hand in Counselor Scheduling.
+
+### Unit Leader Repeat Classes
+
+A second, separate card runs the same **duplicate class** check (same `ActivityName` more than once in the AM or PM block, with the same triple-period exclusion described above) for Unit Leaders. It exists because Unit Leaders aren't scheduled through `CounselorWeekSchedules` at all — they're scheduled through `StaffWeekSchedules` ∪ `CounselorScheduleAssignments` (`PersonType IN ('Instructor','Staff')`), the same tables Instructors and Sports Leaders use, so the Duplicate/Swim Overload check above never sees their rows.
+
+The query joins those two tables to `Counselors` and filters to `StaffRole = 'Unit Leader'` — **Sports Leaders are intentionally excluded**, including a Unit Leader's own dual-enrolled Sports Leader identity (a separate `Counselors` row, same person, different `CounselorID` — see [Counselor Scheduling](#counselor-scheduling)): that row's `StaffRole` is `'Sports Leader'`, so it simply doesn't match the filter and its periods never enter this check. No swim-overload equivalent is checked here, only repeated class names.
 
 ---
 
@@ -286,7 +298,7 @@ CREATE TABLE CounselorCoverage (
 ### Workflow (`GET /coverage`)
 
 1. Pick a date (defaults to today) and the counselor/staff member who's out.
-2. Their period assignments for the active/prep week are pulled the same way their own Daily Assignments card does — `CounselorWeekSchedules` for `Counselor`/`Swim Counselor` roles, `StaffWeekSchedules` ∪ `CounselorScheduleAssignments` for `Instructor`/`Unit Leader`/`Sports Leader` (`getCounselorPeriodsForWeek()`). One card is rendered per period, each showing everyone currently assigned to that class (the out counselor always included, regardless of role — same 3-source union as Class Roster/Master Schedule) and its `WeeklyOfferings.PreliminaryEnrollment` camper count.
+2. Their period assignments for the active/prep week are pulled the same way their own Daily Assignments card does — `CounselorWeekSchedules` for `Counselor`/`Swim Counselor` roles, `StaffWeekSchedules` ∪ `CounselorScheduleAssignments` for `Instructor`/`Unit Leader`/`Sports Leader` (`getCounselorPeriodsForWeek()`). One card is rendered per period, each showing everyone currently assigned to that class and its `WeeklyOfferings.PreliminaryEnrollment` camper count. This "who's on the class" line is itself run through `applyCoverageOverlay()` against the date's coverage map, so an out counselor who has already been assigned a substitute (whether for this class or, if visiting a second/third out-counselor the same day, saved earlier in the session) is shown replaced by their sub rather than still listed as if nothing had changed.
 3. Each card has a **"Skip this period"** checkbox (no coverage needed that period) and a covering-counselor `<select>`, built by `buildCoverageCandidates(period, side, week, excludeCounselorId)` plus, for leadership/instructor roles, `buildLeadershipCandidates(role, period, week, excludeCounselorId, requireScheduledThisWeek)`:
    - **Unit Leaders** — shown first, and only when the out person's own `StaffRole` is `Unit Leader`: every other `StaffRole='Unit Leader'`, via `buildLeadershipCandidates('Unit Leader', ...)`.
    - **Sports Leaders** — shown directly below Unit Leaders, under the same condition (out person is a `Unit Leader`): every `StaffRole='Sports Leader'`, via `buildLeadershipCandidates('Sports Leader', ...)`.
@@ -299,6 +311,8 @@ CREATE TABLE CounselorCoverage (
    - **Specialty Camp Counselors (No Schedule)** — shown last: `StaffRole='Counselor'` with **zero** `CounselorWeekSchedules` rows for the week — almost always KP/LP/SPLIT/SPRC specialty-camp counselors who were never part of the main-camp schedule builder. Excluded from Correct/Opposite Side rather than defaulting into "Correct Side" (a counselor with no `ScheduleType` at all otherwise passes `isCounselorAvailableForSide()` unconditionally, which isn't a meaningful signal for someone who was never scheduled). Always shows "Currently: Free" since there's no `CounselorWeekSchedules` row to look up.
 
    Every candidate (in any bucket, never filtered out) is annotated with **their own current assignment that period** — activity name, how many counselors are already on it, and its enrollment — so the admin can judge the cost of pulling them off it. The out counselor themself is excluded from every bucket. The Unit Leaders/Sports Leaders/Instructors buckets are additive — covering one of those roles still also shows the normal correct-side/swim/opposite-side buckets after them, unchanged. Unit Leaders+Sports Leaders and Instructors are mutually exclusive (keyed off the out person's own `StaffRole`), so a card only ever shows one of the two special-role bucket sets.
+
+   **Multi-counselor headcount accuracy:** when covering more than one counselor on the same date, `buildCoverageCards()` builds `getCoverageForDate(date)` and `buildCoverageHeadcountDeltas(coverageMap, week)` once per page load (across *every* out-counselor on that date, not just the one currently being planned) and threads the resulting deltas into `buildCoverageCandidates()`/`buildLeadershipCandidates()`. Each candidate's `currentHeadcount` is the static `CounselorWeekSchedules` count adjusted by `+1` for every substitute who has already joined that class via an earlier coverage save that date, and `-1` for every substitute who has already left it to cover someone else (`getCounselorActivityForPeriod()` looks up where a covering counselor's own normal seat is, so the delta knows which class to subtract from). Without this, assigning coverage for a second or third counselor on the same day would show stale headcounts that ignore moves already saved earlier in the session.
 4. **Save** (`POST /coverage/save`) upserts one `CounselorCoverage` row per period (parallel arrays, same convention as the swim-scheduling guard checklists); a period with neither a covering counselor nor Skip checked has its row cleared instead. Re-visiting the same date/counselor pre-fills every card from the existing rows.
 5. A per-date summary card lists every `CounselorCoverage` row for the selected date across all out counselors, each with a **Remove** button (`POST /coverage/clear-row`).
 
@@ -313,6 +327,7 @@ CREATE TABLE CounselorCoverage (
   - A class the viewer is covering gets a green "Covering" badge.
   - A class the viewer is out of (they're the `OutCounselorID` on a non-skipped `CounselorCoverage` row) is greyed out (`att-flat-covered-away`) and tagged "Covered by X", or "No coverage needed" when `Skipped=1`.
   - If the viewer is covering a *different* class that same period, their own normal class card for that period is also greyed out and tagged "Covering `<ActivityName>` this period" — so only one card per period ever looks actionable, avoiding the ambiguity of two live-looking cards for the same clock block (`coveringByPeriod` lookup, keyed by period only, catches this alongside the exact-match `coveringByKey`).
+  - **Same-class edge case:** if the class the viewer is covering is the *exact same* period+activity as their own normal class (e.g. covering a Unit Leader's leadership slot in a class they're already a counselor in themselves), the "Covering" badge wins over any own-row status — including a `Skipped=1` row for their own seat that period — so the card never gets incorrectly greyed out as covered-away. It's the one attendance sheet they actually still need. The exact-match `coveringByKey` check runs before the own-row `outCoverageByKey` check for this reason.
 
   This annotation only applies to the filtered flat view — the unfiltered "Show All Sessions" admin view is untouched.
 

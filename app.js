@@ -2890,8 +2890,15 @@ app.get('/audit', (req, res) => {
     for (const entry of Object.values(byCounselorBlock)) {
         for (const block of ['am', 'pm']) {
             const rows = entry[block];
+            // Triple-period activities (e.g. "Sports Pals (triple period)") are deliberately
+            // assigned across all 3 periods of a block by the auto-builder — same convention it
+            // uses to exempt them from its own variety rule (see views/counselor-scheduling.ejs) —
+            // so they're not a real duplicate here.
             const nameCounts = {};
-            rows.forEach(r => { nameCounts[r.ActivityName] = (nameCounts[r.ActivityName] || 0) + 1; });
+            rows.forEach(r => {
+                if (r.ActivityName.toLowerCase().includes('triple period')) return;
+                nameCounts[r.ActivityName] = (nameCounts[r.ActivityName] || 0) + 1;
+            });
             const duplicateNames = Object.entries(nameCounts).filter(([, n]) => n > 1).map(([name]) => name);
             const swimRows = rows.filter(r => /swim/i.test(r.ActivityName));
 
@@ -2914,7 +2921,53 @@ app.get('/audit', (req, res) => {
         }
     }
 
-    res.render('audit', { activeSession, alertMessage, noCounselor, missingSchedule, counselorMismatch, EXPECTED, suspects, allClassNames, unclassifiedActivities, scheduleRuleViolations });
+    // Unit Leader repeat-class check: same shape as the Duplicate/Swim Overload check above, but
+    // for Unit Leaders — who are scheduled through StaffWeekSchedules/CounselorScheduleAssignments,
+    // not CounselorWeekSchedules, so they're invisible to that check. Sports Leaders are a
+    // distinct StaffRole and are intentionally excluded here, even when dual-enrolled as a
+    // separate Counselors row under the same person (that row simply won't match StaffRole =
+    // 'Unit Leader' below, so its periods never enter this check).
+    const unitLeaderRows = db.prepare(`
+        SELECT c.CounselorID, c.FirstName, c.LastName, x.PeriodNumber, x.ActivityName FROM (
+            SELECT StaffID AS CounselorID, PeriodNumber, ActivityName FROM StaffWeekSchedules WHERE WeekNumber = ?
+            UNION
+            SELECT PersonID AS CounselorID, PeriodNumber, ActivityName FROM CounselorScheduleAssignments WHERE WeekNumber = ? AND PersonType IN ('Instructor','Staff')
+        ) x
+        JOIN Counselors c ON c.CounselorID = x.CounselorID
+        WHERE c.StaffRole = 'Unit Leader'
+        ORDER BY c.LastName, c.FirstName, x.PeriodNumber
+    `).all(activeWeek, activeWeek);
+    const byUnitLeaderBlock = {};
+    unitLeaderRows.forEach(r => {
+        const entry = (byUnitLeaderBlock[r.CounselorID] ??= {
+            CounselorID: r.CounselorID, FirstName: r.FirstName, LastName: r.LastName, am: [], pm: []
+        });
+        entry[r.PeriodNumber <= 3 ? 'am' : 'pm'].push(r);
+    });
+    const unitLeaderRepeatViolations = [];
+    for (const entry of Object.values(byUnitLeaderBlock)) {
+        for (const block of ['am', 'pm']) {
+            // Triple-period activities are deliberately repeated across a block — see the
+            // matching exclusion on the Duplicate/Swim Overload check above.
+            const nameCounts = {};
+            entry[block].forEach(r => {
+                if (r.ActivityName.toLowerCase().includes('triple period')) return;
+                nameCounts[r.ActivityName] = (nameCounts[r.ActivityName] || 0) + 1;
+            });
+            const duplicateNames = Object.entries(nameCounts).filter(([, n]) => n > 1).map(([name]) => name);
+            if (duplicateNames.length > 0) {
+                unitLeaderRepeatViolations.push({
+                    CounselorID: entry.CounselorID,
+                    FirstName: entry.FirstName,
+                    LastName: entry.LastName,
+                    block: block.toUpperCase(),
+                    issues: [`Duplicate class: ${duplicateNames.join(', ')}`]
+                });
+            }
+        }
+    }
+
+    res.render('audit', { activeSession, alertMessage, noCounselor, missingSchedule, counselorMismatch, EXPECTED, suspects, allClassNames, unclassifiedActivities, scheduleRuleViolations, unitLeaderRepeatViolations });
 });
 
 app.post('/set-activity-side', (req, res) => {
@@ -7063,14 +7116,19 @@ app.get('/attendance', (req, res) => {
                 const key = `${s.filterPeriod}|${s.activityName.toLowerCase()}`;
                 const outRow = outCoverageByKey[key];
                 const coveringRow = coveringByKey[key];
+                // Same period+activity on both sides means this counselor is covering a class
+                // they're already a counselor in themselves (e.g. covering a Unit Leader's
+                // leadership slot in the exact class they normally co-staff). Not an away/
+                // ambiguity case — it's the one attendance sheet they actually need, so
+                // "covering" wins even if their own out-row for this period is Skipped.
+                if (coveringRow) {
+                    return { ...s, covering: true, coveringForName: `${coveringRow.OutFirstName} ${coveringRow.OutLastName}` };
+                }
                 if (outRow && !outRow.Skipped && outRow.CoveringCounselorID) {
                     return { ...s, coveredAway: true, coveredByName: coverName(outRow.CoveringCounselorID) };
                 }
                 if (outRow && outRow.Skipped) {
                     return { ...s, coveredAway: true, coveredByName: null };
-                }
-                if (coveringRow) {
-                    return { ...s, covering: true, coveringForName: `${coveringRow.OutFirstName} ${coveringRow.OutLastName}` };
                 }
                 // This counselor's own normal class for the period — but they're covering a
                 // different class that same period, so they won't actually be here. Grey it
@@ -8130,6 +8188,39 @@ function getCounselorPeriodsForWeek(counselorId, staffRole, week) {
     `).all(counselorId, week, counselorId, week);
 }
 
+// Single-period lookup of a counselor's own normal activity, checked across every schedule
+// table regardless of role (a person only ever appears in one). Used to figure out which
+// class a covering counselor is leaving behind when they're pulled to substitute elsewhere.
+function getCounselorActivityForPeriod(counselorId, period, week) {
+    return db.prepare(`
+        SELECT ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ? AND PeriodNumber = ?
+        UNION
+        SELECT ActivityName FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ? AND PeriodNumber = ?
+        UNION
+        SELECT ActivityName FROM CounselorScheduleAssignments WHERE PersonID = ? AND WeekNumber = ? AND PeriodNumber = ? AND PersonType IN ('Instructor','Staff')
+    `).get(counselorId, week, period, counselorId, week, period, counselorId, week, period)?.ActivityName || null;
+}
+
+// Net headcount change per "period|activity" from every coverage move already saved for this
+// date: +1 where a substitute has joined (the out counselor's own class, recorded directly on
+// the CounselorCoverage row), -1 where the substitute has left their own normal class behind
+// (looked up via getCounselorActivityForPeriod). Lets the coverage dropdown reflect counselors
+// who have functionally moved earlier the same day, instead of reading the static weekly
+// schedule as if nobody had moved.
+function buildCoverageHeadcountDeltas(coverageMap, week) {
+    const deltas = new Map();
+    const bump = (period, activityName, amt) => {
+        if (!activityName) return;
+        const key = `${period}|${activityName}`;
+        deltas.set(key, (deltas.get(key) || 0) + amt);
+    };
+    for (const cov of coverageMap.values()) {
+        bump(cov.PeriodNumber, cov.ActivityName, 1);
+        bump(cov.PeriodNumber, getCounselorActivityForPeriod(cov.CoveringCounselorID, cov.PeriodNumber, week), -1);
+    }
+    return deltas;
+}
+
 // period -> Set(CounselorID) of swim counselors attachSendToSports() says are spare that
 // period this week — reused as-is to green-highlight "send to sports" candidates.
 function getSendToSportsSets(week) {
@@ -8151,7 +8242,7 @@ function getSendToSportsSets(week) {
 // 3 dropdown buckets. Every candidate is annotated with their OWN current assignment that
 // period (activity name, how many counselors are already on it, its enrollment) so the admin
 // can judge the cost of pulling them off it — never filtered out, just informational.
-function buildCoverageCandidates(period, side, week, excludeCounselorId) {
+function buildCoverageCandidates(period, side, week, excludeCounselorId, headcountDeltas = new Map()) {
     const pool = db.prepare(`
         SELECT c.CounselorID, c.FirstName, c.LastName, c.StaffRole,
                COALESCE(cwa.ScheduleType, c.ScheduleType) AS ScheduleType
@@ -8173,10 +8264,12 @@ function buildCoverageCandidates(period, side, week, excludeCounselorId) {
     const annotate = c => {
         const cur = currentAssignment.get(c.CounselorID, week, period);
         if (!cur) return { ...c, currentActivity: null, currentHeadcount: 0, currentEnrollment: null };
+        const base = classHeadcount.get(week, period, cur.ActivityName)?.n || 0;
+        const delta = headcountDeltas.get(`${period}|${cur.ActivityName}`) || 0;
         return {
             ...c,
             currentActivity: cur.ActivityName,
-            currentHeadcount: classHeadcount.get(week, period, cur.ActivityName)?.n || 0,
+            currentHeadcount: Math.max(0, base + delta),
             currentEnrollment: classEnrollment.get(week, period, cur.ActivityName)?.PreliminaryEnrollment ?? null
         };
     };
@@ -8206,7 +8299,7 @@ function buildCoverageCandidates(period, side, week, excludeCounselorId) {
 // periods on the schedule this week, so idle/roster-only instructors aren't offered as
 // candidates. None of these roles are scheduled through CounselorWeekSchedules, so current
 // assignment is looked up the same way getCounselorPeriodsForWeek() does for non-Counselor roles.
-function buildLeadershipCandidates(role, period, week, excludeCounselorId, requireScheduledThisWeek = false) {
+function buildLeadershipCandidates(role, period, week, excludeCounselorId, requireScheduledThisWeek = false, headcountDeltas = new Map()) {
     const scheduledFilter = requireScheduledThisWeek ? `
         AND EXISTS (
             SELECT 1 FROM StaffWeekSchedules sws WHERE sws.StaffID = c.CounselorID AND sws.WeekNumber = ?
@@ -8242,10 +8335,12 @@ function buildLeadershipCandidates(role, period, week, excludeCounselorId, requi
     return pool.map(c => {
         const cur = currentAssignment.get(c.CounselorID, week, period, c.CounselorID, week, period);
         if (!cur) return { ...c, currentActivity: null, currentHeadcount: 0, currentEnrollment: null };
+        const base = classHeadcount.get(week, period, cur.ActivityName, week, period, cur.ActivityName, week, period, cur.ActivityName)?.n || 0;
+        const delta = headcountDeltas.get(`${period}|${cur.ActivityName}`) || 0;
         return {
             ...c,
             currentActivity: cur.ActivityName,
-            currentHeadcount: classHeadcount.get(week, period, cur.ActivityName, week, period, cur.ActivityName, week, period, cur.ActivityName)?.n || 0,
+            currentHeadcount: Math.max(0, base + delta),
             currentEnrollment: classEnrollment.get(week, period, cur.ActivityName)?.PreliminaryEnrollment ?? null
         };
     });
@@ -8261,22 +8356,30 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
     db.prepare("SELECT PeriodNumber, CoveringCounselorID, Skipped FROM CounselorCoverage WHERE Date = ? AND OutCounselorID = ?")
         .all(date, outCounselorId).forEach(r => { existingByPeriod[r.PeriodNumber] = r; });
 
+    // Every coverage move already saved for this date (across every out-counselor, not just
+    // this one), so candidate headcounts and "who's on this class" reflect counselors who have
+    // functionally moved rather than the static weekly schedule.
+    const coverageMap = getCoverageForDate(date);
+    const headcountDeltas = buildCoverageHeadcountDeltas(coverageMap, week);
+
     // Everyone currently assigned to the card's own class/period — Counselor/Swim Counselor via
     // CounselorWeekSchedules, Instructor/Unit Leader/Sports Leader via StaffWeekSchedules ∪
     // CounselorScheduleAssignments — so the out counselor always shows up in this list
-    // regardless of their role, alongside anyone else already on that class.
+    // regardless of their role, alongside anyone else already on that class. Run through
+    // applyCoverageOverlay so anyone already pulled to cover elsewhere today drops out of it
+    // (and any substitute already assigned to cover this class shows up in their place).
     const classAssigned = db.prepare(`
-        SELECT DISTINCT FirstName, LastName FROM (
-            SELECT c.FirstName, c.LastName
+        SELECT DISTINCT CounselorID, FirstName, LastName FROM (
+            SELECT c.CounselorID, c.FirstName, c.LastName
             FROM Counselors c
             JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID
             WHERE cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ?
             UNION
-            SELECT st.FirstName, st.LastName
+            SELECT st.CounselorID, st.FirstName, st.LastName
             FROM Counselors st JOIN StaffWeekSchedules sws ON sws.StaffID = st.CounselorID
             WHERE sws.WeekNumber = ? AND sws.PeriodNumber = ? AND sws.ActivityName = ? COLLATE NOCASE
             UNION
-            SELECT st.FirstName, st.LastName
+            SELECT st.CounselorID, st.FirstName, st.LastName
             FROM Counselors st JOIN CounselorScheduleAssignments csa ON csa.PersonID = st.CounselorID
             WHERE csa.WeekNumber = ? AND csa.PeriodNumber = ? AND csa.ActivityName = ? COLLATE NOCASE
               AND csa.PersonType IN ('Instructor','Staff')
@@ -8289,15 +8392,16 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
 
     return periods.map(p => {
         const side = db.prepare("SELECT SideOfCamp FROM Activities WHERE Name = ?").get(p.ActivityName)?.SideOfCamp || 'Sports';
-        const { correctSide, swim, oppositeSide, specialty } = buildCoverageCandidates(p.PeriodNumber, side, week, outCounselorId);
+        const { correctSide, swim, oppositeSide, specialty } = buildCoverageCandidates(p.PeriodNumber, side, week, outCounselorId, headcountDeltas);
         swim.forEach(c => { c.sendToSports = sendToSportsByPeriod[p.PeriodNumber]?.has(c.CounselorID) || false; });
-        const unitLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Unit Leader', p.PeriodNumber, week, outCounselorId) : [];
-        const sportsLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Sports Leader', p.PeriodNumber, week, outCounselorId) : [];
-        const instructors = staffRole === 'Instructor' ? buildLeadershipCandidates('Instructor', p.PeriodNumber, week, outCounselorId, true) : [];
+        const unitLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Unit Leader', p.PeriodNumber, week, outCounselorId, false, headcountDeltas) : [];
+        const sportsLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Sports Leader', p.PeriodNumber, week, outCounselorId, false, headcountDeltas) : [];
+        const instructors = staffRole === 'Instructor' ? buildLeadershipCandidates('Instructor', p.PeriodNumber, week, outCounselorId, true, headcountDeltas) : [];
         const existing = existingByPeriod[p.PeriodNumber] || null;
-        const counselorNames = classAssigned
-            .all(week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName)
-            .map(c => `${c.FirstName} ${c.LastName}`);
+        const classAssignedRaw = classAssigned
+            .all(week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName);
+        const counselorNames = applyCoverageOverlay(classAssignedRaw, coverageMap, p.PeriodNumber)
+            .map(c => c.covering ? `${c.FirstName} ${c.LastName} (covering)` : `${c.FirstName} ${c.LastName}`);
         const enrollment = classEnrollment.get(week, p.PeriodNumber, p.ActivityName)?.PreliminaryEnrollment ?? null;
         return {
             periodNumber: p.PeriodNumber,
@@ -8315,7 +8419,7 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
 // resolved fresh on every render, so it naturally stops applying once the date passes.
 function getCoverageForDate(date) {
     const rows = db.prepare(`
-        SELECT cc.OutCounselorID, cc.PeriodNumber, cc.CoveringCounselorID,
+        SELECT cc.OutCounselorID, cc.PeriodNumber, cc.ActivityName, cc.CoveringCounselorID,
                out.FirstName AS OutFirstName, out.LastName AS OutLastName,
                cov.FirstName AS CoverFirstName, cov.LastName AS CoverLastName,
                COALESCE(cwa.HomeGroupColor, cov.HomeGroupColor) AS CoverHomeGroupColor
@@ -10162,6 +10266,79 @@ app.post('/save-split-assignments', (req, res) => {
         console.error('[save-split-assignments]', err.message);
         res.status(500).json({ error: err.message });
     }
+});
+
+app.get('/split-schedule', (req, res) => {
+    const aw = getActiveWeek();
+
+    const splitIds = db.prepare(`
+        SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ? AND HomeGroupColor = 'SPLIT'
+    `).all(aw).map(r => r.CamperID);
+
+    let rows = [];
+    if (splitIds.length > 0) {
+        const ph = splitIds.map(() => '?').join(',');
+        rows = db.prepare(`
+            SELECT s.PeriodNumber AS periodNumber, s.ActivityName AS activityName,
+                   COALESCE(c.PreferredName, c.FirstName) AS firstName, c.LastName AS lastName,
+                   a.Location AS activityLocation
+            FROM Schedules s
+            JOIN Campers c ON c.CamperID = s.PersonID
+            LEFT JOIN Activities a ON a.Name = s.ActivityName
+            WHERE s.PersonType = 'Camper' AND s.WeekNumber = ? AND s.ActivityName NOT LIKE '#REF%'
+              AND s.PersonID IN (${ph})
+        `).all(aw, ...splitIds);
+    }
+
+    // Location resolution mirrors /master-schedule: week-scoped staff override → legacy
+    // instructor row → static Activities.Location fallback.
+    const getLocationWeek = db.prepare(`
+        SELECT Location FROM StaffWeekSchedules
+        WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
+          AND Location IS NOT NULL AND Location != ''
+        LIMIT 1
+    `);
+    const getLocationLegacy = db.prepare(`
+        SELECT Location FROM Schedules
+        WHERE PersonType = 'Instructor' AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
+          AND Location IS NOT NULL AND Location != ''
+        LIMIT 1
+    `);
+    const locationCache = {};
+    function resolveLocation(periodNumber, activityName, fallback) {
+        const key = `${periodNumber}|${activityName}`;
+        if (!(key in locationCache)) {
+            const locRow = getLocationWeek.get(aw, periodNumber, activityName)
+                || getLocationLegacy.get(periodNumber, activityName);
+            locationCache[key] = locRow ? locRow.Location : (fallback || null);
+        }
+        return locationCache[key];
+    }
+
+    const periodMap = new Map();
+    for (const r of rows) {
+        const entry = {
+            camperName: `${r.firstName} ${r.lastName}`,
+            activityName: r.activityName,
+            location: resolveLocation(r.periodNumber, r.activityName, r.activityLocation)
+        };
+        if (!periodMap.has(r.periodNumber)) periodMap.set(r.periodNumber, []);
+        periodMap.get(r.periodNumber).push(entry);
+    }
+
+    const schedule = [];
+    for (const periodNumber of [...periodMap.keys()].sort((a, b) => a - b)) {
+        const campers = periodMap.get(periodNumber).sort((a, b) => {
+            const locCompare = (a.location || '').localeCompare(b.location || '');
+            return locCompare !== 0 ? locCompare : a.camperName.localeCompare(b.camperName);
+        });
+        schedule.push({ periodNumber, campers });
+    }
+
+    const session = db.prepare('SELECT label FROM Sessions WHERE weekNumber=?').get(aw);
+    const weekLabel = session?.label ?? `Week ${aw}`;
+
+    res.render('split-schedule', { schedule, weekLabel });
 });
 
 // ─── SPLIT FIELD TRIP ─────────────────────────────────────────────────────────

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPLIT Schedule | Camp Hub</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/nav.js" defer></script>
+</head>
+<body>
+
+    <% if (viewMode === 'admin') { %>
+    <nav class="nav-bar">
+        <a href="/admin" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/counselor-directory" class="nav-btn">&#128101; Staff Directory</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <a href="/split-scheduling" class="nav-btn">&#127820; SPLIT Scheduling</a>
+        <a href="/split-schedule" class="nav-btn primary">&#128197; SPLIT Schedule</a>
+        <a href="/settings" class="nav-btn">&#9881;&#65039; Settings</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="staff">
+            <button class="nav-btn" style="cursor:pointer;">Staff View</button>
+        </form>
+    </nav>
+    <% } else { %>
+    <nav class="nav-bar">
+        <a href="/staff" class="nav-btn">&#127968; Hub</a>
+        <a href="/master-schedule" class="nav-btn">&#128197; Master Schedule</a>
+        <a href="/split-schedule" class="nav-btn primary">&#128197; SPLIT Schedule</a>
+        <a href="/search" class="nav-btn">&#128269; Camper Lookup</a>
+        <a href="/attendance" class="nav-btn">&#128203; Attendance</a>
+        <form action="/choose-view" method="POST" style="margin-left:auto;">
+            <input type="hidden" name="view" value="admin">
+            <button class="nav-btn" style="cursor:pointer;">&#128274; Admin View</button>
+        </form>
+    </nav>
+    <% } %>
+
+    <div class="container-xl">
+        <header style="margin-bottom: 24px;">
+            <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;">
+                <h1 style="margin:0;">SPLIT Schedule</h1>
+                <span style="background:#dcfce7; color:#166534; font-size:0.78rem; font-weight:700; padding:3px 10px; border-radius:20px; border:1px solid #bbf7d0;">&#9679; <%= weekLabel %></span>
+            </div>
+            <p style="color: var(--text-muted); margin: 4px 0 0;">Every SPLIT camper's class by period, sorted by location.</p>
+        </header>
+
+        <% if (schedule.length === 0) { %>
+        <div class="no-offerings" style="text-align:center; padding:60px 20px; color: var(--text-muted);">
+            No SPLIT camper schedule found for this week.
+        </div>
+        <% } %>
+
+        <% schedule.forEach(function(period) { %>
+        <div class="period-section">
+            <div class="period-header">
+                <span class="period-badge">Period <%= period.periodNumber %></span>
+                <div class="period-divider"></div>
+                <span style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;"><%= period.campers.length %> campers</span>
+            </div>
+
+            <table class="class-table mc">
+                <thead>
+                    <tr>
+                        <th style="width: 40%;">Camper</th>
+                        <th style="width: 30%;">Class</th>
+                        <th>Location</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% period.campers.forEach(function(row) { %>
+                    <tr class="mc-card">
+                        <td class="mc-title"><%= row.camperName %></td>
+                        <td>
+                            <span class="mc-label">Class</span>
+                            <%= row.activityName %>
+                        </td>
+                        <td>
+                            <span class="mc-label">Location</span>
+                            <span class="location-text"><%= row.location || '—' %></span>
+                        </td>
+                    </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+        <% }); %>
+    </div>
+</body>
+</html>

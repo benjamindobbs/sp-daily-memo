@@ -108,6 +108,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/save-split-assignments` | ✓ | Save SPLIT period assignments |
 | POST | `/split-field-trip/mark` | ✓ | Flag today as a SPLIT field trip |
 | POST | `/split-field-trip/clear` | ✓ | Remove today's SPLIT field trip flag |
+| GET | `/split-schedule` |  | Read-only period-by-period schedule for all SPLIT campers, grouped by period and sorted by location within each period. Not admin-gated (same access as `/master-schedule`). Linked from the `/split-scheduling` nav bar. |
 | GET | `/audit` | ✓ | Audit page — flags scheduling issues. Uses the prep target week if one is set, otherwise the active week. Counselor class-count check credits periods covered under a dual-enrolled staff identity (same name, e.g. Sports Leader/Counselor), so dual staff aren't falsely flagged short. **Duplicate / Swim Overload** card flags, per counselor per AM/PM block, a duplicate `ActivityName` within that block or more than 1 swim-variant (`/swim/i`) class within that block — checked against `CounselorWeekSchedules` directly, independent of how the schedule was built. See [Scheduling System](./Scheduling-System.md#audit-schedule-rule-checks). |
 | GET | `/counselor-week-assignments/:week` | ✓ | Ajax: get all assignments for a given week |
 | GET | `/api/counselor-week-pinned-types/:week` | ✓ | Ajax: `{CounselorID, ScheduleType}` rows for counselors with a manually-pinned (`ScheduleTypeManual=1`) schedule type in the given week; used by **Migrate Pinned Types** on the schedule builder |
