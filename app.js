@@ -2914,7 +2914,48 @@ app.get('/audit', (req, res) => {
         }
     }
 
-    res.render('audit', { activeSession, alertMessage, noCounselor, missingSchedule, counselorMismatch, EXPECTED, suspects, allClassNames, unclassifiedActivities, scheduleRuleViolations });
+    // Unit Leader repeat-class check: same shape as the Duplicate/Swim Overload check above, but
+    // for Unit Leaders — who are scheduled through StaffWeekSchedules/CounselorScheduleAssignments,
+    // not CounselorWeekSchedules, so they're invisible to that check. Sports Leaders are a
+    // distinct StaffRole and are intentionally excluded here, even when dual-enrolled as a
+    // separate Counselors row under the same person (that row simply won't match StaffRole =
+    // 'Unit Leader' below, so its periods never enter this check).
+    const unitLeaderRows = db.prepare(`
+        SELECT c.CounselorID, c.FirstName, c.LastName, x.PeriodNumber, x.ActivityName FROM (
+            SELECT StaffID AS CounselorID, PeriodNumber, ActivityName FROM StaffWeekSchedules WHERE WeekNumber = ?
+            UNION
+            SELECT PersonID AS CounselorID, PeriodNumber, ActivityName FROM CounselorScheduleAssignments WHERE WeekNumber = ? AND PersonType IN ('Instructor','Staff')
+        ) x
+        JOIN Counselors c ON c.CounselorID = x.CounselorID
+        WHERE c.StaffRole = 'Unit Leader'
+        ORDER BY c.LastName, c.FirstName, x.PeriodNumber
+    `).all(activeWeek, activeWeek);
+    const byUnitLeaderBlock = {};
+    unitLeaderRows.forEach(r => {
+        const entry = (byUnitLeaderBlock[r.CounselorID] ??= {
+            CounselorID: r.CounselorID, FirstName: r.FirstName, LastName: r.LastName, am: [], pm: []
+        });
+        entry[r.PeriodNumber <= 3 ? 'am' : 'pm'].push(r);
+    });
+    const unitLeaderRepeatViolations = [];
+    for (const entry of Object.values(byUnitLeaderBlock)) {
+        for (const block of ['am', 'pm']) {
+            const nameCounts = {};
+            entry[block].forEach(r => { nameCounts[r.ActivityName] = (nameCounts[r.ActivityName] || 0) + 1; });
+            const duplicateNames = Object.entries(nameCounts).filter(([, n]) => n > 1).map(([name]) => name);
+            if (duplicateNames.length > 0) {
+                unitLeaderRepeatViolations.push({
+                    CounselorID: entry.CounselorID,
+                    FirstName: entry.FirstName,
+                    LastName: entry.LastName,
+                    block: block.toUpperCase(),
+                    issues: [`Duplicate class: ${duplicateNames.join(', ')}`]
+                });
+            }
+        }
+    }
+
+    res.render('audit', { activeSession, alertMessage, noCounselor, missingSchedule, counselorMismatch, EXPECTED, suspects, allClassNames, unclassifiedActivities, scheduleRuleViolations, unitLeaderRepeatViolations });
 });
 
 app.post('/set-activity-side', (req, res) => {

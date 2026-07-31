@@ -251,6 +251,12 @@ This mirrors, but is independent from, the auto-builder's own **variety rule** (
 
 Each violation row shows the counselor, which block (AM/PM), and the specific issue(s) found, with a link to their profile. No auto-fix — this is a report, not a repair tool; resolve violations by hand in Counselor Scheduling.
 
+### Unit Leader Repeat Classes
+
+A second, separate card runs the same **duplicate class** check (same `ActivityName` more than once in the AM or PM block) for Unit Leaders. It exists because Unit Leaders aren't scheduled through `CounselorWeekSchedules` at all — they're scheduled through `StaffWeekSchedules` ∪ `CounselorScheduleAssignments` (`PersonType IN ('Instructor','Staff')`), the same tables Instructors and Sports Leaders use, so the Duplicate/Swim Overload check above never sees their rows.
+
+The query joins those two tables to `Counselors` and filters to `StaffRole = 'Unit Leader'` — **Sports Leaders are intentionally excluded**, including a Unit Leader's own dual-enrolled Sports Leader identity (a separate `Counselors` row, same person, different `CounselorID` — see [Counselor Scheduling](#counselor-scheduling)): that row's `StaffRole` is `'Sports Leader'`, so it simply doesn't match the filter and its periods never enter this check. No swim-overload equivalent is checked here, only repeated class names.
+
 ---
 
 ## Exports
