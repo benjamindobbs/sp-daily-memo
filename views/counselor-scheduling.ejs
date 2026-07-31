@@ -1691,8 +1691,18 @@
             updateScheduleTypeColors();
         }
 
-        // Canonical block-used key: rec swim and swim lessons are the same class for scheduling purposes
-        function blockKey(name) { return /swim/i.test(name) ? 'swim' : name; }
+        // Canonical block-used key: rec swim and swim lessons are the same class for scheduling
+        // purposes, as are known same-rotation name pairs below — e.g. a shared Volleyball court
+        // that alternates between Net Games and Badminton. Keep this list in sync with
+        // DUPLICATE_NAME_GROUPS in app.js's /audit route, which flags the same pairs after the fact.
+        const SAME_CLASS_GROUPS = [
+            ['Volleyball/Net Games', 'Volleyball/Badminton'],
+        ];
+        function blockKey(name) {
+            if (/swim/i.test(name)) return 'swim';
+            const group = SAME_CLASS_GROUPS.find(g => g.includes(name));
+            return group ? group[0] : name;
+        }
 
         // Minimum counselors for an enrichment offering based on period, enrollment, AllowedGroups, and configured inputs.
         // PM enrichment with ≤8 enrolled campers gets a reduced minimum of 1.
