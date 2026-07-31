@@ -8135,6 +8135,39 @@ function getCounselorPeriodsForWeek(counselorId, staffRole, week) {
     `).all(counselorId, week, counselorId, week);
 }
 
+// Single-period lookup of a counselor's own normal activity, checked across every schedule
+// table regardless of role (a person only ever appears in one). Used to figure out which
+// class a covering counselor is leaving behind when they're pulled to substitute elsewhere.
+function getCounselorActivityForPeriod(counselorId, period, week) {
+    return db.prepare(`
+        SELECT ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ? AND PeriodNumber = ?
+        UNION
+        SELECT ActivityName FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ? AND PeriodNumber = ?
+        UNION
+        SELECT ActivityName FROM CounselorScheduleAssignments WHERE PersonID = ? AND WeekNumber = ? AND PeriodNumber = ? AND PersonType IN ('Instructor','Staff')
+    `).get(counselorId, week, period, counselorId, week, period, counselorId, week, period)?.ActivityName || null;
+}
+
+// Net headcount change per "period|activity" from every coverage move already saved for this
+// date: +1 where a substitute has joined (the out counselor's own class, recorded directly on
+// the CounselorCoverage row), -1 where the substitute has left their own normal class behind
+// (looked up via getCounselorActivityForPeriod). Lets the coverage dropdown reflect counselors
+// who have functionally moved earlier the same day, instead of reading the static weekly
+// schedule as if nobody had moved.
+function buildCoverageHeadcountDeltas(coverageMap, week) {
+    const deltas = new Map();
+    const bump = (period, activityName, amt) => {
+        if (!activityName) return;
+        const key = `${period}|${activityName}`;
+        deltas.set(key, (deltas.get(key) || 0) + amt);
+    };
+    for (const cov of coverageMap.values()) {
+        bump(cov.PeriodNumber, cov.ActivityName, 1);
+        bump(cov.PeriodNumber, getCounselorActivityForPeriod(cov.CoveringCounselorID, cov.PeriodNumber, week), -1);
+    }
+    return deltas;
+}
+
 // period -> Set(CounselorID) of swim counselors attachSendToSports() says are spare that
 // period this week — reused as-is to green-highlight "send to sports" candidates.
 function getSendToSportsSets(week) {
@@ -8156,7 +8189,7 @@ function getSendToSportsSets(week) {
 // 3 dropdown buckets. Every candidate is annotated with their OWN current assignment that
 // period (activity name, how many counselors are already on it, its enrollment) so the admin
 // can judge the cost of pulling them off it — never filtered out, just informational.
-function buildCoverageCandidates(period, side, week, excludeCounselorId) {
+function buildCoverageCandidates(period, side, week, excludeCounselorId, headcountDeltas = new Map()) {
     const pool = db.prepare(`
         SELECT c.CounselorID, c.FirstName, c.LastName, c.StaffRole,
                COALESCE(cwa.ScheduleType, c.ScheduleType) AS ScheduleType
@@ -8178,10 +8211,12 @@ function buildCoverageCandidates(period, side, week, excludeCounselorId) {
     const annotate = c => {
         const cur = currentAssignment.get(c.CounselorID, week, period);
         if (!cur) return { ...c, currentActivity: null, currentHeadcount: 0, currentEnrollment: null };
+        const base = classHeadcount.get(week, period, cur.ActivityName)?.n || 0;
+        const delta = headcountDeltas.get(`${period}|${cur.ActivityName}`) || 0;
         return {
             ...c,
             currentActivity: cur.ActivityName,
-            currentHeadcount: classHeadcount.get(week, period, cur.ActivityName)?.n || 0,
+            currentHeadcount: Math.max(0, base + delta),
             currentEnrollment: classEnrollment.get(week, period, cur.ActivityName)?.PreliminaryEnrollment ?? null
         };
     };
@@ -8211,7 +8246,7 @@ function buildCoverageCandidates(period, side, week, excludeCounselorId) {
 // periods on the schedule this week, so idle/roster-only instructors aren't offered as
 // candidates. None of these roles are scheduled through CounselorWeekSchedules, so current
 // assignment is looked up the same way getCounselorPeriodsForWeek() does for non-Counselor roles.
-function buildLeadershipCandidates(role, period, week, excludeCounselorId, requireScheduledThisWeek = false) {
+function buildLeadershipCandidates(role, period, week, excludeCounselorId, requireScheduledThisWeek = false, headcountDeltas = new Map()) {
     const scheduledFilter = requireScheduledThisWeek ? `
         AND EXISTS (
             SELECT 1 FROM StaffWeekSchedules sws WHERE sws.StaffID = c.CounselorID AND sws.WeekNumber = ?
@@ -8247,10 +8282,12 @@ function buildLeadershipCandidates(role, period, week, excludeCounselorId, requi
     return pool.map(c => {
         const cur = currentAssignment.get(c.CounselorID, week, period, c.CounselorID, week, period);
         if (!cur) return { ...c, currentActivity: null, currentHeadcount: 0, currentEnrollment: null };
+        const base = classHeadcount.get(week, period, cur.ActivityName, week, period, cur.ActivityName, week, period, cur.ActivityName)?.n || 0;
+        const delta = headcountDeltas.get(`${period}|${cur.ActivityName}`) || 0;
         return {
             ...c,
             currentActivity: cur.ActivityName,
-            currentHeadcount: classHeadcount.get(week, period, cur.ActivityName, week, period, cur.ActivityName, week, period, cur.ActivityName)?.n || 0,
+            currentHeadcount: Math.max(0, base + delta),
             currentEnrollment: classEnrollment.get(week, period, cur.ActivityName)?.PreliminaryEnrollment ?? null
         };
     });
@@ -8266,22 +8303,30 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
     db.prepare("SELECT PeriodNumber, CoveringCounselorID, Skipped FROM CounselorCoverage WHERE Date = ? AND OutCounselorID = ?")
         .all(date, outCounselorId).forEach(r => { existingByPeriod[r.PeriodNumber] = r; });
 
+    // Every coverage move already saved for this date (across every out-counselor, not just
+    // this one), so candidate headcounts and "who's on this class" reflect counselors who have
+    // functionally moved rather than the static weekly schedule.
+    const coverageMap = getCoverageForDate(date);
+    const headcountDeltas = buildCoverageHeadcountDeltas(coverageMap, week);
+
     // Everyone currently assigned to the card's own class/period — Counselor/Swim Counselor via
     // CounselorWeekSchedules, Instructor/Unit Leader/Sports Leader via StaffWeekSchedules ∪
     // CounselorScheduleAssignments — so the out counselor always shows up in this list
-    // regardless of their role, alongside anyone else already on that class.
+    // regardless of their role, alongside anyone else already on that class. Run through
+    // applyCoverageOverlay so anyone already pulled to cover elsewhere today drops out of it
+    // (and any substitute already assigned to cover this class shows up in their place).
     const classAssigned = db.prepare(`
-        SELECT DISTINCT FirstName, LastName FROM (
-            SELECT c.FirstName, c.LastName
+        SELECT DISTINCT CounselorID, FirstName, LastName FROM (
+            SELECT c.CounselorID, c.FirstName, c.LastName
             FROM Counselors c
             JOIN CounselorWeekSchedules cws ON cws.CounselorID = c.CounselorID
             WHERE cws.WeekNumber = ? AND cws.PeriodNumber = ? AND cws.ActivityName = ?
             UNION
-            SELECT st.FirstName, st.LastName
+            SELECT st.CounselorID, st.FirstName, st.LastName
             FROM Counselors st JOIN StaffWeekSchedules sws ON sws.StaffID = st.CounselorID
             WHERE sws.WeekNumber = ? AND sws.PeriodNumber = ? AND sws.ActivityName = ? COLLATE NOCASE
             UNION
-            SELECT st.FirstName, st.LastName
+            SELECT st.CounselorID, st.FirstName, st.LastName
             FROM Counselors st JOIN CounselorScheduleAssignments csa ON csa.PersonID = st.CounselorID
             WHERE csa.WeekNumber = ? AND csa.PeriodNumber = ? AND csa.ActivityName = ? COLLATE NOCASE
               AND csa.PersonType IN ('Instructor','Staff')
@@ -8294,15 +8339,16 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
 
     return periods.map(p => {
         const side = db.prepare("SELECT SideOfCamp FROM Activities WHERE Name = ?").get(p.ActivityName)?.SideOfCamp || 'Sports';
-        const { correctSide, swim, oppositeSide, specialty } = buildCoverageCandidates(p.PeriodNumber, side, week, outCounselorId);
+        const { correctSide, swim, oppositeSide, specialty } = buildCoverageCandidates(p.PeriodNumber, side, week, outCounselorId, headcountDeltas);
         swim.forEach(c => { c.sendToSports = sendToSportsByPeriod[p.PeriodNumber]?.has(c.CounselorID) || false; });
-        const unitLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Unit Leader', p.PeriodNumber, week, outCounselorId) : [];
-        const sportsLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Sports Leader', p.PeriodNumber, week, outCounselorId) : [];
-        const instructors = staffRole === 'Instructor' ? buildLeadershipCandidates('Instructor', p.PeriodNumber, week, outCounselorId, true) : [];
+        const unitLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Unit Leader', p.PeriodNumber, week, outCounselorId, false, headcountDeltas) : [];
+        const sportsLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Sports Leader', p.PeriodNumber, week, outCounselorId, false, headcountDeltas) : [];
+        const instructors = staffRole === 'Instructor' ? buildLeadershipCandidates('Instructor', p.PeriodNumber, week, outCounselorId, true, headcountDeltas) : [];
         const existing = existingByPeriod[p.PeriodNumber] || null;
-        const counselorNames = classAssigned
-            .all(week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName)
-            .map(c => `${c.FirstName} ${c.LastName}`);
+        const classAssignedRaw = classAssigned
+            .all(week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName);
+        const counselorNames = applyCoverageOverlay(classAssignedRaw, coverageMap, p.PeriodNumber)
+            .map(c => c.covering ? `${c.FirstName} ${c.LastName} (covering)` : `${c.FirstName} ${c.LastName}`);
         const enrollment = classEnrollment.get(week, p.PeriodNumber, p.ActivityName)?.PreliminaryEnrollment ?? null;
         return {
             periodNumber: p.PeriodNumber,
@@ -8320,7 +8366,7 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
 // resolved fresh on every render, so it naturally stops applying once the date passes.
 function getCoverageForDate(date) {
     const rows = db.prepare(`
-        SELECT cc.OutCounselorID, cc.PeriodNumber, cc.CoveringCounselorID,
+        SELECT cc.OutCounselorID, cc.PeriodNumber, cc.ActivityName, cc.CoveringCounselorID,
                out.FirstName AS OutFirstName, out.LastName AS OutLastName,
                cov.FirstName AS CoverFirstName, cov.LastName AS CoverLastName,
                COALESCE(cwa.HomeGroupColor, cov.HomeGroupColor) AS CoverHomeGroupColor
