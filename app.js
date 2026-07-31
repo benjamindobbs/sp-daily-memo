@@ -10169,6 +10169,79 @@ app.post('/save-split-assignments', (req, res) => {
     }
 });
 
+app.get('/split-schedule', (req, res) => {
+    const aw = getActiveWeek();
+
+    const splitIds = db.prepare(`
+        SELECT CamperID FROM CamperWeekData WHERE WeekNumber = ? AND HomeGroupColor = 'SPLIT'
+    `).all(aw).map(r => r.CamperID);
+
+    let rows = [];
+    if (splitIds.length > 0) {
+        const ph = splitIds.map(() => '?').join(',');
+        rows = db.prepare(`
+            SELECT s.PeriodNumber AS periodNumber, s.ActivityName AS activityName,
+                   COALESCE(c.PreferredName, c.FirstName) AS firstName, c.LastName AS lastName,
+                   a.Location AS activityLocation
+            FROM Schedules s
+            JOIN Campers c ON c.CamperID = s.PersonID
+            LEFT JOIN Activities a ON a.Name = s.ActivityName
+            WHERE s.PersonType = 'Camper' AND s.WeekNumber = ? AND s.ActivityName NOT LIKE '#REF%'
+              AND s.PersonID IN (${ph})
+        `).all(aw, ...splitIds);
+    }
+
+    // Location resolution mirrors /master-schedule: week-scoped staff override → legacy
+    // instructor row → static Activities.Location fallback.
+    const getLocationWeek = db.prepare(`
+        SELECT Location FROM StaffWeekSchedules
+        WHERE WeekNumber = ? AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
+          AND Location IS NOT NULL AND Location != ''
+        LIMIT 1
+    `);
+    const getLocationLegacy = db.prepare(`
+        SELECT Location FROM Schedules
+        WHERE PersonType = 'Instructor' AND PeriodNumber = ? AND ActivityName = ? COLLATE NOCASE
+          AND Location IS NOT NULL AND Location != ''
+        LIMIT 1
+    `);
+    const locationCache = {};
+    function resolveLocation(periodNumber, activityName, fallback) {
+        const key = `${periodNumber}|${activityName}`;
+        if (!(key in locationCache)) {
+            const locRow = getLocationWeek.get(aw, periodNumber, activityName)
+                || getLocationLegacy.get(periodNumber, activityName);
+            locationCache[key] = locRow ? locRow.Location : (fallback || null);
+        }
+        return locationCache[key];
+    }
+
+    const periodMap = new Map();
+    for (const r of rows) {
+        const entry = {
+            camperName: `${r.firstName} ${r.lastName}`,
+            activityName: r.activityName,
+            location: resolveLocation(r.periodNumber, r.activityName, r.activityLocation)
+        };
+        if (!periodMap.has(r.periodNumber)) periodMap.set(r.periodNumber, []);
+        periodMap.get(r.periodNumber).push(entry);
+    }
+
+    const schedule = [];
+    for (const periodNumber of [...periodMap.keys()].sort((a, b) => a - b)) {
+        const campers = periodMap.get(periodNumber).sort((a, b) => {
+            const locCompare = (a.location || '').localeCompare(b.location || '');
+            return locCompare !== 0 ? locCompare : a.camperName.localeCompare(b.camperName);
+        });
+        schedule.push({ periodNumber, campers });
+    }
+
+    const session = db.prepare('SELECT label FROM Sessions WHERE weekNumber=?').get(aw);
+    const weekLabel = session?.label ?? `Week ${aw}`;
+
+    res.render('split-schedule', { schedule, weekLabel });
+});
+
 // ─── SPLIT FIELD TRIP ─────────────────────────────────────────────────────────
 
 app.post('/split-field-trip/mark', (req, res) => {

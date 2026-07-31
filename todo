@@ -1,0 +1,3 @@
+Add a new view navigable from the SPLIT view called SPLIT Schedule. This view will have a period by period schedule for all SPLIT campers. Group periods together, sort by location alpha-numerically, for each row include the SPLIT campers name, their class, and the classes location.
+
+once a counselor is assigned to cover, future coverage checks need to correctly show the new assignments

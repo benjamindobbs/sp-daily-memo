@@ -220,6 +220,12 @@ SPLIT campers have a non-standard schedule (AM specialty, PM standard classes). 
 
 Covered periods: **1, 2, 4, 5, 6**. Periods 1 and 2 are Enrichment AM; period 4 shows both Sports and Enrichment sides; periods 5 and 6 are Sports PM. Period 3 is not included (AM block 3 is not part of the SPLIT assignment set).
 
+### SPLIT Schedule (read-only view)
+
+`/split-schedule` is a read-only companion to `/split-scheduling` — a period-by-period listing of where every SPLIT camper actually ended up, for staff to consult day-to-day (not gated to admin, same access as `/master-schedule`). It reads the same `Schedules` rows the assignment editor writes (`PersonType = 'Camper'`, joined to `CamperWeekData` for `HomeGroupColor = 'SPLIT'` in the active week), so it only shows the periods a SPLIT camper actually has a class assignment for — periods 1, 2, 4, 5, 6, matching the editor's scope.
+
+Each period section lists one row per camper: camper name, class (`ActivityName`), and the class's location. Rows within a period are sorted by location alphabetically (ties broken by camper name). Location is resolved with the same priority order as Master Schedule: `StaffWeekSchedules.Location` (week-scoped override) → legacy `Schedules` `PersonType='Instructor'` row → `Activities.Location` fallback.
+
 ---
 
 ## Waitlist & Promotions
