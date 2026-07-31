@@ -2867,6 +2867,18 @@ app.get('/audit', (req, res) => {
         ORDER BY a.Name
     `).all(activeWeek);
 
+    // Activity names that are really the same class/rotation under different labels — e.g. a
+    // shared Volleyball court that alternates between Net Games and Badminton. Grouped here so
+    // both duplicate-class checks below flag a counselor/UL who gets two names from the same
+    // group in one block, not just an exact repeated name.
+    const DUPLICATE_NAME_GROUPS = [
+        ['Volleyball/Net Games', 'Volleyball/Badminton'],
+    ];
+    function duplicateKey(name) {
+        const group = DUPLICATE_NAME_GROUPS.find(g => g.includes(name));
+        return group ? group[0] : name;
+    }
+
     // Schedule rule violations: a duplicate class within the same AM (periods 1-3) or PM
     // (periods 4-6) block, or more than 1 swim-variant class within a block — mirrors the
     // scheduler's blockKey()/variety-rule intent (see views/counselor-scheduling.ejs), but
@@ -2895,11 +2907,14 @@ app.get('/audit', (req, res) => {
             // uses to exempt them from its own variety rule (see views/counselor-scheduling.ejs) —
             // so they're not a real duplicate here.
             const nameCounts = {};
+            const namesByKey = {};
             rows.forEach(r => {
                 if (r.ActivityName.toLowerCase().includes('triple period')) return;
-                nameCounts[r.ActivityName] = (nameCounts[r.ActivityName] || 0) + 1;
+                const key = duplicateKey(r.ActivityName);
+                nameCounts[key] = (nameCounts[key] || 0) + 1;
+                (namesByKey[key] ??= new Set()).add(r.ActivityName);
             });
-            const duplicateNames = Object.entries(nameCounts).filter(([, n]) => n > 1).map(([name]) => name);
+            const duplicateNames = Object.entries(nameCounts).filter(([, n]) => n > 1).map(([key]) => [...namesByKey[key]].join(' / '));
             const swimRows = rows.filter(r => /swim/i.test(r.ActivityName));
 
             const issues = [];
@@ -2950,11 +2965,14 @@ app.get('/audit', (req, res) => {
             // Triple-period activities are deliberately repeated across a block — see the
             // matching exclusion on the Duplicate/Swim Overload check above.
             const nameCounts = {};
+            const namesByKey = {};
             entry[block].forEach(r => {
                 if (r.ActivityName.toLowerCase().includes('triple period')) return;
-                nameCounts[r.ActivityName] = (nameCounts[r.ActivityName] || 0) + 1;
+                const key = duplicateKey(r.ActivityName);
+                nameCounts[key] = (nameCounts[key] || 0) + 1;
+                (namesByKey[key] ??= new Set()).add(r.ActivityName);
             });
-            const duplicateNames = Object.entries(nameCounts).filter(([, n]) => n > 1).map(([name]) => name);
+            const duplicateNames = Object.entries(nameCounts).filter(([, n]) => n > 1).map(([key]) => [...namesByKey[key]].join(' / '));
             if (duplicateNames.length > 0) {
                 unitLeaderRepeatViolations.push({
                     CounselorID: entry.CounselorID,
