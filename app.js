@@ -7145,9 +7145,9 @@ app.get('/attendance', (req, res) => {
                 if (outRow && !outRow.Skipped && outRow.CoveringCounselorID) {
                     return { ...s, coveredAway: true, coveredByName: coverName(outRow.CoveringCounselorID) };
                 }
-                if (outRow && outRow.Skipped) {
-                    return { ...s, coveredAway: true, coveredByName: null };
-                }
+                // Skipped ("no coverage needed") means nobody else is taking this class, so it
+                // stays a fully normal, actionable card for the original counselor — falls through
+                // instead of being greyed out like an actually-covered class.
                 // This counselor's own normal class for the period — but they're covering a
                 // different class that same period, so they won't actually be here. Grey it
                 // out too so there's only one obvious card to act on per period.
