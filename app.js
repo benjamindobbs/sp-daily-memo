@@ -2890,8 +2890,15 @@ app.get('/audit', (req, res) => {
     for (const entry of Object.values(byCounselorBlock)) {
         for (const block of ['am', 'pm']) {
             const rows = entry[block];
+            // Triple-period activities (e.g. "Sports Pals (triple period)") are deliberately
+            // assigned across all 3 periods of a block by the auto-builder — same convention it
+            // uses to exempt them from its own variety rule (see views/counselor-scheduling.ejs) —
+            // so they're not a real duplicate here.
             const nameCounts = {};
-            rows.forEach(r => { nameCounts[r.ActivityName] = (nameCounts[r.ActivityName] || 0) + 1; });
+            rows.forEach(r => {
+                if (r.ActivityName.toLowerCase().includes('triple period')) return;
+                nameCounts[r.ActivityName] = (nameCounts[r.ActivityName] || 0) + 1;
+            });
             const duplicateNames = Object.entries(nameCounts).filter(([, n]) => n > 1).map(([name]) => name);
             const swimRows = rows.filter(r => /swim/i.test(r.ActivityName));
 
@@ -2940,8 +2947,13 @@ app.get('/audit', (req, res) => {
     const unitLeaderRepeatViolations = [];
     for (const entry of Object.values(byUnitLeaderBlock)) {
         for (const block of ['am', 'pm']) {
+            // Triple-period activities are deliberately repeated across a block — see the
+            // matching exclusion on the Duplicate/Swim Overload check above.
             const nameCounts = {};
-            entry[block].forEach(r => { nameCounts[r.ActivityName] = (nameCounts[r.ActivityName] || 0) + 1; });
+            entry[block].forEach(r => {
+                if (r.ActivityName.toLowerCase().includes('triple period')) return;
+                nameCounts[r.ActivityName] = (nameCounts[r.ActivityName] || 0) + 1;
+            });
             const duplicateNames = Object.entries(nameCounts).filter(([, n]) => n > 1).map(([name]) => name);
             if (duplicateNames.length > 0) {
                 unitLeaderRepeatViolations.push({
