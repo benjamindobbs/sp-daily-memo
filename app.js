@@ -9095,16 +9095,10 @@ app.post('/save-counselor-assignments', (req, res) => {
     if (!Array.isArray(assignments)) return res.status(400).json({ error: 'Invalid payload' });
     const w = parseInt(weekNumber) || getActiveWeek();
 
-    // Collect counselor IDs being submitted for this week
-    const counselorIds = [...new Set(assignments.filter(a => a.personType === 'Counselor' && a.personID).map(a => parseInt(a.personID)))];
-
     try {
         db.transaction(() => {
-            // Wipe this week's counselor assignments (all periods) for submitted counselors
-            if (counselorIds.length > 0) {
-                const placeholders = counselorIds.map(() => '?').join(',');
-                db.prepare(`DELETE FROM CounselorWeekSchedules WHERE WeekNumber=? AND CounselorID IN (${placeholders})`).run(w, ...counselorIds);
-            }
+            // Wipe this week's counselor assignments (all periods) and reinsert
+            db.prepare('DELETE FROM CounselorWeekSchedules WHERE WeekNumber=?').run(w);
             // Re-insert counselor assignments for this week
             const insCws = db.prepare('INSERT OR REPLACE INTO CounselorWeekSchedules (CounselorID, WeekNumber, PeriodNumber, ActivityName) VALUES (?, ?, ?, ?)');
             // Wipe this week's staff assignments and reinsert
