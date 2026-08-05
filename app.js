@@ -8239,6 +8239,30 @@ function buildCoverageHeadcountDeltas(coverageMap, week) {
     return deltas;
 }
 
+// Set of "CoveringCounselorID|PeriodNumber" for every non-skipped assigned CounselorCoverage
+// row on this date, EXCLUDING rows belonging to `excludeOutCounselorId` (the out-counselor
+// whose card is currently being built) — so a counselor already covering someone else's period
+// is excluded from being offered again for that same period elsewhere, while a counselor
+// already saved as the covering pick for THIS card's own out-counselor/period stays available
+// (so their existing selection can still be seen and kept/changed on a re-visit).
+function buildCoverageExclusions(coverageMap, excludeOutCounselorId) {
+    const exclusions = new Set();
+    for (const cov of coverageMap.values()) {
+        if (cov.OutCounselorID === excludeOutCounselorId) continue;
+        exclusions.add(`${cov.CoveringCounselorID}|${cov.PeriodNumber}`);
+    }
+    return exclusions;
+}
+
+// A candidate is "extra" (cheap to pull) if leaving their current class would still keep it
+// at/under a 1:12 camper:counselor ratio — used to flag low-impact coverage picks.
+function computeIsExtra(currentActivity, currentHeadcount, currentEnrollment) {
+    if (!currentActivity) return true;              // unscheduled — nothing to protect
+    if (currentHeadcount - 1 <= 0) return false;     // last counselor on the class — never extra
+    if (currentEnrollment == null) return false;     // can't verify safety, don't claim extra
+    return (currentEnrollment / (currentHeadcount - 1)) <= 12;
+}
+
 // period -> Set(CounselorID) of swim counselors attachSendToSports() says are spare that
 // period this week — reused as-is to green-highlight "send to sports" candidates.
 function getSendToSportsSets(week) {
@@ -8259,8 +8283,10 @@ function getSendToSportsSets(week) {
 // Candidate pool for covering one class (period + its Activities.SideOfCamp), split into the
 // 3 dropdown buckets. Every candidate is annotated with their OWN current assignment that
 // period (activity name, how many counselors are already on it, its enrollment) so the admin
-// can judge the cost of pulling them off it — never filtered out, just informational.
-function buildCoverageCandidates(period, side, week, excludeCounselorId, headcountDeltas = new Map()) {
+// can judge the cost of pulling them off it. Anyone already covering a different out-counselor's
+// class this same period is excluded entirely (see `coverageExclusions`/`buildCoverageExclusions`)
+// rather than just flagged — they're not available for a second assignment at the same time.
+function buildCoverageCandidates(period, side, week, excludeCounselorId, headcountDeltas = new Map(), coverageExclusions = new Set()) {
     const pool = db.prepare(`
         SELECT c.CounselorID, c.FirstName, c.LastName, c.StaffRole,
                COALESCE(cwa.ScheduleType, c.ScheduleType) AS ScheduleType
@@ -8268,7 +8294,7 @@ function buildCoverageCandidates(period, side, week, excludeCounselorId, headcou
         LEFT JOIN CounselorWeekAttributes cwa ON cwa.CounselorID = c.CounselorID AND cwa.WeekNumber = ?
         WHERE c.StaffRole IN ('Counselor','Swim Counselor') AND c.CounselorID != ?
         ORDER BY c.LastName, c.FirstName
-    `).all(week, excludeCounselorId);
+    `).all(week, excludeCounselorId).filter(c => !coverageExclusions.has(`${c.CounselorID}|${period}`));
 
     const currentAssignment = db.prepare(
         "SELECT ActivityName FROM CounselorWeekSchedules WHERE CounselorID = ? AND WeekNumber = ? AND PeriodNumber = ?"
@@ -8281,14 +8307,17 @@ function buildCoverageCandidates(period, side, week, excludeCounselorId, headcou
     );
     const annotate = c => {
         const cur = currentAssignment.get(c.CounselorID, week, period);
-        if (!cur) return { ...c, currentActivity: null, currentHeadcount: 0, currentEnrollment: null };
+        if (!cur) return { ...c, currentActivity: null, currentHeadcount: 0, currentEnrollment: null, isExtra: computeIsExtra(null, 0, null) };
         const base = classHeadcount.get(week, period, cur.ActivityName)?.n || 0;
         const delta = headcountDeltas.get(`${period}|${cur.ActivityName}`) || 0;
+        const currentHeadcount = Math.max(0, base + delta);
+        const currentEnrollment = classEnrollment.get(week, period, cur.ActivityName)?.PreliminaryEnrollment ?? null;
         return {
             ...c,
             currentActivity: cur.ActivityName,
-            currentHeadcount: Math.max(0, base + delta),
-            currentEnrollment: classEnrollment.get(week, period, cur.ActivityName)?.PreliminaryEnrollment ?? null
+            currentHeadcount,
+            currentEnrollment,
+            isExtra: computeIsExtra(cur.ActivityName, currentHeadcount, currentEnrollment)
         };
     };
 
@@ -8317,7 +8346,7 @@ function buildCoverageCandidates(period, side, week, excludeCounselorId, headcou
 // periods on the schedule this week, so idle/roster-only instructors aren't offered as
 // candidates. None of these roles are scheduled through CounselorWeekSchedules, so current
 // assignment is looked up the same way getCounselorPeriodsForWeek() does for non-Counselor roles.
-function buildLeadershipCandidates(role, period, week, excludeCounselorId, requireScheduledThisWeek = false, headcountDeltas = new Map()) {
+function buildLeadershipCandidates(role, period, week, excludeCounselorId, requireScheduledThisWeek = false, headcountDeltas = new Map(), coverageExclusions = new Set()) {
     const scheduledFilter = requireScheduledThisWeek ? `
         AND EXISTS (
             SELECT 1 FROM StaffWeekSchedules sws WHERE sws.StaffID = c.CounselorID AND sws.WeekNumber = ?
@@ -8330,7 +8359,7 @@ function buildLeadershipCandidates(role, period, week, excludeCounselorId, requi
         SELECT c.CounselorID, c.FirstName, c.LastName FROM Counselors c
         WHERE c.StaffRole = ? AND c.CounselorID != ? ${scheduledFilter}
         ORDER BY c.LastName, c.FirstName
-    `).all(...poolParams);
+    `).all(...poolParams).filter(c => !coverageExclusions.has(`${c.CounselorID}|${period}`));
 
     const currentAssignment = db.prepare(`
         SELECT ActivityName FROM StaffWeekSchedules WHERE StaffID = ? AND WeekNumber = ? AND PeriodNumber = ?
@@ -8352,14 +8381,17 @@ function buildLeadershipCandidates(role, period, week, excludeCounselorId, requi
 
     return pool.map(c => {
         const cur = currentAssignment.get(c.CounselorID, week, period, c.CounselorID, week, period);
-        if (!cur) return { ...c, currentActivity: null, currentHeadcount: 0, currentEnrollment: null };
+        if (!cur) return { ...c, currentActivity: null, currentHeadcount: 0, currentEnrollment: null, isExtra: computeIsExtra(null, 0, null) };
         const base = classHeadcount.get(week, period, cur.ActivityName, week, period, cur.ActivityName, week, period, cur.ActivityName)?.n || 0;
         const delta = headcountDeltas.get(`${period}|${cur.ActivityName}`) || 0;
+        const currentHeadcount = Math.max(0, base + delta);
+        const currentEnrollment = classEnrollment.get(week, period, cur.ActivityName)?.PreliminaryEnrollment ?? null;
         return {
             ...c,
             currentActivity: cur.ActivityName,
-            currentHeadcount: Math.max(0, base + delta),
-            currentEnrollment: classEnrollment.get(week, period, cur.ActivityName)?.PreliminaryEnrollment ?? null
+            currentHeadcount,
+            currentEnrollment,
+            isExtra: computeIsExtra(cur.ActivityName, currentHeadcount, currentEnrollment)
         };
     });
 }
@@ -8379,6 +8411,7 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
     // functionally moved rather than the static weekly schedule.
     const coverageMap = getCoverageForDate(date);
     const headcountDeltas = buildCoverageHeadcountDeltas(coverageMap, week);
+    const coverageExclusions = buildCoverageExclusions(coverageMap, outCounselorId);
 
     // Everyone currently assigned to the card's own class/period — Counselor/Swim Counselor via
     // CounselorWeekSchedules, Instructor/Unit Leader/Sports Leader via StaffWeekSchedules ∪
@@ -8410,11 +8443,11 @@ function buildCoverageCards(outCounselorId, staffRole, week, date) {
 
     return periods.map(p => {
         const side = db.prepare("SELECT SideOfCamp FROM Activities WHERE Name = ?").get(p.ActivityName)?.SideOfCamp || 'Sports';
-        const { correctSide, swim, oppositeSide, specialty } = buildCoverageCandidates(p.PeriodNumber, side, week, outCounselorId, headcountDeltas);
+        const { correctSide, swim, oppositeSide, specialty } = buildCoverageCandidates(p.PeriodNumber, side, week, outCounselorId, headcountDeltas, coverageExclusions);
         swim.forEach(c => { c.sendToSports = sendToSportsByPeriod[p.PeriodNumber]?.has(c.CounselorID) || false; });
-        const unitLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Unit Leader', p.PeriodNumber, week, outCounselorId, false, headcountDeltas) : [];
-        const sportsLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Sports Leader', p.PeriodNumber, week, outCounselorId, false, headcountDeltas) : [];
-        const instructors = staffRole === 'Instructor' ? buildLeadershipCandidates('Instructor', p.PeriodNumber, week, outCounselorId, true, headcountDeltas) : [];
+        const unitLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Unit Leader', p.PeriodNumber, week, outCounselorId, false, headcountDeltas, coverageExclusions) : [];
+        const sportsLeaders = staffRole === 'Unit Leader' ? buildLeadershipCandidates('Sports Leader', p.PeriodNumber, week, outCounselorId, false, headcountDeltas, coverageExclusions) : [];
+        const instructors = staffRole === 'Instructor' ? buildLeadershipCandidates('Instructor', p.PeriodNumber, week, outCounselorId, true, headcountDeltas, coverageExclusions) : [];
         const existing = existingByPeriod[p.PeriodNumber] || null;
         const classAssignedRaw = classAssigned
             .all(week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName, week, p.PeriodNumber, p.ActivityName);
@@ -8533,16 +8566,36 @@ app.post('/coverage/save', (req, res) => {
             UpdatedAt = CURRENT_TIMESTAMP
     `);
     const clearRow = db.prepare("DELETE FROM CounselorCoverage WHERE Date=? AND OutCounselorID=? AND PeriodNumber=?");
+    const priorRow = db.prepare("SELECT ActivityName, CoveringCounselorID FROM CounselorCoverage WHERE Date=? AND OutCounselorID=? AND PeriodNumber=?");
+
+    // Rows where a covering counselor is newly assigned or changed vs what was already saved —
+    // used below to alert only the counselors actually affected by this save, not everyone on
+    // the form (which re-submits every period every time, changed or not).
+    const alertsToSend = [];
 
     db.transaction(() => {
         periodList.forEach((pRaw, i) => {
             const period = parseInt(pRaw);
             const isSkipped = skipList[i] === '1';
             const coverId = coverList[i] ? parseInt(coverList[i]) : null;
+            const activityName = activityList[i] || '';
             if (!isSkipped && !coverId) { clearRow.run(date, outId, period); return; }
-            upsert.run(date, week, outId, period, activityList[i] || '', isSkipped ? null : coverId, isSkipped ? 1 : 0);
+            if (!isSkipped && coverId) {
+                const prior = priorRow.get(date, outId, period);
+                const changed = !prior || prior.CoveringCounselorID !== coverId || prior.ActivityName !== activityName;
+                if (changed) alertsToSend.push({ coverId, period, activityName });
+            }
+            upsert.run(date, week, outId, period, activityName, isSkipped ? null : coverId, isSkipped ? 1 : 0);
         });
     })();
+
+    const sentBy = req.cookies.adminName || null;
+    for (const a of alertsToSend) {
+        const message = `Coverage assignment: Please cover Period ${a.period} — ${a.activityName} — today (${date}).`.slice(0, 200);
+        const cov = db.prepare("SELECT FirstName, LastName FROM Counselors WHERE CounselorID = ?").get(a.coverId);
+        const targetLabel = cov ? `${cov.FirstName} ${cov.LastName}` : `Counselor ${a.coverId}`;
+        sendInstantAlert(message, targetLabel, resolveAlertTargets('individual', a.coverId), sentBy);
+    }
 
     res.redirect(`/coverage?date=${date}&counselorId=${outId}&message=Coverage+saved`);
 });

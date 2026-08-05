@@ -1,0 +1,5 @@
+General Bugs:
+1. The counter on schedule swaps only includes rows not archived. The count needs to include the archived rows as well, but only for the given week.
+
+New Features:
+1. Add a view that lists all campers who have a camp lunch. Denote if it is allergy or not. Add a toggle for marking them as claimed which resets daily (similar to an attendance sheet). Group by color group (Red at top, then Carolina, Green, Navy), and organize each color group into sections by homegroup counselor.

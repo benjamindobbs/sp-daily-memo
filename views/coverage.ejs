@@ -131,7 +131,7 @@
                             <optgroup label="Unit Leaders">
                                 <% card.unitLeaders.forEach(function(c) { %>
                                     <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.isExtra ? ' ✅ Extra' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>
@@ -140,7 +140,7 @@
                             <optgroup label="Sports Leaders">
                                 <% card.sportsLeaders.forEach(function(c) { %>
                                     <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.isExtra ? ' ✅ Extra' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>
@@ -149,7 +149,7 @@
                             <optgroup label="Instructors">
                                 <% card.instructors.forEach(function(c) { %>
                                     <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.isExtra ? ' ✅ Extra' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>
@@ -158,7 +158,7 @@
                             <optgroup label="Correct Side (<%= card.side %>)">
                                 <% card.correctSide.forEach(function(c) { %>
                                     <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.isExtra ? ' ✅ Extra' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>
@@ -167,7 +167,7 @@
                             <optgroup label="Swim Counselors">
                                 <% card.swim.forEach(function(c) { %>
                                     <option value="<%= c.CounselorID %>" class="<%= c.sendToSports ? 'send-to-sports-option' : '' %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %><%= c.sendToSports ? ' ⭐ Send to Sports' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.sendToSports ? ' ⭐ Send to Sports' : '' %><%= c.isExtra ? ' ✅ Extra' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>
@@ -176,7 +176,7 @@
                             <optgroup label="Opposite Side">
                                 <% card.oppositeSide.forEach(function(c) { %>
                                     <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.isExtra ? ' ✅ Extra' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>
@@ -185,7 +185,7 @@
                             <optgroup label="Specialty Camp Counselors (No Schedule)">
                                 <% card.specialty.forEach(function(c) { %>
                                     <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %> — Currently: Free
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.isExtra ? ' ✅ Extra' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>
