@@ -13,6 +13,7 @@
         .cov-select { width:100%; padding:8px 10px; border:1px solid var(--border-color); border-radius:8px; font-size:0.85rem; }
         .cov-select.cov-skipped { opacity:0.45; pointer-events:none; }
         .send-to-sports-option { background:#dcfce7; }
+        .already-covering-option { background:#fee2e2; color:#991b1b; }
         .cov-summary-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border-bottom:1px solid var(--border-color); font-size:0.85rem; flex-wrap:wrap; }
         .cov-summary-row:last-child { border-bottom:none; }
         .cov-arrow { color:var(--text-muted); }
@@ -130,8 +131,8 @@
                             <% if (card.unitLeaders && card.unitLeaders.length > 0) { %>
                             <optgroup label="Unit Leaders">
                                 <% card.unitLeaders.forEach(function(c) { %>
-                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    <option value="<%= c.CounselorID %>" class="<%= c.isAlreadyCovering ? 'already-covering-option' : '' %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.isExtra ? ' ✅ Extra' : '' %><%= c.isAlreadyCovering ? ' ⚠️ Already Covering' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>
@@ -139,8 +140,8 @@
                             <% if (card.sportsLeaders && card.sportsLeaders.length > 0) { %>
                             <optgroup label="Sports Leaders">
                                 <% card.sportsLeaders.forEach(function(c) { %>
-                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    <option value="<%= c.CounselorID %>" class="<%= c.isAlreadyCovering ? 'already-covering-option' : '' %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.isExtra ? ' ✅ Extra' : '' %><%= c.isAlreadyCovering ? ' ⚠️ Already Covering' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>
@@ -148,8 +149,8 @@
                             <% if (card.instructors && card.instructors.length > 0) { %>
                             <optgroup label="Instructors">
                                 <% card.instructors.forEach(function(c) { %>
-                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    <option value="<%= c.CounselorID %>" class="<%= c.isAlreadyCovering ? 'already-covering-option' : '' %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.isExtra ? ' ✅ Extra' : '' %><%= c.isAlreadyCovering ? ' ⚠️ Already Covering' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>
@@ -157,8 +158,8 @@
                             <% if (card.correctSide.length > 0) { %>
                             <optgroup label="Correct Side (<%= card.side %>)">
                                 <% card.correctSide.forEach(function(c) { %>
-                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    <option value="<%= c.CounselorID %>" class="<%= c.isAlreadyCovering ? 'already-covering-option' : '' %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.isExtra ? ' ✅ Extra' : '' %><%= c.isAlreadyCovering ? ' ⚠️ Already Covering' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>
@@ -166,8 +167,8 @@
                             <% if (card.swim.length > 0) { %>
                             <optgroup label="Swim Counselors">
                                 <% card.swim.forEach(function(c) { %>
-                                    <option value="<%= c.CounselorID %>" class="<%= c.sendToSports ? 'send-to-sports-option' : '' %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %><%= c.sendToSports ? ' ⭐ Send to Sports' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    <option value="<%= c.CounselorID %>" class="<%= c.isAlreadyCovering ? 'already-covering-option' : (c.sendToSports ? 'send-to-sports-option' : '') %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.sendToSports ? ' ⭐ Send to Sports' : '' %><%= c.isExtra ? ' ✅ Extra' : '' %><%= c.isAlreadyCovering ? ' ⚠️ Already Covering' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>
@@ -175,8 +176,8 @@
                             <% if (card.oppositeSide.length > 0) { %>
                             <optgroup label="Opposite Side">
                                 <% card.oppositeSide.forEach(function(c) { %>
-                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
+                                    <option value="<%= c.CounselorID %>" class="<%= c.isAlreadyCovering ? 'already-covering-option' : '' %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.isExtra ? ' ✅ Extra' : '' %><%= c.isAlreadyCovering ? ' ⚠️ Already Covering' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>
@@ -184,8 +185,8 @@
                             <% if (card.specialty && card.specialty.length > 0) { %>
                             <optgroup label="Specialty Camp Counselors (No Schedule)">
                                 <% card.specialty.forEach(function(c) { %>
-                                    <option value="<%= c.CounselorID %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
-                                        <%= c.FirstName %> <%= c.LastName %> — Currently: Free
+                                    <option value="<%= c.CounselorID %>" class="<%= c.isAlreadyCovering ? 'already-covering-option' : '' %>" <%= card.savedCoveringCounselorId === c.CounselorID ? 'selected' : '' %>>
+                                        <%= c.FirstName %> <%= c.LastName %><%= c.isExtra ? ' ✅ Extra' : '' %><%= c.isAlreadyCovering ? ' ⚠️ Already Covering' : '' %> — <%= c.currentActivity ? ('Currently: ' + c.currentActivity + ' (' + c.currentHeadcount + ' counselor' + (c.currentHeadcount === 1 ? '' : 's') + ', ' + (c.currentEnrollment ?? '?') + ' campers)') : 'Currently: Free' %>
                                     </option>
                                 <% }) %>
                             </optgroup>

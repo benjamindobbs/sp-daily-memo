@@ -196,8 +196,8 @@ The Coverage tool is at `/coverage` — use it when a counselor or staff member 
      - **Opposite Side** — everyone else who's scheduled somewhere this week
      - **Specialty Camp Counselors (No Schedule)** — last group; counselors with no schedule at all this week (almost always KP/LP/SPLIT/SPRC specialty-camp counselors, since they aren't part of the main-camp schedule builder)
    
-   Every name in the dropdown shows what that counselor is **currently** assigned that period — their class name, how many other counselors are already on it, and how many campers are enrolled — so you can judge the cost of pulling them off it before picking them.
-4. Click **Save Coverage**. A summary of the day's coverage (across every counselor who's out) appears above the form, with a **Remove** button on each entry.
+   Every name in the dropdown shows what that counselor is **currently** assigned that period — their class name, how many other counselors are already on it, and how many campers are enrolled — so you can judge the cost of pulling them off it before picking them. If they've already been pulled to cover a different class this same period earlier in the day, this reflects that new class instead of their normal schedule. Names may also carry a **✅ Extra** tag (pulling them would still leave their current class at or under a 1:12 camper:counselor ratio — low-impact pick) and/or a red **⚠️ Already Covering** highlight (they're already covering something else this period — not blocked, just flagged so you don't accidentally double-book them).
+4. Click **Save Coverage**. A summary of the day's coverage (across every counselor who's out) appears above the form, with a **Remove** button on each entry. Any counselor newly assigned or reassigned to cover a period gets a push notification naming the period and the class they're now covering; re-saving without changes, or skipping a period, doesn't send anything.
 
 #### Where the substitute shows up
 
