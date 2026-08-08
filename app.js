@@ -475,7 +475,7 @@ const ADMIN_ONLY_PREFIXES = [
     '/save-counselor-assignments', '/backup-counselor-assignments', '/counselor-schedule-backups', '/restore-counselor-backup', '/delete-counselor-backup',
     '/export-counselor-schedule', '/export-staff-schedule',
     '/export-master-schedule', '/save-counselor-group-assignments', '/auto-assign-homegroups', '/sync-homegroup-colors',
-    '/hub-content', '/director-notes', '/director-notes/edit',
+    '/hub-content', '/director-notes', '/director-notes/edit', '/api/director-notes',
     '/set-active-week', '/set-released-week', '/set-prep-week', '/update-session-label',
     '/clear-counselor-week', '/counselor-week-assignments', '/api/week-staff-assignments', '/api/counselor-week-pinned-types', '/mirror-sports-location', '/clear-counselor-schedule', '/clear-counselor-homegroups',
     '/api/locked-offerings', '/api/toggle-lock',
@@ -2643,6 +2643,14 @@ app.post('/director-notes', (req, res) => {
     const category = VALID_CATS.has(req.body.category) ? req.body.category : 'director';
     db.prepare("INSERT INTO DirectorNotes (body, author, category) VALUES (?, ?, ?)").run(body, author, category);
     res.redirect('/admin');
+});
+
+app.get('/api/director-notes', (req, res) => {
+    const limit = 100;
+    const offset = Math.max(0, parseInt(req.query.offset) || 0);
+    const notes = db.prepare("SELECT id, body, author, category, createdAt FROM DirectorNotes ORDER BY createdAt DESC LIMIT ? OFFSET ?").all(limit, offset);
+    const total = db.prepare("SELECT COUNT(*) AS c FROM DirectorNotes").get().c;
+    res.json({ notes, hasMore: offset + notes.length < total });
 });
 
 app.post('/director-notes/delete/:id', (req, res) => {
