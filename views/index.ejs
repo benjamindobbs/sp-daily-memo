@@ -520,6 +520,10 @@
                 <% }) %>
                 <p id="notesEmpty" style="display:none; color:var(--text-muted); text-align:center; padding:24px 0; font-size:0.9rem;">No notes yet.</p>
             </div>
+            <div style="text-align:center; margin-top:10px;">
+                <button type="button" id="notesLoadMoreBtn" onclick="loadMoreNotes()" class="btn btn-small"
+                        style="<%= directorNotes.length < 200 ? 'display:none;' : '' %>">Load More</button>
+            </div>
         </div>
 
         <%/* ── Staff Announcement ── */%>
@@ -734,11 +738,14 @@
         }
         function saveAnnounce(e) { saveHub('announcement', quillAnnounce, e.currentTarget); }
 
-        document.querySelectorAll('.note-ts[data-ts]').forEach(function(el) {
-            const raw = el.dataset.ts || '';
-            const d = new Date(raw.includes('Z') ? raw : raw.replace(' ', 'T') + 'Z');
-            el.textContent = isNaN(d) ? raw : d.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-        });
+        function formatNoteTimestamps(scope) {
+            (scope || document).querySelectorAll('.note-ts[data-ts]').forEach(function(el) {
+                const raw = el.dataset.ts || '';
+                const d = new Date(raw.includes('Z') ? raw : raw.replace(' ', 'T') + 'Z');
+                el.textContent = isNaN(d) ? raw : d.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+            });
+        }
+        formatNoteTimestamps();
 
         // Director Notes feed controls
         function toggleAddNote() {
@@ -752,6 +759,84 @@
             const editing = form.style.display !== 'none';
             body.style.display = editing ? '' : 'none';
             form.style.display = editing ? 'none' : '';
+        }
+
+        // Load-more pagination for the notes feed
+        const ADMIN_NAME = <%- JSON.stringify(adminName || null) %>;
+        let _notesOffset = <%= directorNotes.length %>;
+        const NOTE_CAT_LABELS = { director: 'Director Notes', camper: 'Camper/Parent', staff: 'Staff', timesheet: 'Timesheet' };
+
+        function escapeNoteHtml(str) {
+            return String(str == null ? '' : str)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function buildNoteItemEl(note) {
+            const cat = note.category || 'director';
+            const canEdit = ADMIN_NAME && ADMIN_NAME === note.author;
+            const bodyForSearch = (note.body || '').replace(/</g, '').replace(/>/g, '').toLowerCase();
+
+            let html = '<div class="note-item"'
+                + ' data-category="' + escapeNoteHtml(cat) + '"'
+                + ' data-author="' + escapeNoteHtml((note.author || '').toLowerCase()) + '"'
+                + ' data-date="' + escapeNoteHtml(note.createdAt) + '"'
+                + ' data-body="' + escapeNoteHtml(bodyForSearch) + '">'
+                + '<div class="note-meta" style="display:flex; justify-content:space-between; align-items:center;">'
+                + '<div><strong>' + escapeNoteHtml(note.author) + '</strong>'
+                + ' <span class="note-ts" data-ts="' + escapeNoteHtml(note.createdAt) + '"></span></div>'
+                + '<div style="display:flex; align-items:center; gap:2px;">'
+                + (canEdit ? '<button type="button" title="Edit note" onclick="toggleNoteEdit(' + note.id + ')" '
+                    + 'style="background:none; border:none; cursor:pointer; color:#cbd5e1; font-size:0.85rem; padding:2px 4px; line-height:1;" '
+                    + 'onmouseover="this.style.color=\'#3b82f6\'" onmouseout="this.style.color=\'#cbd5e1\'">&#9998;</button>' : '')
+                + '<form action="/director-notes/delete/' + note.id + '" method="POST" onsubmit="return confirm(\'Delete this note?\')" style="margin:0;">'
+                + '<button type="submit" title="Delete note" style="background:none; border:none; cursor:pointer; color:#cbd5e1; font-size:0.85rem; padding:2px 4px; line-height:1;" '
+                + 'onmouseover="this.style.color=\'#ef4444\'" onmouseout="this.style.color=\'#cbd5e1\'">&#10005;</button></form>'
+                + '</div></div>'
+                + '<div class="note-body" id="note-body-' + note.id + '">' + note.body + '</div>';
+
+            if (canEdit) {
+                html += '<form id="note-edit-form-' + note.id + '" action="/director-notes/edit/' + note.id + '" method="POST" style="display:none; margin-top:8px;">'
+                    + '<textarea name="body" rows="3" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #bfdbfe; border-radius:6px; font-size:0.9rem; resize:vertical;">' + escapeNoteHtml(note.body) + '</textarea>'
+                    + '<div style="display:flex; gap:8px; margin-top:6px; align-items:center;">'
+                    + '<select name="category" style="padding:4px 8px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem;">'
+                    + Object.keys(NOTE_CAT_LABELS).map(function(c) {
+                        return '<option value="' + c + '"' + (cat === c ? ' selected' : '') + '>' + NOTE_CAT_LABELS[c] + '</option>';
+                    }).join('')
+                    + '</select>'
+                    + '<button type="submit" class="btn btn-primary btn-small">Save</button>'
+                    + '<button type="button" class="btn btn-small" onclick="toggleNoteEdit(' + note.id + ')">Cancel</button>'
+                    + '</div></form>';
+            }
+            html += '</div>';
+
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = html;
+            return wrapper.firstElementChild;
+        }
+
+        function loadMoreNotes() {
+            const btn = document.getElementById('notesLoadMoreBtn');
+            btn.disabled = true;
+            btn.textContent = 'Loading…';
+            fetch('/api/director-notes?offset=' + _notesOffset)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    const feed = document.getElementById('notesFeed');
+                    const emptyMsg = document.getElementById('notesEmpty');
+                    data.notes.forEach(function(note) {
+                        feed.insertBefore(buildNoteItemEl(note), emptyMsg);
+                    });
+                    _notesOffset += data.notes.length;
+                    formatNoteTimestamps(feed);
+                    applyNotesFilter();
+                    btn.disabled = false;
+                    btn.textContent = 'Load More';
+                    btn.style.display = data.hasMore ? '' : 'none';
+                })
+                .catch(function() {
+                    btn.disabled = false;
+                    btn.textContent = 'Load More';
+                });
         }
 
         let _notesCat = 'director';

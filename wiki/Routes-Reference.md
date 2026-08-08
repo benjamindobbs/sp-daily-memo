@@ -26,6 +26,7 @@ All Express routes in `app.js`. Admin-only routes require `viewMode === 'admin'`
 | POST | `/director-notes` | ✓ | Add a director note (writes `DirectorNotes`) |
 | POST | `/director-notes/delete/:id` | ✓ | Delete a director note |
 | POST | `/director-notes/edit/:id` | ✓ | Edit an existing director note (author-gated — only the original author can edit) |
+| GET | `/api/director-notes` | ✓ | Ajax: `?offset=N` → `{ notes[], hasMore }`, 100 notes per page ordered newest-first; powers the **Load More** button on the admin hub notes feed (initial page render still ships the first 200 via `/admin`) |
 | POST | `/hub-content/:id` | ✓ | Update `HubContent` (announcement or director_notes blob) |
 
 ---

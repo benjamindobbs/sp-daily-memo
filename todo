@@ -1,5 +1,6 @@
 General Bugs:
 1. The counter on schedule swaps only includes rows not archived. The count needs to include the archived rows as well, but only for the given week.
-
+2. Ensure master schedule shows covering counselor and removes name of counselor being covered.
 New Features:
 1. Add a view that lists all campers who have a camp lunch. Denote if it is allergy or not. Add a toggle for marking them as claimed which resets daily (similar to an attendance sheet). Group by color group (Red at top, then Carolina, Green, Navy), and organize each color group into sections by homegroup counselor.
+2. In the coverage tool, if a period is marked as no covereage needed, add another checkbox for "Counselor Will be Present" that determines if their name should still appear for that class. This will help catch the edge case for partial day coverage, and when they will be absent but coverage is not needed.
